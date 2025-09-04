@@ -1,0 +1,48 @@
+[
+  {
+    "id": "1756950548368",
+    "name": "week 1",
+    "startDate": "2025-09-04T01:49:08.368Z",
+    "status": "completed",
+    "roundRobinRounds": 3,
+    "bracketRounds": [
+      {
+        "round": 1,
+        "bestOf": 3
+      },
+      {
+        "round": 2,
+        "bestOf": 5
+      }
+    ],
+    "players": [
+      "1756940902661",
+      "1756940905740",
+      "1756941480724",
+      "1756941473618"
+    ]
+  },
+  {
+    "id": "1756952028197",
+    "name": "week 2",
+    "startDate": "2025-09-04T02:13:48.197Z",
+    "status": "completed",
+    "roundRobinRounds": 3,
+    "bracketRounds": [
+      {
+        "round": 1,
+        "bestOf": 3
+      },
+      {
+        "round": 2,
+        "bestOf": 5
+      }
+    ],
+    "players": [
+      "1756940902661",
+      "1756940905740",
+      "1756941480724",
+      "1756941473618"
+    ]
+  }
+]

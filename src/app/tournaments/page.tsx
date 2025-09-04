@@ -1,0 +1,649 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { Tournament, Player, Match, Game } from '../../types/pingpong';
+import Link from 'next/link';
+
+export default function TournamentsPage() {
+  const [tournaments, setTournaments] = useState<Tournament[]>([]);
+  const [players, setPlayers] = useState<Player[]>([]);
+  const [matches, setMatches] = useState<Match[]>([]);
+  const [games, setGames] = useState<Game[]>([]);
+  const [name, setName] = useState('');
+  const [roundRobinRounds, setRoundRobinRounds] = useState(3);
+  const [bracketRounds] = useState([{ round: 1, bestOf: 3 }, { round: 2, bestOf: 5 }]);
+  const [selectedPlayers, setSelectedPlayers] = useState<string[]>([]);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [activeTab, setActiveTab] = useState<'active' | 'history'>('active');
+
+  useEffect(() => {
+    fetchTournaments();
+    fetchPlayers();
+    fetchMatches();
+    fetchGames();
+  }, []);
+
+  const fetchTournaments = async () => {
+    const res = await fetch('/api/tournaments');
+    const data = await res.json();
+    setTournaments(data);
+  };
+
+  const fetchPlayers = async () => {
+    const res = await fetch('/api/players');
+    const data = await res.json();
+    setPlayers(data);
+  };
+
+  const fetchMatches = async () => {
+    const res = await fetch('/api/matches');
+    const data = await res.json();
+    setMatches(data);
+  };
+
+  const fetchGames = async () => {
+    const res = await fetch('/api/games');
+    const data = await res.json();
+    setGames(data);
+  };
+
+  const createTournament = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name || selectedPlayers.length < 2) return;
+    const res = await fetch('/api/tournaments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        roundRobinRounds,
+        bracketRounds,
+        players: selectedPlayers,
+      }),
+    });
+    if (res.ok) {
+      setName('');
+      setSelectedPlayers([]);
+      setShowCreateForm(false);
+      fetchTournaments();
+      fetchMatches();
+    }
+  };
+
+  const startBracket = async (tournament: Tournament) => {
+    const tournamentMatches = getTournamentMatches(tournament.id);
+    const roundRobinMatches = tournamentMatches.filter(m => m.round === 'roundRobin');
+    if (!roundRobinMatches.every(m => m.winnerId)) return;
+
+    // Compute standings
+    const wins: { [key: string]: number } = {};
+    tournament.players.forEach(p => wins[p] = 0);
+    roundRobinMatches.forEach(m => {
+      if (m.winnerId) wins[m.winnerId]++;
+    });
+    const sortedPlayers = tournament.players.sort((a, b) => wins[b] - wins[a]);
+
+    // Generate bracket matches
+    const bracketMatches = [];
+    for (let i = 0; i < sortedPlayers.length; i += 2) {
+      if (i + 1 < sortedPlayers.length) {
+        // Create match between two players
+        const newMatch: Partial<Match> = {
+          tournamentId: tournament.id,
+          player1Id: sortedPlayers[i],
+          player2Id: sortedPlayers[i + 1],
+          round: 'bracket',
+          bracketRound: 1,
+          bestOf: tournament.bracketRounds[0]?.bestOf || 3,
+          games: [],
+        };
+        const res = await fetch('/api/matches', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newMatch),
+        });
+        if (res.ok) {
+          bracketMatches.push(await res.json());
+        }
+      } else {
+        // Odd number of players - this player gets a bye to the next round
+        // We'll handle byes by automatically advancing this player
+        console.log(`Player ${sortedPlayers[i]} gets a bye to round 2`);
+        // For now, we'll create a "bye" match that this player automatically wins
+        // This is a simplified approach - in a real tournament, byes advance players directly
+      }
+    }
+
+    // Update tournament status
+    await fetch('/api/tournaments', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: tournament.id, status: 'bracket' }),
+    });
+
+    fetchTournaments();
+    fetchMatches();
+  };
+
+  const getPlayerName = (id: string) => {
+    const player = players.find(p => p.id === id);
+    return player ? player.name : 'Unknown';
+  };
+
+  const getTournamentMatches = (tournamentId: string) => {
+    return matches.filter(m => m.tournamentId === tournamentId);
+  };
+
+  const addGameToMatch = async (match: Match, score1: number, score2: number) => {
+    if (match.games.length >= match.bestOf) return;
+    const res = await fetch('/api/games', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        player1Id: match.player1Id,
+        player2Id: match.player2Id,
+        score1,
+        score2,
+        matchId: match.id,
+      }),
+    });
+    if (res.ok) {
+      fetchMatches();
+      fetchGames();
+
+      // Check if we need to advance bracket rounds
+      checkBracketAdvancement(match.tournamentId);
+    }
+  };
+
+  const checkBracketAdvancement = async (tournamentId: string) => {
+    // Fetch fresh data instead of relying on state
+    const [tournamentsRes, matchesRes] = await Promise.all([
+      fetch('/api/tournaments'),
+      fetch('/api/matches')
+    ]);
+    const freshTournaments = await tournamentsRes.json();
+    const freshMatches = await matchesRes.json();
+
+    const tournament = freshTournaments.find((t: Tournament) => t.id === tournamentId);
+    if (!tournament || tournament.status !== 'bracket') return;
+
+    const tournamentMatches = freshMatches.filter((m: Match) => m.tournamentId === tournamentId && m.round === 'bracket');
+    const currentRound = Math.max(...tournamentMatches.map((m: Match) => m.bracketRound || 0));
+    const currentRoundMatches = tournamentMatches.filter((m: Match) => m.bracketRound === currentRound);
+
+    // Check if all matches in current round are complete
+    const allComplete = currentRoundMatches.every((m: Match) => m.winnerId);
+
+    if (allComplete) {
+      const winners = currentRoundMatches.map((m: Match) => m.winnerId).filter((id: string | undefined) => id) as string[];
+
+      if (winners.length <= 1) {
+        // Tournament complete - only one player left or no players
+        await fetch('/api/tournaments', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: tournamentId, status: 'completed' }),
+        });
+        fetchTournaments();
+        return;
+      }
+
+      // Create next round matches by pairing winners
+      const nextRound = currentRound + 1;
+      const nextRoundBestOf = tournament.bracketRounds.find((br: { round: number; bestOf: number }) => br.round === nextRound)?.bestOf ||
+                              tournament.bracketRounds[tournament.bracketRounds.length - 1]?.bestOf || 3;
+
+      // Handle byes: if odd number of winners, the last one gets a bye
+      const playersForNextRound = winners.length % 2 === 1
+        ? winners.slice(0, -1)  // Remove last player for bye
+        : [...winners];
+
+      if (winners.length % 2 === 1) {
+        // Last player gets a bye and automatically advances to the final
+        const byePlayer = winners[winners.length - 1];
+        console.log(`Player ${byePlayer} gets a bye to the final round`);
+
+        if (nextRound === Math.max(...tournament.bracketRounds.map((br: { round: number; bestOf: number }) => br.round))) {
+          // If this is already the final round, the bye player wins the tournament
+          await fetch('/api/tournaments', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: tournamentId, status: 'completed' }),
+          });
+          fetchTournaments();
+          return;
+        }
+      }
+
+      // Create next round matches by pairing remaining players
+      for (let i = 0; i < playersForNextRound.length; i += 2) {
+        if (i + 1 < playersForNextRound.length) {
+          const newMatch: Partial<Match> = {
+            tournamentId: tournamentId,
+            player1Id: playersForNextRound[i],
+            player2Id: playersForNextRound[i + 1],
+            round: 'bracket',
+            bracketRound: nextRound,
+            bestOf: nextRoundBestOf,
+            games: [],
+          };
+
+          await fetch('/api/matches', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(newMatch),
+          });
+        }
+      }
+
+      fetchTournaments();
+      fetchMatches();
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'roundRobin': return 'bg-blue-100 text-blue-800';
+      case 'bracket': return 'bg-purple-100 text-purple-800';
+      case 'completed': return 'bg-green-100 text-green-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const BracketMatch = ({ match, isWinner }: { match: Match; isWinner?: boolean }) => (
+    <div className="bg-white border-2 border-gray-300 rounded-lg p-4 shadow-sm min-w-[250px]">
+      <div className="flex justify-between items-center mb-3">
+        <span className="font-semibold text-gray-800 text-sm">
+          {match.round === 'bracket' ? `Round ${match.bracketRound}` : 'Round Robin'}
+        </span>
+        <span className="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded">
+          Best of {match.bestOf}
+        </span>
+      </div>
+
+      <div className="space-y-3">
+        <div className={`flex justify-between items-center p-3 rounded border ${match.winnerId === match.player1Id ? 'bg-green-100 border-green-300' : 'bg-gray-50 border-gray-200'}`}>
+          <span className="font-medium text-gray-900">{getPlayerName(match.player1Id)}</span>
+          <span className="text-sm text-gray-600">
+            {match.games.filter(g => g.score1 > g.score2).length}W
+          </span>
+        </div>
+
+        <div className="text-center text-gray-500 font-bold text-sm">VS</div>
+
+        <div className={`flex justify-between items-center p-3 rounded border ${match.winnerId === match.player2Id ? 'bg-green-100 border-green-300' : 'bg-gray-50 border-gray-200'}`}>
+          <span className="font-medium text-gray-900">{getPlayerName(match.player2Id)}</span>
+          <span className="text-sm text-gray-600">
+            {match.games.filter(g => g.score2 > g.score1).length}W
+          </span>
+        </div>
+      </div>
+
+      {match.winnerId && (
+        <div className="mt-4 text-center">
+          <span className="inline-block bg-yellow-400 text-yellow-900 px-3 py-2 rounded-full text-sm font-bold border-2 border-yellow-500">
+            🏆 {getPlayerName(match.winnerId)}
+          </span>
+        </div>
+      )}
+
+      {match.games.length < match.bestOf && (
+        <form onSubmit={(e) => {
+          e.preventDefault();
+          const formData = new FormData(e.target as HTMLFormElement);
+          const score1 = parseInt(formData.get('score1') as string);
+          const score2 = parseInt(formData.get('score2') as string);
+
+          // Client-side validation for ping pong rules
+          const maxScore = Math.max(score1, score2);
+          const minScore = Math.min(score1, score2);
+          const scoreDifference = maxScore - minScore;
+
+          if (maxScore < 11) {
+            alert('Game must reach 11 points to be complete');
+            return;
+          }
+
+          if (scoreDifference < 2) {
+            alert('Game must be won by 2 points');
+            return;
+          }
+
+          if (maxScore > 11 && !(maxScore === 12 && minScore === 10)) {
+            alert('Invalid score: games go to 11, win by 2');
+            return;
+          }
+
+          addGameToMatch(match, score1, score2);
+        }} className="mt-4 space-y-3">
+          <div className="flex space-x-2">
+            <input
+              name="score1"
+              type="number"
+              placeholder={`${getPlayerName(match.player1Id)}`}
+              className="flex-1 border-2 border-gray-300 rounded px-3 py-2 text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+              required
+              min="0"
+              max="12"
+            />
+            <input
+              name="score2"
+              type="number"
+              placeholder={`${getPlayerName(match.player2Id)}`}
+              className="flex-1 border-2 border-gray-300 rounded px-3 py-2 text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+              required
+              min="0"
+              max="12"
+            />
+          </div>
+          <div className="text-xs text-gray-600 text-center">
+            Games go to 11, win by 2 points
+          </div>
+          <button type="submit" className="w-full bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-medium transition-colors border-2 border-green-700">
+            Add Game
+          </button>
+        </form>
+      )}
+
+      {match.games.length > 0 && (
+        <div className="mt-4 text-xs text-gray-600">
+          <div className="flex flex-wrap gap-1">
+            {match.games.map((game) => (
+              <span key={game.id} className="bg-gray-200 text-gray-700 px-2 py-1 rounded text-xs">
+                {game.score1}-{game.score2}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="container mx-auto px-4 py-8 max-w-7xl">
+        {/* Header */}
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h1 className="text-4xl font-bold text-gray-900 mb-2">🏓 Ping Pong Tournaments</h1>
+            <p className="text-gray-600 text-lg">Track your weekly ping pong battles</p>
+          </div>
+          <div className="flex space-x-4">
+            <Link href="/" className="bg-white hover:bg-gray-100 text-gray-800 px-6 py-3 rounded-lg shadow border-2 border-gray-300 transition-colors font-medium">
+              ← Back to Home
+            </Link>
+            <button
+              onClick={() => setShowCreateForm(!showCreateForm)}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg shadow font-medium transition-colors border-2 border-blue-700"
+            >
+              + New Tournament
+            </button>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="mb-8">
+          <div className="flex space-x-2 bg-white p-2 rounded-lg shadow border-2 border-gray-200">
+            <button
+              onClick={() => setActiveTab('active')}
+              className={`flex-1 px-6 py-3 rounded-md font-medium transition-all ${
+                activeTab === 'active'
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Active Tournaments
+            </button>
+            <button
+              onClick={() => setActiveTab('history')}
+              className={`flex-1 px-6 py-3 rounded-md font-medium transition-all ${
+                activeTab === 'history'
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Tournament History
+            </button>
+          </div>
+        </div>
+
+        {/* Create Tournament Form */}
+        {showCreateForm && (
+          <div className="bg-white rounded-xl shadow-lg p-8 mb-8 border-2 border-gray-200">
+            <h2 className="text-3xl font-bold text-gray-900 mb-8">Create New Tournament</h2>
+            <form onSubmit={createTournament} className="space-y-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div>
+                  <label className="block text-lg font-semibold text-gray-800 mb-3">Tournament Name</label>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="e.g., Week 1 Championship"
+                    className="w-full border-2 border-gray-300 rounded-lg px-4 py-3 text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:outline-none text-lg"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-lg font-semibold text-gray-800 mb-3">Round Robin Rounds</label>
+                  <select
+                    value={roundRobinRounds}
+                    onChange={(e) => setRoundRobinRounds(parseInt(e.target.value))}
+                    className="w-full border-2 border-gray-300 rounded-lg px-4 py-3 text-gray-900 focus:border-blue-500 focus:outline-none text-lg"
+                  >
+                    <option value={3}>3 Rounds</option>
+                    <option value={4}>4 Rounds</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-lg font-semibold text-gray-800 mb-4">Select Players</label>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {players.map(p => (
+                    <label key={p.id} className="flex items-center space-x-3 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors border-2 border-gray-200">
+                      <input
+                        type="checkbox"
+                        checked={selectedPlayers.includes(p.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedPlayers([...selectedPlayers, p.id]);
+                          } else {
+                            setSelectedPlayers(selectedPlayers.filter(id => id !== p.id));
+                          }
+                        }}
+                        className="w-5 h-5 text-blue-600 rounded border-2 border-gray-300 focus:ring-blue-500"
+                      />
+                      <span className="font-medium text-gray-900 text-lg">{p.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex justify-end space-x-4 pt-6 border-t-2 border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateForm(false)}
+                  className="px-8 py-3 border-2 border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors font-medium text-lg"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium text-lg border-2 border-blue-700"
+                >
+                  Create Tournament
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* Tournaments List */}
+        <div className="space-y-8">
+          {tournaments
+            .filter(tournament =>
+              activeTab === 'active'
+                ? tournament.status !== 'completed'
+                : tournament.status === 'completed'
+            )
+            .map((tournament) => {
+              const tournamentMatches = getTournamentMatches(tournament.id);
+              const roundRobinMatches = tournamentMatches.filter(m => m.round === 'roundRobin');
+              const bracketMatches = tournamentMatches.filter(m => m.round === 'bracket');
+
+              return (
+                <div key={tournament.id} className="bg-white rounded-xl shadow-lg overflow-hidden border-2 border-gray-200">
+                  {/* Tournament Header */}
+                  <div className="bg-gray-800 text-white p-8">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h2 className="text-3xl font-bold mb-3">{tournament.name}</h2>
+                        <p className="text-gray-300 text-lg">
+                          {tournament.players.length} players • Started {new Date(tournament.startDate).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <span className={`px-4 py-2 rounded-full text-sm font-bold border-2 ${getStatusColor(tournament.status)}`}>
+                        {tournament.status === 'roundRobin' ? 'Round Robin' :
+                         tournament.status === 'bracket' ? (() => {
+                           const currentRound = Math.max(...bracketMatches.map(m => m.bracketRound || 0));
+                           return `Bracket - Round ${currentRound}`;
+                         })() :
+                         tournament.status === 'completed' ? 'Completed' : tournament.status}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="p-8">
+                    {/* Players */}
+                    <div className="mb-8">
+                      <h3 className="text-2xl font-semibold text-gray-900 mb-4">Players</h3>
+                      <div className="flex flex-wrap gap-3">
+                        {tournament.players.map(playerId => (
+                          <span key={playerId} className="bg-gray-200 text-gray-800 px-4 py-2 rounded-full text-sm font-medium border border-gray-300">
+                            {getPlayerName(playerId)}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Round Robin Stage */}
+                    {tournament.status === 'roundRobin' && (
+                      <div className="mb-8">
+                        <h3 className="text-2xl font-semibold text-gray-900 mb-6">Round Robin Matches</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                          {roundRobinMatches.map((match) => (
+                            <BracketMatch key={match.id} match={match} />
+                          ))}
+                        </div>
+
+                        {roundRobinMatches.every(m => m.winnerId) && (
+                          <div className="mt-8 text-center">
+                            <button
+                              onClick={() => startBracket(tournament)}
+                              className="bg-purple-600 hover:bg-purple-700 text-white px-10 py-4 rounded-lg shadow-lg font-bold text-xl transition-colors border-2 border-purple-700"
+                            >
+                              🏆 Start Bracket Stage
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Bracket Stage */}
+                    {tournament.status === 'bracket' && (
+                      <div>
+                        <h3 className="text-2xl font-semibold text-gray-900 mb-6">Bracket</h3>
+                        <div className="bg-gray-50 rounded-lg p-8 border-2 border-gray-200">
+                          <div className="flex items-start justify-center min-w-max">
+                            {/* Get all bracket rounds */}
+                            {Array.from(new Set(bracketMatches.map(m => m.bracketRound).filter((r): r is number => r !== undefined))).sort((a, b) => a - b).map((roundNum, roundIndex) => {
+                              const roundMatches = bracketMatches.filter(m => m.bracketRound === roundNum);
+                              const isFinalRound = roundNum === Math.max(...bracketMatches.map(m => m.bracketRound || 0));
+                              const isCompleted = roundMatches.every(m => m.winnerId);
+
+                              return (
+                                <div key={roundNum} className="flex flex-col items-center mx-6">
+                                  <h4 className={`text-center font-bold mb-6 text-xl ${isFinalRound ? 'text-yellow-600' : 'text-gray-800'}`}>
+                                    {isFinalRound ? '🏆 Final' : `Round ${roundNum}`}
+                                    {isCompleted && <span className="ml-3 text-green-600 text-lg">✓</span>}
+                                  </h4>
+
+                                  <div className="space-y-8">
+                                    {roundMatches.map((match) => (
+                                      <div key={match.id}>
+                                        <BracketMatch
+                                          match={match}
+                                          isWinner={isFinalRound && match.winnerId ? true : false}
+                                        />
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Tournament Completed */}
+                    {tournament.status === 'completed' && (
+                      <div className="text-center py-12">
+                        <div className="text-7xl mb-6">🏆</div>
+                        <h3 className="text-3xl font-bold text-gray-900 mb-4">Tournament Completed!</h3>
+                        <p className="text-gray-600 mb-8 text-lg">Congratulations to all participants</p>
+                        {(() => {
+                          const finalMatch = bracketMatches.find(m => m.bracketRound === Math.max(...bracketMatches.map(m => m.bracketRound || 0)));
+                          if (finalMatch?.winnerId) {
+                            return (
+                              <div className="bg-yellow-50 border-2 border-yellow-300 rounded-lg p-6 inline-block">
+                                <div className="text-2xl font-bold text-yellow-800">
+                                  🥇 Champion: {getPlayerName(finalMatch.winnerId)}
+                                </div>
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
+                      </div>
+                    )}
+
+                    {/* Tournament Stats */}
+                    <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div className="bg-gray-50 rounded-lg p-6 text-center border-2 border-gray-200">
+                        <div className="text-3xl font-bold text-gray-900">{roundRobinMatches.length}</div>
+                        <div className="text-gray-600 font-medium">Round Robin Matches</div>
+                      </div>
+                      <div className="bg-gray-50 rounded-lg p-6 text-center border-2 border-gray-200">
+                        <div className="text-3xl font-bold text-gray-900">{bracketMatches.length}</div>
+                        <div className="text-gray-600 font-medium">Bracket Matches</div>
+                      </div>
+                      <div className="bg-gray-50 rounded-lg p-6 text-center border-2 border-gray-200">
+                        <div className="text-3xl font-bold text-gray-900">{games.filter(g => g.matchId && tournamentMatches.some(m => m.id === g.matchId)).length}</div>
+                        <div className="text-gray-600 font-medium">Games Played</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+        </div>
+
+        {tournaments.length === 0 && (
+          <div className="text-center py-16 bg-white rounded-xl shadow-lg border-2 border-gray-200">
+            <div className="text-8xl mb-6">🏓</div>
+            <h3 className="text-2xl font-semibold text-gray-900 mb-4">No tournaments yet</h3>
+            <p className="text-gray-600 mb-8 text-lg">Create your first tournament to get started!</p>
+            <button
+              onClick={() => setShowCreateForm(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-10 py-4 rounded-lg shadow-lg font-bold text-xl transition-colors border-2 border-blue-700"
+            >
+              Create Tournament
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
