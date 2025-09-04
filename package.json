@@ -3,25 +3,30 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
-    "build": "next build --turbopack",
+    "dev": "next dev",
+    "dev-turbo": "next dev --turbopack",
+    "dev-fast": "next dev --turbo",
+    "dev-legacy": "NODE_OPTIONS='--no-deprecation' next dev",
+    "dev-watch": "next dev --experimental-app-only",
+    "build": "next build",
     "start": "next start",
+    "build-run": "npm run build && npm start",
     "lint": "eslint"
   },
   "dependencies": {
+    "next": "15.5.2",
     "react": "19.1.0",
-    "react-dom": "19.1.0",
-    "next": "15.5.2"
+    "react-dom": "19.1.0"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "eslint": "^9",
+    "eslint-config-next": "15.5.2",
+    "tailwindcss": "^4",
+    "@tailwindcss/postcss": "^4",
     "typescript": "^5",
     "@types/node": "^20",
     "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "@tailwindcss/postcss": "^4",
-    "tailwindcss": "^4",
-    "eslint": "^9",
-    "eslint-config-next": "15.5.2",
-    "@eslint/eslintrc": "^3"
+    "@types/react-dom": "^19"
   }
 }

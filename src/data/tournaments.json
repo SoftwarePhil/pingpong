@@ -44,5 +44,125 @@
       "1756941480724",
       "1756941473618"
     ]
+  },
+  {
+    "id": "1756960211116",
+    "name": "week 2",
+    "startDate": "2025-09-04T04:30:11.116Z",
+    "status": "completed",
+    "roundRobinRounds": 3,
+    "bracketRounds": [
+      {
+        "round": 1,
+        "bestOf": 3
+      },
+      {
+        "round": 2,
+        "bestOf": 5
+      }
+    ],
+    "players": [
+      "1756940902661",
+      "1756960181875",
+      "1756940905740",
+      "1756941473618",
+      "1756941480724"
+    ]
+  },
+  {
+    "id": "1756960712126",
+    "name": "week 4",
+    "startDate": "2025-09-04T04:38:32.126Z",
+    "status": "completed",
+    "roundRobinRounds": 3,
+    "bracketRounds": [
+      {
+        "round": 1,
+        "bestOf": 3
+      },
+      {
+        "round": 2,
+        "bestOf": 5
+      }
+    ],
+    "players": [
+      "1756940902661",
+      "1756960181875",
+      "1756941473618",
+      "1756940905740",
+      "1756941480724"
+    ]
+  },
+  {
+    "id": "1756961604806",
+    "name": "week33",
+    "startDate": "2025-09-04T04:53:24.806Z",
+    "status": "bracket",
+    "roundRobinRounds": 3,
+    "bracketRounds": [
+      {
+        "round": 1,
+        "bestOf": 3
+      },
+      {
+        "round": 2,
+        "bestOf": 5
+      }
+    ],
+    "players": [
+      "1756940902661",
+      "1756940905740",
+      "1756941473618",
+      "1756941480724",
+      "1756960181875"
+    ]
+  },
+  {
+    "id": "1756994294004",
+    "name": "test",
+    "startDate": "2025-09-04T13:58:14.004Z",
+    "status": "roundRobin",
+    "roundRobinRounds": 3,
+    "bracketRounds": [
+      {
+        "round": 1,
+        "bestOf": 3
+      },
+      {
+        "round": 2,
+        "bestOf": 5
+      }
+    ],
+    "players": [
+      "1756940902661",
+      "1756960181875",
+      "1756940905740",
+      "1756941473618",
+      "1756941480724"
+    ]
+  },
+  {
+    "id": "1756995230399",
+    "name": "week 5",
+    "startDate": "2025-09-04T14:13:50.399Z",
+    "status": "completed",
+    "roundRobinRounds": 3,
+    "bracketRounds": [
+      {
+        "round": 1,
+        "bestOf": 3
+      },
+      {
+        "round": 2,
+        "bestOf": 5
+      }
+    ],
+    "players": [
+      "1756940902661",
+      "1756940905740",
+      "1756941473618",
+      "1756941480724",
+      "1756960181875"
+    ]
   }
 ]

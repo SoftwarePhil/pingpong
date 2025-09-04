@@ -38,23 +38,14 @@ export async function POST(request: NextRequest) {
     tournaments.push(newTournament);
     fs.writeFileSync(tournamentsPath, JSON.stringify(tournaments, null, 2));
 
-    // Generate round robin matches
+    // Generate first round of round robin matches
     const matchesData = fs.readFileSync(matchesPath, 'utf8');
     const matches: Match[] = JSON.parse(matchesData);
-    for (let i = 0; i < players.length; i++) {
-      for (let j = i + 1; j < players.length; j++) {
-        const newMatch: Match = {
-          id: Date.now().toString() + Math.random(),
-          tournamentId: newTournament.id,
-          player1Id: players[i],
-          player2Id: players[j],
-          round: 'roundRobin',
-          bestOf: 1, // Round robin is always best of 1
-          games: [],
-        };
-        matches.push(newMatch);
-      }
-    }
+    
+    // Create balanced pairings for first round
+    const shuffledPlayers = [...players].sort(() => Math.random() - 0.5);
+    const firstRoundMatches = createRoundRobinPairings(shuffledPlayers, newTournament.id, matches, 1);
+    
     fs.writeFileSync(matchesPath, JSON.stringify(matches, null, 2));
 
     return NextResponse.json(newTournament, { status: 201 });
@@ -67,21 +58,86 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, status }: { id: string; status: 'roundRobin' | 'bracket' | 'completed' } = body;
-    if (!id || !status) {
-      return NextResponse.json({ error: 'Invalid data' }, { status: 400 });
-    }
+    const { id, status, action }: { id: string; status?: 'roundRobin' | 'bracket' | 'completed'; action?: 'advanceRound' } = body;
+    
     const data = fs.readFileSync(tournamentsPath, 'utf8');
     const tournaments: Tournament[] = JSON.parse(data);
     const tournament = tournaments.find(t => t.id === id);
+    
     if (!tournament) {
       return NextResponse.json({ error: 'Tournament not found' }, { status: 404 });
     }
-    tournament.status = status;
+    
+    const matchesData = fs.readFileSync(matchesPath, 'utf8');
+    const matches: Match[] = JSON.parse(matchesData);
+    
+    if (action === 'advanceRound' && tournament.status === 'roundRobin') {
+      // Check if all current round matches are completed
+      const currentRoundMatches = matches.filter(m => 
+        m.tournamentId === id && 
+        m.round === 'roundRobin' && 
+        !m.winnerId
+      );
+      
+      if (currentRoundMatches.length > 0) {
+        return NextResponse.json({ error: 'Current round is not complete' }, { status: 400 });
+      }
+      
+      // Advance to next round
+      const newMatches = advanceRoundRobinRound(id, matches, tournament.players);
+      
+      if (newMatches.length === 0) {
+        // No more matches to create - tournament should move to bracket stage
+        tournament.status = 'bracket';
+      }
+      
+      fs.writeFileSync(matchesPath, JSON.stringify(matches, null, 2));
+    }
+    
+    if (status) {
+      tournament.status = status;
+    }
+    
     fs.writeFileSync(tournamentsPath, JSON.stringify(tournaments, null, 2));
     return NextResponse.json(tournament);
   } catch (error) {
     console.error(error);
     return NextResponse.json({ error: 'Failed to update tournament' }, { status: 500 });
   }
+}
+
+// Helper function to create a single round of round robin pairings
+function createRoundRobinPairings(players: string[], tournamentId: string, matches: Match[], bracketRound: number = 1): Match[] {
+  const newMatches: Match[] = [];
+  const shuffled = [...players];
+  // If odd number of players, add a bye (null)
+  if (shuffled.length % 2 === 1) shuffled.push('BYE');
+  for (let i = 0; i < shuffled.length; i += 2) {
+    if (shuffled[i] !== 'BYE' && shuffled[i + 1] !== 'BYE') {
+      const newMatch: Match = {
+        id: Date.now().toString() + Math.random(),
+        tournamentId,
+        player1Id: shuffled[i],
+        player2Id: shuffled[i + 1],
+        round: 'roundRobin',
+        bracketRound: bracketRound,
+        bestOf: 1,
+        games: [],
+      };
+      newMatches.push(newMatch);
+      matches.push(newMatch);
+    }
+  }
+  return newMatches;
+}
+
+// Function to advance to next round robin round
+function advanceRoundRobinRound(tournamentId: string, matches: Match[], players: string[]): Match[] {
+  // Find the next round number
+  const tournamentMatches = matches.filter(m => m.tournamentId === tournamentId && m.round === 'roundRobin');
+  const existingRounds = tournamentMatches.map(m => m.bracketRound || 1);
+  const nextRound = existingRounds.length > 0 ? Math.max(...existingRounds) + 1 : 2;
+  // Sort players by performance for pairing (optional, can be random)
+  const shuffledPlayers = [...players].sort(() => Math.random() - 0.5);
+  return createRoundRobinPairings(shuffledPlayers, tournamentId, matches, nextRound);
 }

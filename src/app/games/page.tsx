@@ -40,22 +40,20 @@ export default function GamesPage() {
     // Client-side validation for ping pong rules
     const maxScore = Math.max(score1Num, score2Num);
     const minScore = Math.min(score1Num, score2Num);
-    const scoreDifference = maxScore - minScore;
+    const scoreDifference = Math.abs(maxScore - minScore);
     
     if (maxScore < 11) {
+      console.log('Game must reach 11 points to be complete')
       alert('Game must reach 11 points to be complete');
       return;
     }
-    
-    if (scoreDifference < 2) {
+  else{
+    if (maxScore > 11 && (scoreDifference !== 2)) {
+      console.log('Game must be won by 2 points')
       alert('Game must be won by 2 points');
       return;
     }
-    
-    if (maxScore > 11 && !(maxScore === 12 && minScore === 10)) {
-      alert('Invalid score: games go to 11, win by 2');
-      return;
-    }
+  }
     
     const res = await fetch('/api/games', {
       method: 'POST',

@@ -15,6 +15,9 @@ export default function TournamentsPage() {
   const [selectedPlayers, setSelectedPlayers] = useState<string[]>([]);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [activeTab, setActiveTab] = useState<'active' | 'history'>('active');
+  const [editingGame, setEditingGame] = useState<Game | null>(null);
+  const [editScore1, setEditScore1] = useState('');
+  const [editScore2, setEditScore2] = useState('');
 
   useEffect(() => {
     fetchTournaments();
@@ -250,21 +253,30 @@ export default function TournamentsPage() {
     }
   };
 
-  const BracketMatch = ({ match, isWinner }: { match: Match; isWinner?: boolean }) => (
-    <div className="bg-white border-2 border-gray-300 rounded-lg p-4 shadow-sm min-w-[250px]">
+  const BracketMatch = ({ match }: { match: Match }) => (
+    <div className="bg-white border-2 border-gray-300 rounded-lg p-4 shadow-sm min-w-[250px] max-w-[300px] w-full">
       <div className="flex justify-between items-center mb-3">
-        <span className="font-semibold text-gray-800 text-sm">
-          {match.round === 'bracket' ? `Round ${match.bracketRound}` : 'Round Robin'}
+        <span className="font-semibold text-gray-800 text-sm truncate">
+          {match.round === 'bracket' ? `Round ${match.bracketRound}` : `Round Robin - Round ${match.bracketRound || 1}`}
         </span>
-        <span className="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded">
-          Best of {match.bestOf}
-        </span>
+        <div className="flex items-center space-x-2 flex-shrink-0">
+          <span className="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded whitespace-nowrap">
+            Best of {match.bestOf}
+          </span>
+          <button
+            onClick={() => deleteMatch(match.id)}
+            className="text-red-600 hover:text-red-800 text-sm font-medium px-2 py-1 rounded hover:bg-red-50 transition-colors"
+            title="Delete match"
+          >
+            🗑️
+          </button>
+        </div>
       </div>
 
       <div className="space-y-3">
         <div className={`flex justify-between items-center p-3 rounded border ${match.winnerId === match.player1Id ? 'bg-green-100 border-green-300' : 'bg-gray-50 border-gray-200'}`}>
-          <span className="font-medium text-gray-900">{getPlayerName(match.player1Id)}</span>
-          <span className="text-sm text-gray-600">
+          <span className="font-medium text-gray-900 truncate mr-2" title={getPlayerName(match.player1Id)}>{getPlayerName(match.player1Id)}</span>
+          <span className="text-sm text-gray-600 flex-shrink-0">
             {match.games.filter(g => g.score1 > g.score2).length}W
           </span>
         </div>
@@ -272,8 +284,8 @@ export default function TournamentsPage() {
         <div className="text-center text-gray-500 font-bold text-sm">VS</div>
 
         <div className={`flex justify-between items-center p-3 rounded border ${match.winnerId === match.player2Id ? 'bg-green-100 border-green-300' : 'bg-gray-50 border-gray-200'}`}>
-          <span className="font-medium text-gray-900">{getPlayerName(match.player2Id)}</span>
-          <span className="text-sm text-gray-600">
+          <span className="font-medium text-gray-900 truncate mr-2" title={getPlayerName(match.player2Id)}>{getPlayerName(match.player2Id)}</span>
+          <span className="text-sm text-gray-600 flex-shrink-0">
             {match.games.filter(g => g.score2 > g.score1).length}W
           </span>
         </div>
@@ -294,46 +306,40 @@ export default function TournamentsPage() {
           const score1 = parseInt(formData.get('score1') as string);
           const score2 = parseInt(formData.get('score2') as string);
 
-          // Client-side validation for ping pong rules
+          // Client-side validation for ping pong rules (deuce logic)
+           //DO NOT CHANGE THIS BLOCK OF CODE
           const maxScore = Math.max(score1, score2);
           const minScore = Math.min(score1, score2);
           const scoreDifference = maxScore - minScore;
-
+           //DO NOT CHANGE THIS BLOCK OF CODE
           if (maxScore < 11) {
             alert('Game must reach 11 points to be complete');
             return;
           }
-
-          if (scoreDifference < 2) {
+          if (maxScore > 11 && scoreDifference !== 2) {
             alert('Game must be won by 2 points');
             return;
           }
-
-          if (maxScore > 11 && !(maxScore === 12 && minScore === 10)) {
-            alert('Invalid score: games go to 11, win by 2');
-            return;
-          }
-
           addGameToMatch(match, score1, score2);
         }} className="mt-4 space-y-3">
           <div className="flex space-x-2">
             <input
               name="score1"
               type="number"
-              placeholder={`${getPlayerName(match.player1Id)}`}
+              placeholder={`${getPlayerName(match.player1Id).length > 15 ? getPlayerName(match.player1Id).substring(0, 12) + '...' : getPlayerName(match.player1Id)}`}
               className="flex-1 border-2 border-gray-300 rounded px-3 py-2 text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:outline-none"
               required
               min="0"
-              max="12"
+              max="50"
             />
             <input
               name="score2"
               type="number"
-              placeholder={`${getPlayerName(match.player2Id)}`}
+              placeholder={`${getPlayerName(match.player2Id).length > 15 ? getPlayerName(match.player2Id).substring(0, 12) + '...' : getPlayerName(match.player2Id)}`}
               className="flex-1 border-2 border-gray-300 rounded px-3 py-2 text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:outline-none"
               required
               min="0"
-              max="12"
+              max="50"
             />
           </div>
           <div className="text-xs text-gray-600 text-center">
@@ -346,18 +352,246 @@ export default function TournamentsPage() {
       )}
 
       {match.games.length > 0 && (
-        <div className="mt-4 text-xs text-gray-600">
-          <div className="flex flex-wrap gap-1">
+        <div className="mt-4">
+          <h4 className="text-sm font-medium text-gray-700 mb-2">Games:</h4>
+          <div className="space-y-2">
             {match.games.map((game) => (
-              <span key={game.id} className="bg-gray-200 text-gray-700 px-2 py-1 rounded text-xs">
-                {game.score1}-{game.score2}
-              </span>
+              <div key={game.id} className="flex items-center justify-between bg-gray-50 p-2 rounded border min-w-0">
+                {editingGame?.id === game.id ? (
+                  <div className="flex items-center space-x-2 flex-1 min-w-0">
+                    <span className="text-sm text-gray-600 truncate" title={`${getPlayerName(game.player1Id)} vs ${getPlayerName(game.player2Id)}`}>
+                      {getPlayerName(game.player1Id)} vs {getPlayerName(game.player2Id)}:
+                    </span>
+                    <div className="flex items-center space-x-1 flex-shrink-0">
+                      <input
+                        type="number"
+                        value={editScore1}
+                        onChange={(e) => setEditScore1(e.target.value)}
+                        className="w-16 px-2 py-1 border rounded text-sm"
+                        min="0"
+                      />
+                      <span className="text-sm">-</span>
+                      <input
+                        type="number"
+                        value={editScore2}
+                        onChange={(e) => setEditScore2(e.target.value)}
+                        className="w-16 px-2 py-1 border rounded text-sm"
+                      />
+                      <button
+                        onClick={saveGameEdit}
+                        className="text-green-600 hover:text-green-800 text-sm font-medium px-2 py-1 rounded hover:bg-green-50"
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={cancelEditingGame}
+                        className="text-gray-600 hover:text-gray-800 text-sm font-medium px-2 py-1 rounded hover:bg-gray-50"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center space-x-2 min-w-0 flex-1">
+                      <span className="text-sm text-gray-600 truncate" title={`${getPlayerName(game.player1Id)} vs ${getPlayerName(game.player2Id)}`}>
+                        {getPlayerName(game.player1Id)} vs {getPlayerName(game.player2Id)}:
+                      </span>
+                      <span className={`font-medium text-sm px-2 py-1 rounded flex-shrink-0 ${
+                        game.score1 > game.score2 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                      }`}>
+                        {game.score1}-{game.score2}
+                      </span>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <button
+                        onClick={() => startEditingGame(game)}
+                        className="text-blue-600 hover:text-blue-800 text-sm font-medium px-2 py-1 rounded hover:bg-blue-50"
+                        title="Edit game"
+                      >
+                        ✏️
+                      </button>
+                      <button
+                        onClick={() => deleteGame(game.id)}
+                        className="text-red-600 hover:text-red-800 text-sm font-medium px-2 py-1 rounded hover:bg-red-50"
+                        title="Delete game"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             ))}
           </div>
         </div>
       )}
     </div>
   );
+
+  const deleteMatch = async (matchId: string) => {
+    if (!confirm('Are you sure you want to delete this match? This will also delete all games in this match.')) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/matches/${matchId}`, {
+        method: 'DELETE',
+      });
+
+      if (res.ok) {
+        // Refresh data
+        fetchMatches();
+        fetchGames();
+        fetchTournaments();
+      } else {
+        alert('Failed to delete match');
+      }
+    } catch (error) {
+      console.error('Error deleting match:', error);
+      alert('Error deleting match');
+    }
+  };
+
+  const startEditingGame = (game: Game) => {
+    setEditingGame(game);
+    setEditScore1(game.score1.toString());
+    setEditScore2(game.score2.toString());
+  };
+
+  const cancelEditingGame = () => {
+    setEditingGame(null);
+    setEditScore1('');
+    setEditScore2('');
+  };
+
+  const saveGameEdit = async () => {
+    if (!editingGame) return;
+
+    const score1 = parseInt(editScore1);
+    const score2 = parseInt(editScore2);
+
+    if (isNaN(score1) || isNaN(score2)) {
+      alert('Please enter valid scores');
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/games/${editingGame.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          score1,
+          score2,
+        }),
+      });
+
+      if (res.ok) {
+        fetchGames();
+        fetchMatches();
+        cancelEditingGame();
+      } else {
+        const error = await res.json();
+        alert(error.error || 'Failed to update game');
+      }
+    } catch (error) {
+      console.error('Error updating game:', error);
+      alert('Error updating game');
+    }
+  };
+
+  const deleteGame = async (gameId: string) => {
+    if (!confirm('Are you sure you want to delete this game?')) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/games/${gameId}`, {
+        method: 'DELETE',
+      });
+
+      if (res.ok) {
+        fetchGames();
+        fetchMatches();
+      } else {
+        alert('Failed to delete game');
+      }
+    } catch (error) {
+      console.error('Error deleting game:', error);
+      alert('Error deleting game');
+    }
+  };
+
+  const getCurrentRound = (tournamentId: string): number => {
+    const tournamentMatches = matches.filter(m => m.tournamentId === tournamentId && m.round === 'roundRobin');
+    if (tournamentMatches.length === 0) return 1;
+    
+    // Find the highest bracketRound number among round robin matches
+    const maxRound = Math.max(...tournamentMatches.map(m => m.bracketRound || 1));
+    return maxRound;
+  };
+
+  const advanceRound = async (tournament: Tournament) => {
+    try {
+      const res = await fetch('/api/tournaments', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: tournament.id,
+          action: 'advanceRound',
+        }),
+      });
+      
+      if (res.ok) {
+        fetchTournaments();
+        fetchMatches();
+      } else {
+        const error = await res.json();
+        alert(error.error || 'Failed to advance round');
+      }
+    } catch (error) {
+      console.error('Error advancing round:', error);
+      alert('Error advancing round');
+    }
+  };
+
+  const getPlayerStandings = (tournamentId: string, players: string[]) => {
+    const playerStats: { [playerId: string]: { wins: number; losses: number; totalGames: number } } = {};
+    players.forEach(playerId => {
+      playerStats[playerId] = { wins: 0, losses: 0, totalGames: 0 };
+    });
+    
+    // Get all round robin matches for this tournament
+    const tournamentMatches = matches.filter(m => m.tournamentId === tournamentId && m.round === 'roundRobin');
+    
+    tournamentMatches.forEach(match => {
+      if (match.winnerId) {
+        playerStats[match.winnerId].wins++;
+        playerStats[match.winnerId].totalGames++;
+        
+        const loserId = match.player1Id === match.winnerId ? match.player2Id : match.player1Id;
+        playerStats[loserId].losses++;
+        playerStats[loserId].totalGames++;
+      }
+    });
+    
+    // Convert to array and sort
+    return players
+      .map(playerId => ({
+        playerId,
+        ...playerStats[playerId]
+      }))
+      .sort((a, b) => {
+        // First by wins (descending)
+        if (a.wins !== b.wins) {
+          return b.wins - a.wins;
+        }
+        // Then by total games played (ascending)
+        return a.totalGames - b.totalGames;
+      });
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -489,7 +723,10 @@ export default function TournamentsPage() {
             )
             .map((tournament) => {
               const tournamentMatches = getTournamentMatches(tournament.id);
-              const roundRobinMatches = tournamentMatches.filter(m => m.round === 'roundRobin');
+              const currentRound = getCurrentRound(tournament.id);
+              const roundRobinMatches = tournamentMatches.filter(m => 
+                m.round === 'roundRobin' && (m.bracketRound || 1) === currentRound
+              );
               const bracketMatches = tournamentMatches.filter(m => m.round === 'bracket');
 
               return (
@@ -530,7 +767,44 @@ export default function TournamentsPage() {
                     {/* Round Robin Stage */}
                     {tournament.status === 'roundRobin' && (
                       <div className="mb-8">
-                        <h3 className="text-2xl font-semibold text-gray-900 mb-6">Round Robin Matches</h3>
+                        <div className="flex justify-between items-center mb-6">
+                          <h3 className="text-2xl font-semibold text-gray-900">Round Robin Matches</h3>
+                          <div className="text-lg font-medium text-gray-700">
+                            Round {getCurrentRound(tournament.id)} of {tournament.roundRobinRounds}
+                          </div>
+                        </div>
+                        
+                        {/* Player Standings */}
+                        <div className="mb-6 bg-gray-50 rounded-lg p-4">
+                          <h4 className="text-lg font-semibold text-gray-900 mb-3">Current Standings</h4>
+                          <div className="overflow-x-auto">
+                            <table className="min-w-full text-sm">
+                              <thead>
+                                <tr className="border-b border-gray-300">
+                                  <th className="text-left py-2 px-3 font-medium text-gray-700">Player</th>
+                                  <th className="text-center py-2 px-3 font-medium text-gray-700">Wins</th>
+                                  <th className="text-center py-2 px-3 font-medium text-gray-700">Losses</th>
+                                  <th className="text-center py-2 px-3 font-medium text-gray-700">Win %</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {getPlayerStandings(tournament.id, tournament.players).map((standing, index) => (
+                                  <tr key={standing.playerId} className={`border-b border-gray-200 ${index < 2 ? 'bg-yellow-50' : ''}`}>
+                                    <td className="py-2 px-3 font-medium text-gray-900">
+                                      {index + 1}. {getPlayerName(standing.playerId)}
+                                    </td>
+                                    <td className="text-center py-2 px-3">{standing.wins}</td>
+                                    <td className="text-center py-2 px-3">{standing.losses}</td>
+                                    <td className="text-center py-2 px-3">
+                                      {standing.totalGames > 0 ? Math.round((standing.wins / standing.totalGames) * 100) : 0}%
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                           {roundRobinMatches.map((match) => (
                             <BracketMatch key={match.id} match={match} />
@@ -539,12 +813,21 @@ export default function TournamentsPage() {
 
                         {roundRobinMatches.every(m => m.winnerId) && (
                           <div className="mt-8 text-center">
-                            <button
-                              onClick={() => startBracket(tournament)}
-                              className="bg-purple-600 hover:bg-purple-700 text-white px-10 py-4 rounded-lg shadow-lg font-bold text-xl transition-colors border-2 border-purple-700"
-                            >
-                              🏆 Start Bracket Stage
-                            </button>
+                            {getCurrentRound(tournament.id) < tournament.roundRobinRounds ? (
+                              <button
+                                onClick={() => advanceRound(tournament)}
+                                className="bg-blue-600 hover:bg-blue-700 text-white px-10 py-4 rounded-lg shadow-lg font-bold text-xl transition-colors border-2 border-blue-700"
+                              >
+                                ⏭️ Advance to Next Round
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => startBracket(tournament)}
+                                className="bg-purple-600 hover:bg-purple-700 text-white px-10 py-4 rounded-lg shadow-lg font-bold text-xl transition-colors border-2 border-purple-700"
+                              >
+                                🏆 Start Bracket Stage
+                              </button>
+                            )}
                           </div>
                         )}
                       </div>
@@ -557,7 +840,7 @@ export default function TournamentsPage() {
                         <div className="bg-gray-50 rounded-lg p-8 border-2 border-gray-200">
                           <div className="flex items-start justify-center min-w-max">
                             {/* Get all bracket rounds */}
-                            {Array.from(new Set(bracketMatches.map(m => m.bracketRound).filter((r): r is number => r !== undefined))).sort((a, b) => a - b).map((roundNum, roundIndex) => {
+                            {Array.from(new Set(bracketMatches.map(m => m.bracketRound).filter((r): r is number => r !== undefined))).sort((a, b) => a - b).map((roundNum) => {
                               const roundMatches = bracketMatches.filter(m => m.bracketRound === roundNum);
                               const isFinalRound = roundNum === Math.max(...bracketMatches.map(m => m.bracketRound || 0));
                               const isCompleted = roundMatches.every(m => m.winnerId);
@@ -574,7 +857,6 @@ export default function TournamentsPage() {
                                       <div key={match.id}>
                                         <BracketMatch
                                           match={match}
-                                          isWinner={isFinalRound && match.winnerId ? true : false}
                                         />
                                       </div>
                                     ))}
@@ -612,16 +894,19 @@ export default function TournamentsPage() {
                     {/* Tournament Stats */}
                     <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
                       <div className="bg-gray-50 rounded-lg p-6 text-center border-2 border-gray-200">
-                        <div className="text-3xl font-bold text-gray-900">{roundRobinMatches.length}</div>
-                        <div className="text-gray-600 font-medium">Round Robin Matches</div>
+                        <div className="text-3xl font-bold text-gray-900">{getCurrentRound(tournament.id)}</div>
+                        <div className="text-gray-600 font-medium">Current Round</div>
+                        <div className="text-sm text-gray-500 mt-1">of {tournament.roundRobinRounds}</div>
                       </div>
                       <div className="bg-gray-50 rounded-lg p-6 text-center border-2 border-gray-200">
-                        <div className="text-3xl font-bold text-gray-900">{bracketMatches.length}</div>
-                        <div className="text-gray-600 font-medium">Bracket Matches</div>
+                        <div className="text-3xl font-bold text-gray-900">{tournamentMatches.filter(m => m.round === 'roundRobin' && m.winnerId).length}</div>
+                        <div className="text-gray-600 font-medium">Matches Completed</div>
+                        <div className="text-sm text-gray-500 mt-1">Round Robin</div>
                       </div>
                       <div className="bg-gray-50 rounded-lg p-6 text-center border-2 border-gray-200">
                         <div className="text-3xl font-bold text-gray-900">{games.filter(g => g.matchId && tournamentMatches.some(m => m.id === g.matchId)).length}</div>
                         <div className="text-gray-600 font-medium">Games Played</div>
+                        <div className="text-sm text-gray-500 mt-1">Total</div>
                       </div>
                     </div>
                   </div>

@@ -25,25 +25,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'All fields are required' }, { status: 400 });
     }
 
-    // Validate ping pong scoring rules
+    // Validate ping pong scoring rules (deuce logic)
     const maxScore = Math.max(score1, score2);
     const minScore = Math.min(score1, score2);
     const scoreDifference = maxScore - minScore;
-
-    // Check if someone reached 11 or more
-    if (maxScore >= 11) {
-      // Must win by 2
-      if (scoreDifference < 2) {
-        return NextResponse.json({ error: 'Game must be won by 2 points' }, { status: 400 });
-      }
-      // Can't go beyond 11 unless it's a valid win by 2 after deuce
-      if (maxScore > 11 && !(maxScore === 12 && minScore === 10)) {
-        return NextResponse.json({ error: 'Invalid score: games go to 11, win by 2' }, { status: 400 });
-      }
-    } else {
-      // If neither player has 11+ points, this is an incomplete game
+    if (maxScore < 11) {
       return NextResponse.json({ error: 'Game must reach 11 points to be complete' }, { status: 400 });
     }
+    else{
+    if (maxScore > 11 && (scoreDifference !== 2)) {
+      return NextResponse.json({ error: 'Game must be won by 2 points' }, { status: 400 });
+    }}
 
     const gamesData = fs.readFileSync(gamesPath, 'utf8');
     const games: Game[] = JSON.parse(gamesData);
