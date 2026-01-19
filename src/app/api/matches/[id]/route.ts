@@ -6,6 +6,39 @@ import { Match, Game } from '../../../../types/pingpong';
 const matchesFilePath = path.join(process.cwd(), 'data', 'matches.json');
 const gamesFilePath = path.join(process.cwd(), 'data', 'games.json');
 
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id: matchId } = await params;
+    const updates = await request.json();
+
+    // Read current matches
+    const matchesData: Match[] = fs.existsSync(matchesFilePath)
+      ? JSON.parse(fs.readFileSync(matchesFilePath, 'utf-8'))
+      : [];
+
+    // Find and update the match
+    const matchIndex = matchesData.findIndex((match: Match) => match.id === matchId);
+    if (matchIndex === -1) {
+      return NextResponse.json({ error: 'Match not found' }, { status: 404 });
+    }
+
+    // Update the match with the provided fields
+    matchesData[matchIndex] = { ...matchesData[matchIndex], ...updates };
+
+    // Write updated data back to file
+    fs.writeFileSync(matchesFilePath, JSON.stringify(matchesData, null, 2));
+
+    return NextResponse.json(matchesData[matchIndex]);
+
+  } catch (error) {
+    console.error('Error updating match:', error);
+    return NextResponse.json({ error: 'Failed to update match' }, { status: 500 });
+  }
+}
+
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

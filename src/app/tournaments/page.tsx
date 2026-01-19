@@ -18,6 +18,8 @@ export default function TournamentsPage() {
   const [editingGame, setEditingGame] = useState<Game | null>(null);
   const [editScore1, setEditScore1] = useState('');
   const [editScore2, setEditScore2] = useState('');
+  const [showTournamentDetail, setShowTournamentDetail] = useState(false);
+  const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null);
 
   useEffect(() => {
     fetchTournaments();
@@ -109,10 +111,30 @@ export default function TournamentsPage() {
         }
       } else {
         // Odd number of players - this player gets a bye to the next round
-        // We'll handle byes by automatically advancing this player
-        console.log(`Player ${sortedPlayers[i]} gets a bye to round 2`);
-        // For now, we'll create a "bye" match that this player automatically wins
-        // This is a simplified approach - in a real tournament, byes advance players directly
+        const byePlayer = sortedPlayers[i];
+        console.log(`Player ${byePlayer} gets a bye to round 2`);
+        
+        // Create a bye match that the player automatically wins
+        const byeMatch: Partial<Match> = {
+          tournamentId: tournament.id,
+          player1Id: byePlayer,
+          player2Id: byePlayer, // Same player for bye
+          round: 'bracket',
+          bracketRound: 1,
+          bestOf: 1, // Bye matches are best of 1
+          games: [],
+          winnerId: byePlayer, // Automatically set winner
+        };
+        
+        const byeRes = await fetch('/api/matches', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(byeMatch),
+        });
+        
+        if (byeRes.ok) {
+          bracketMatches.push(await byeRes.json());
+        }
       }
     }
 
@@ -150,6 +172,38 @@ export default function TournamentsPage() {
       }),
     });
     if (res.ok) {
+      // Fetch updated match data to check for winner
+      const matchRes = await fetch(`/api/matches/${match.id}`);
+      if (matchRes.ok) {
+        const updatedMatch = await matchRes.json();
+        
+        // Determine winner based on games won
+        const player1Wins = updatedMatch.games.filter((g: Game) => g.score1 > g.score2).length;
+        const player2Wins = updatedMatch.games.filter((g: Game) => g.score2 > g.score1).length;
+        const gamesNeededToWin = Math.ceil(updatedMatch.bestOf / 2);
+        
+        let winnerId = null;
+        if (updatedMatch.player1Id === updatedMatch.player2Id) {
+          // This is a bye match - the player automatically wins
+          winnerId = updatedMatch.player1Id;
+        } else if (player1Wins >= gamesNeededToWin) {
+          winnerId = updatedMatch.player1Id;
+        } else if (player2Wins >= gamesNeededToWin) {
+          winnerId = updatedMatch.player2Id;
+        }
+        
+        // Update match with winner if determined
+        if (winnerId && !updatedMatch.winnerId) {
+          await fetch(`/api/matches/${updatedMatch.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              winnerId: winnerId 
+            }),
+          });
+        }
+      }
+      
       fetchMatches();
       fetchGames();
 
@@ -215,6 +269,24 @@ export default function TournamentsPage() {
           });
           fetchTournaments();
           return;
+        } else {
+          // Create a bye match for the next round
+          const byeMatch: Partial<Match> = {
+            tournamentId: tournamentId,
+            player1Id: byePlayer,
+            player2Id: byePlayer, // Same player for bye
+            round: 'bracket',
+            bracketRound: nextRound,
+            bestOf: 1, // Bye matches are best of 1
+            games: [],
+            winnerId: byePlayer, // Automatically set winner
+          };
+          
+          await fetch('/api/matches', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(byeMatch),
+          });
         }
       }
 
@@ -281,14 +353,18 @@ export default function TournamentsPage() {
           </span>
         </div>
 
-        <div className="text-center text-gray-500 font-bold text-sm">VS</div>
-
-        <div className={`flex justify-between items-center p-3 rounded border ${match.winnerId === match.player2Id ? 'bg-green-100 border-green-300' : 'bg-gray-50 border-gray-200'}`}>
-          <span className="font-medium text-gray-900 truncate mr-2" title={getPlayerName(match.player2Id)}>{getPlayerName(match.player2Id)}</span>
-          <span className="text-sm text-gray-600 flex-shrink-0">
-            {match.games.filter(g => g.score2 > g.score1).length}W
-          </span>
+        <div className="text-center text-gray-500 font-bold text-sm">
+          {match.player1Id === match.player2Id ? 'BYE' : 'VS'}
         </div>
+
+        {match.player1Id !== match.player2Id && (
+          <div className={`flex justify-between items-center p-3 rounded border ${match.winnerId === match.player2Id ? 'bg-green-100 border-green-300' : 'bg-gray-50 border-gray-200'}`}>
+            <span className="font-medium text-gray-900 truncate mr-2" title={getPlayerName(match.player2Id)}>{getPlayerName(match.player2Id)}</span>
+            <span className="text-sm text-gray-600 flex-shrink-0">
+              {match.games.filter(g => g.score2 > g.score1).length}W
+            </span>
+          </div>
+        )}
       </div>
 
       {match.winnerId && (
@@ -299,7 +375,7 @@ export default function TournamentsPage() {
         </div>
       )}
 
-      {match.games.length < match.bestOf && (
+      {match.games.length < match.bestOf && match.player1Id !== match.player2Id && (
         <form onSubmit={(e) => {
           e.preventDefault();
           const formData = new FormData(e.target as HTMLFormElement);
@@ -728,17 +804,27 @@ export default function TournamentsPage() {
                 m.round === 'roundRobin' && (m.bracketRound || 1) === currentRound
               );
               const bracketMatches = tournamentMatches.filter(m => m.round === 'bracket');
-
+              
               return (
-                <div key={tournament.id} className="bg-white rounded-xl shadow-lg overflow-hidden border-2 border-gray-200">
+                <div 
+                  key={tournament.id} 
+                  className={`bg-white rounded-xl shadow-lg overflow-hidden border-2 border-gray-200 ${activeTab === 'history' ? 'cursor-pointer hover:shadow-xl transition-shadow' : ''}`}
+                  onClick={activeTab === 'history' ? () => {
+                    setSelectedTournament(tournament);
+                    setShowTournamentDetail(true);
+                  } : undefined}
+                >
                   {/* Tournament Header */}
                   <div className="bg-gray-800 text-white p-8">
                     <div className="flex justify-between items-start">
-                      <div>
+                      <div className="flex-1">
                         <h2 className="text-3xl font-bold mb-3">{tournament.name}</h2>
                         <p className="text-gray-300 text-lg">
                           {tournament.players.length} players • Started {new Date(tournament.startDate).toLocaleDateString()}
                         </p>
+                        {activeTab === 'history' && (
+                          <p className="text-gray-400 text-sm mt-2">Click to view all games played</p>
+                        )}
                       </div>
                       <span className={`px-4 py-2 rounded-full text-sm font-bold border-2 ${getStatusColor(tournament.status)}`}>
                         {tournament.status === 'roundRobin' ? 'Round Robin' :
@@ -840,30 +926,34 @@ export default function TournamentsPage() {
                         <div className="bg-gray-50 rounded-lg p-8 border-2 border-gray-200">
                           <div className="flex items-start justify-center min-w-max">
                             {/* Get all bracket rounds */}
-                            {Array.from(new Set(bracketMatches.map(m => m.bracketRound).filter((r): r is number => r !== undefined))).sort((a, b) => a - b).map((roundNum) => {
-                              const roundMatches = bracketMatches.filter(m => m.bracketRound === roundNum);
-                              const isFinalRound = roundNum === Math.max(...bracketMatches.map(m => m.bracketRound || 0));
-                              const isCompleted = roundMatches.every(m => m.winnerId);
+                            {(() => {
+                              const uniqueRounds = [...new Set(bracketMatches.map(m => m.bracketRound).filter(r => r !== undefined))].sort((a, b) => a - b);
+                              
+                              return uniqueRounds.map((roundNum) => {
+                                const roundMatches = bracketMatches.filter(m => m.bracketRound === roundNum);
+                                const isFinalRound = roundNum === Math.max(...bracketMatches.map(m => m.bracketRound || 0));
+                                const isCompleted = roundMatches.every(m => m.winnerId);
 
-                              return (
-                                <div key={roundNum} className="flex flex-col items-center mx-6">
-                                  <h4 className={`text-center font-bold mb-6 text-xl ${isFinalRound ? 'text-yellow-600' : 'text-gray-800'}`}>
-                                    {isFinalRound ? '🏆 Final' : `Round ${roundNum}`}
-                                    {isCompleted && <span className="ml-3 text-green-600 text-lg">✓</span>}
-                                  </h4>
+                                return (
+                                  <div key={roundNum} className="flex flex-col items-center mx-6">
+                                    <h4 className={`text-center font-bold mb-6 text-xl ${isFinalRound ? 'text-yellow-600' : 'text-gray-800'}`}>
+                                      {isFinalRound ? '🏆 Final' : `Round ${roundNum}`}
+                                      {isCompleted && <span className="ml-3 text-green-600 text-lg">✓</span>}
+                                    </h4>
 
-                                  <div className="space-y-8">
-                                    {roundMatches.map((match) => (
-                                      <div key={match.id}>
-                                        <BracketMatch
-                                          match={match}
-                                        />
-                                      </div>
-                                    ))}
+                                    <div className="space-y-8">
+                                      {roundMatches.map((match) => (
+                                        <div key={match.id}>
+                                          <BracketMatch
+                                            match={match}
+                                          />
+                                        </div>
+                                      ))}
+                                    </div>
                                   </div>
-                                </div>
-                              );
-                            })}
+                                );
+                              });
+                            })()}
                           </div>
                         </div>
                       </div>
@@ -926,6 +1016,119 @@ export default function TournamentsPage() {
             >
               Create Tournament
             </button>
+          </div>
+        )}
+
+        {/* Tournament Detail Modal */}
+        {showTournamentDetail && selectedTournament && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="p-6 border-b border-gray-200">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h3 className="text-2xl font-bold text-gray-900 mb-2">{selectedTournament.name}</h3>
+                    <p className="text-gray-700 text-sm mb-4">
+                      {selectedTournament.players.length} players • Started {new Date(selectedTournament.startDate).toLocaleDateString()}
+                    </p>
+                    <div className="flex flex-wrap gap-3">
+                      {selectedTournament.players.map(playerId => (
+                        <span key={playerId} className="bg-gray-200 text-gray-800 px-4 py-2 rounded-full text-sm font-medium border border-gray-300">
+                          {getPlayerName(playerId)}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setShowTournamentDetail(false)}
+                    className="text-gray-400 hover:text-gray-600 text-2xl"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-6">
+                {/* Tournament Games */}
+                <div className="mb-8">
+                  <h4 className="text-lg font-semibold text-gray-900 mb-4">All Games Played</h4>
+                  {(() => {
+                    const tournamentGames = games.filter(g => 
+                      getTournamentMatches(selectedTournament.id).some(m => m.id === g.matchId)
+                    );
+                    
+                    if (tournamentGames.length === 0) {
+                      return <p className="text-gray-600 text-center py-4">No games played yet</p>;
+                    }
+
+                    return (
+                      <div className="space-y-3">
+                        {tournamentGames
+                          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                          .map((game) => {
+                            const match = matches.find(m => m.id === game.matchId);
+                            const player1Score = game.score1;
+                            const player2Score = game.score2;
+                            const player1Won = player1Score > player2Score;
+                            
+                            return (
+                              <div key={game.id} className="flex items-center justify-between bg-white p-4 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
+                                <div className="flex items-center space-x-4">
+                                  <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold ${
+                                    player1Won ? 'bg-green-500' : 'bg-red-500'
+                                  }`}>
+                                    {player1Won ? 'W' : 'L'}
+                                  </div>
+                                  <div>
+                                    <div className="font-medium text-gray-900">
+                                      {getPlayerName(game.player1Id)} vs {getPlayerName(game.player2Id)}
+                                    </div>
+                                    <div className="text-sm text-gray-600">
+                                      {match?.round === 'roundRobin' ? 'Round Robin' : `Bracket Round ${match?.bracketRound || 1}`} • 
+                                      {new Date(game.date).toLocaleDateString()}
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <div className="font-bold text-lg text-gray-900">
+                                    {player1Score} - {player2Score}
+                                  </div>
+                                  <div className="text-sm text-gray-600">
+                                    Winner: {getPlayerName(player1Won ? game.player1Id : game.player2Id)}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Tournament Statistics */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="bg-gray-50 p-4 rounded-lg text-center">
+                    <div className="text-2xl font-bold text-gray-900">
+                      {getTournamentMatches(selectedTournament.id).filter(m => m.winnerId).length}
+                    </div>
+                    <div className="text-gray-600 font-medium">Matches Completed</div>
+                  </div>
+                  <div className="bg-gray-50 p-4 rounded-lg text-center">
+                    <div className="text-2xl font-bold text-gray-900">
+                      {games.filter(g => getTournamentMatches(selectedTournament.id).some(m => m.id === g.matchId)).length}
+                    </div>
+                    <div className="text-gray-600 font-medium">Games Played</div>
+                  </div>
+                  <div className="bg-gray-50 p-4 rounded-lg text-center">
+                    <div className="text-2xl font-bold text-gray-900">
+                      {selectedTournament.status === 'completed' ? '🏆' : '⏳'}
+                    </div>
+                    <div className="text-gray-600 font-medium">
+                      {selectedTournament.status === 'completed' ? 'Completed' : 'In Progress'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>

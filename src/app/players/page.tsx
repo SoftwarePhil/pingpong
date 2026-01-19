@@ -60,11 +60,6 @@ export default function PlayersPage() {
     }
   };
 
-  const viewPlayerReport = (player: Player) => {
-    setSelectedPlayer(player);
-    setShowPlayerReport(true);
-  };
-
   const selectPlayer = (player: Player) => {
     setSelectedPlayer(player);
     setShowPlayerReport(true);
