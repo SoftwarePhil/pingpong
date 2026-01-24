@@ -285,6 +285,7 @@ function createBracketMatches(tournament: Tournament, matches: Match[]): void {
       matches.push(newMatch);
     }
   }
+}
 
 // Function to advance to next round robin round
 function advanceRoundRobinRound(tournament: Tournament, matches: Match[]): Match[] {
