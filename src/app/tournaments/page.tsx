@@ -13,13 +13,15 @@ export default function TournamentsPage() {
   const [roundRobinRounds, setRoundRobinRounds] = useState(3);
   const [bracketRounds] = useState([{ round: 1, bestOf: 3 }, { round: 2, bestOf: 5 }]);
   const [selectedPlayers, setSelectedPlayers] = useState<string[]>([]);
-  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [formMode, setFormMode] = useState<'create' | 'edit' | null>(null);
   const [activeTab, setActiveTab] = useState<'active' | 'history'>('active');
   const [editingGame, setEditingGame] = useState<Game | null>(null);
   const [editScore1, setEditScore1] = useState('');
   const [editScore2, setEditScore2] = useState('');
   const [showTournamentDetail, setShowTournamentDetail] = useState(false);
   const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null);
+  const [editingTournament, setEditingTournament] = useState<Tournament | null>(null);
 
   useEffect(() => {
     fetchTournaments();
@@ -68,9 +70,36 @@ export default function TournamentsPage() {
     if (res.ok) {
       setName('');
       setSelectedPlayers([]);
-      setShowCreateForm(false);
+      setShowForm(false);
+      setFormMode(null);
+      setEditingTournament(null);
       fetchTournaments();
       fetchMatches();
+    }
+  };
+
+  const updateTournament = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTournament || selectedPlayers.length < 2) return;
+    const res = await fetch('/api/tournaments', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: editingTournament.id,
+        players: [...new Set(selectedPlayers)],
+      }),
+    });
+    if (res.ok) {
+      setEditingTournament(null);
+      setSelectedPlayers([]);
+      setShowForm(false);
+      setFormMode(null);
+      fetchTournaments();
+      fetchMatches();
+      alert('Tournament updated successfully');
+    } else {
+      const error = await res.json();
+      alert(error.error || 'Failed to update tournament');
     }
   };
 
@@ -640,6 +669,52 @@ export default function TournamentsPage() {
     }
   };
 
+  const endTournament = async (tournament: Tournament) => {
+    if (!confirm('Are you sure you want to end this tournament?')) return;
+    try {
+      const res = await fetch('/api/tournaments', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: tournament.id,
+          status: 'completed',
+        }),
+      });
+      if (res.ok) {
+        fetchTournaments();
+        fetchMatches();
+        alert('Tournament ended successfully');
+      } else {
+        const error = await res.json();
+        alert(error.error || 'Failed to end tournament');
+      }
+    } catch (error) {
+      console.error(error);
+      alert('Failed to end tournament');
+    }
+  };
+
+  const deleteTournament = async (tournament: Tournament) => {
+    if (!confirm('Are you sure you want to delete this tournament? This action cannot be undone.')) return;
+    try {
+      const res = await fetch(`/api/tournaments?id=${tournament.id}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        fetchTournaments();
+        fetchMatches();
+        fetchGames();
+        alert('Tournament deleted successfully');
+      } else {
+        const error = await res.json();
+        alert(error.error || 'Failed to delete tournament');
+      }
+    } catch (error) {
+      console.error(error);
+      alert('Failed to delete tournament');
+    }
+  };
+
   const getPlayerStandings = (tournamentId: string, players: string[]) => {
     const playerStats: { [playerId: string]: { wins: number; losses: number; totalGames: number } } = {};
     players.forEach(playerId => {
@@ -690,7 +765,10 @@ export default function TournamentsPage() {
               ← Back to Home
             </Link>
             <button
-              onClick={() => setShowCreateForm(!showCreateForm)}
+              onClick={() => {
+                setFormMode('create');
+                setShowForm(!showForm);
+              }}
               className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg shadow font-medium transition-colors border-2 border-blue-700"
             >
               + New Tournament
@@ -725,10 +803,10 @@ export default function TournamentsPage() {
         </div>
 
         {/* Create Tournament Form */}
-        {showCreateForm && (
+        {showForm && (
           <div className="bg-white rounded-xl shadow-lg p-8 mb-8 border-2 border-gray-200">
-            <h2 className="text-3xl font-bold text-gray-900 mb-8">Create New Tournament</h2>
-            <form onSubmit={createTournament} className="space-y-8">
+            <h2 className="text-3xl font-bold text-gray-900 mb-8">{formMode === 'create' ? 'Create New Tournament' : 'Edit Tournament Players'}</h2>
+            <form onSubmit={formMode === 'create' ? createTournament : updateTournament} className="space-y-8">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div>
                   <label className="block text-lg font-semibold text-gray-800 mb-3">Tournament Name</label>
@@ -739,6 +817,7 @@ export default function TournamentsPage() {
                     placeholder="e.g., Week 1 Championship"
                     className="w-full border-2 border-gray-300 rounded-lg px-4 py-3 text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:outline-none text-lg"
                     required
+                    disabled={formMode === 'edit'}
                   />
                 </div>
                 <div>
@@ -747,6 +826,7 @@ export default function TournamentsPage() {
                     value={roundRobinRounds}
                     onChange={(e) => setRoundRobinRounds(parseInt(e.target.value))}
                     className="w-full border-2 border-gray-300 rounded-lg px-4 py-3 text-gray-900 focus:border-blue-500 focus:outline-none text-lg"
+                    disabled={formMode === 'edit'}
                   >
                     <option value={3}>3 Rounds</option>
                     <option value={4}>4 Rounds</option>
@@ -780,7 +860,12 @@ export default function TournamentsPage() {
               <div className="flex justify-end space-x-4 pt-6 border-t-2 border-gray-200">
                 <button
                   type="button"
-                  onClick={() => setShowCreateForm(false)}
+                  onClick={() => {
+                    setShowForm(false);
+                    setFormMode(null);
+                    setEditingTournament(null);
+                    setSelectedPlayers([]);
+                  }}
                   className="px-8 py-3 border-2 border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors font-medium text-lg"
                 >
                   Cancel
@@ -789,7 +874,7 @@ export default function TournamentsPage() {
                   type="submit"
                   className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium text-lg border-2 border-blue-700"
                 >
-                  Create Tournament
+                  {formMode === 'create' ? 'Create Tournament' : 'Update Players'}
                 </button>
               </div>
             </form>
@@ -1006,6 +1091,37 @@ export default function TournamentsPage() {
                         <div className="text-sm text-gray-500 mt-1">Total</div>
                       </div>
                     </div>
+
+                    {/* Action Buttons for Active Tournaments */}
+                    {activeTab === 'active' && (
+                      <div className="mt-8 flex justify-center space-x-4">
+                        <button
+                          onClick={() => {
+                            setFormMode('edit');
+                            setEditingTournament(tournament);
+                            setName(tournament.name);
+                            setRoundRobinRounds(tournament.roundRobinRounds);
+                            setSelectedPlayers(tournament.players);
+                            setShowForm(true);
+                          }}
+                          className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg shadow-lg font-bold text-lg transition-colors border-2 border-blue-700"
+                        >
+                          ✏️ Edit Players
+                        </button>
+                        <button
+                          onClick={() => endTournament(tournament)}
+                          className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-3 rounded-lg shadow-lg font-bold text-lg transition-colors border-2 border-orange-700"
+                        >
+                          🏁 End Tournament
+                        </button>
+                        <button
+                          onClick={() => deleteTournament(tournament)}
+                          className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg shadow-lg font-bold text-lg transition-colors border-2 border-red-700"
+                        >
+                          🗑️ Delete Tournament
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -1018,7 +1134,10 @@ export default function TournamentsPage() {
             <h3 className="text-2xl font-semibold text-gray-900 mb-4">No tournaments yet</h3>
             <p className="text-gray-600 mb-8 text-lg">Create your first tournament to get started!</p>
             <button
-              onClick={() => setShowCreateForm(true)}
+              onClick={() => {
+                setFormMode('create');
+                setShowForm(true);
+              }}
               className="bg-blue-600 hover:bg-blue-700 text-white px-10 py-4 rounded-lg shadow-lg font-bold text-xl transition-colors border-2 border-blue-700"
             >
               Create Tournament

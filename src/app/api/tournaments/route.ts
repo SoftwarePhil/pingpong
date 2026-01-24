@@ -5,6 +5,7 @@ import path from 'path';
 
 const tournamentsPath = path.join(process.cwd(), 'src/data/tournaments.json');
 const matchesPath = path.join(process.cwd(), 'src/data/matches.json');
+const gamesPath = path.join(process.cwd(), 'src/data/games.json');
 
 export async function GET() {
   try {
@@ -121,6 +122,44 @@ if (action === 'advanceRound') {
   } catch (error) {
     console.error(error);
     return NextResponse.json({ error: 'Failed to update tournament' }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+    if (!id) {
+      return NextResponse.json({ error: 'Tournament ID required' }, { status: 400 });
+    }
+
+    const tournamentsData = fs.readFileSync(tournamentsPath, 'utf8');
+    const tournaments: Tournament[] = JSON.parse(tournamentsData);
+    const tournamentIndex = tournaments.findIndex(t => t.id === id);
+    if (tournamentIndex === -1) {
+      return NextResponse.json({ error: 'Tournament not found' }, { status: 404 });
+    }
+
+    // Remove the tournament
+    tournaments.splice(tournamentIndex, 1);
+    fs.writeFileSync(tournamentsPath, JSON.stringify(tournaments, null, 2));
+
+    // Remove associated matches
+    const matchesData = fs.readFileSync(matchesPath, 'utf8');
+    const matches: Match[] = JSON.parse(matchesData);
+    const filteredMatches = matches.filter(m => m.tournamentId !== id);
+    fs.writeFileSync(matchesPath, JSON.stringify(filteredMatches, null, 2));
+
+    // Remove associated games
+    const gamesData = fs.readFileSync(gamesPath, 'utf8');
+    const games: any[] = JSON.parse(gamesData);
+    const filteredGames = games.filter(g => !filteredMatches.some(m => m.id === g.matchId));
+    fs.writeFileSync(gamesPath, JSON.stringify(filteredGames, null, 2));
+
+    return NextResponse.json({ message: 'Tournament deleted successfully' });
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json({ error: 'Failed to delete tournament' }, { status: 500 });
   }
 }
 
