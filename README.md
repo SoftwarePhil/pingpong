@@ -1,4 +1,4 @@
-AI Slop from grok code fast, minial human changes! Match/player/stats/tourment tracker for ping pong games
+AI Slop from grok code fast, minimal human changes! Match/player/stats/tourment tracker for ping pong games
 
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
