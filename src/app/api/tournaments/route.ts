@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Tournament, Match } from '../../../types/pingpong';
 import fs from 'fs';
 import path from 'path';
+import { Game } from '../../../types/pingpong';
 
 const tournamentsPath = path.join(process.cwd(), 'src/data/tournaments.json');
 const matchesPath = path.join(process.cwd(), 'src/data/matches.json');
@@ -152,7 +153,7 @@ export async function DELETE(request: NextRequest) {
 
     // Remove associated games
     const gamesData = fs.readFileSync(gamesPath, 'utf8');
-    const games: any[] = JSON.parse(gamesData);
+    const games: Game[] = JSON.parse(gamesData);
     const filteredGames = games.filter(g => !filteredMatches.some(m => m.id === g.matchId));
     fs.writeFileSync(gamesPath, JSON.stringify(filteredGames, null, 2));
 
