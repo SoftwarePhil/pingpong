@@ -619,10 +619,17 @@ export default function TournamentsPage() {
           action: 'advanceRound',
         }),
       });
-      
+
       if (res.ok) {
+        const updatedTournament = await res.json();
         fetchTournaments();
         fetchMatches();
+        // Check if tournament is now completed
+        if (updatedTournament.status === 'completed') {
+          setActiveTab('history');
+          setSelectedTournament(updatedTournament);
+          setShowTournamentDetail(true);
+        }
       } else {
         const error = await res.json();
         alert(error.error || 'Failed to advance round');
