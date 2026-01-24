@@ -62,7 +62,7 @@ export default function TournamentsPage() {
         name,
         roundRobinRounds,
         bracketRounds,
-        players: selectedPlayers,
+        players: [...new Set(selectedPlayers)],
       }),
     });
     if (res.ok) {
@@ -159,7 +159,7 @@ export default function TournamentsPage() {
   };
 
   const addGameToMatch = async (match: Match, score1: number, score2: number) => {
-    if (match.games.length >= match.bestOf) return;
+    if (match.games.length >= match.bestOf || match.winnerId) return;
     const res = await fetch('/api/games', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -354,12 +354,12 @@ export default function TournamentsPage() {
         </div>
 
         <div className="text-center text-gray-500 font-bold text-sm">
-          {match.player1Id === match.player2Id ? 'BYE' : 'VS'}
+          {match.player2Id === 'BYE' ? 'BYE' : 'VS'}
         </div>
 
-        {match.player1Id !== match.player2Id && (
+        {match.player2Id !== 'BYE' && (
           <div className={`flex justify-between items-center p-3 rounded border ${match.winnerId === match.player2Id ? 'bg-green-100 border-green-300' : 'bg-gray-50 border-gray-200'}`}>
-            <span className="font-medium text-gray-900 truncate mr-2" title={getPlayerName(match.player2Id)}>{getPlayerName(match.player2Id)}</span>
+            <span className="font-medium text-gray-900 truncate mr-2" title={match.player2Id === 'BYE' ? 'BYE' : getPlayerName(match.player2Id)}>{match.player2Id === 'BYE' ? 'BYE' : getPlayerName(match.player2Id)}</span>
             <span className="text-sm text-gray-600 flex-shrink-0">
               {match.games.filter(g => g.score2 > g.score1).length}W
             </span>
@@ -375,7 +375,7 @@ export default function TournamentsPage() {
         </div>
       )}
 
-      {match.games.length < match.bestOf && match.player1Id !== match.player2Id && (
+      {match.games.length < match.bestOf && !match.winnerId && match.player1Id !== match.player2Id && (
         <form onSubmit={(e) => {
           e.preventDefault();
           const formData = new FormData(e.target as HTMLFormElement);

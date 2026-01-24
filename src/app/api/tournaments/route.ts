@@ -21,7 +21,8 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { name, roundRobinRounds, bracketRounds, players }: { name: string; roundRobinRounds: number; bracketRounds: { round: number; bestOf: number }[]; players: string[] } = body;
-    if (!name || !roundRobinRounds || !bracketRounds || !players || players.length < 2) {
+    const uniquePlayers = [...new Set(players)];
+    if (!name || !roundRobinRounds || !bracketRounds || !uniquePlayers || uniquePlayers.length < 2) {
       return NextResponse.json({ error: 'Invalid data' }, { status: 400 });
     }
     const tournamentsData = fs.readFileSync(tournamentsPath, 'utf8');
@@ -33,7 +34,7 @@ export async function POST(request: NextRequest) {
       status: 'roundRobin',
       roundRobinRounds,
       bracketRounds,
-      players,
+      players: uniquePlayers,
     };
     tournaments.push(newTournament);
     fs.writeFileSync(tournamentsPath, JSON.stringify(tournaments, null, 2));
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest) {
     const matches: Match[] = JSON.parse(matchesData);
     
     // Create balanced pairings for first round
-    const shuffledPlayers = [...players].sort(() => Math.random() - 0.5);
+    const shuffledPlayers = [...uniquePlayers].sort(() => Math.random() - 0.5);
     createRoundRobinPairings(shuffledPlayers, newTournament.id, matches, 1);
     
     fs.writeFileSync(matchesPath, JSON.stringify(matches, null, 2));
@@ -168,12 +169,23 @@ function advanceBracketRound(tournament: Tournament, matches: Match[]): boolean 
   // Get winners
   const winners = currentRoundMatches.map(m => m.winnerId).filter(id => id) as string[];
 
-  // Find next bracket round config
-  const nextBracketRoundConfig = tournament.bracketRounds.find(br => br.round === currentRound + 1);
-  if (!nextBracketRoundConfig || winners.length < 2) {
-    // No more bracket rounds or not enough winners
+  if (winners.length < 2) {
+    // Tournament completed
     tournament.status = 'completed';
     return true;
+  }
+
+  // Find next bracket round config
+  const nextBracketRoundConfig = tournament.bracketRounds.find(br => br.round === currentRound + 1);
+  let bestOf = 1; // default
+  if (nextBracketRoundConfig) {
+    bestOf = nextBracketRoundConfig.bestOf;
+  } else {
+    // Use the bestOf from the last configured round
+    const lastConfig = tournament.bracketRounds[tournament.bracketRounds.length - 1];
+    if (lastConfig) {
+      bestOf = lastConfig.bestOf;
+    }
   }
 
   // Create next round matches
@@ -185,8 +197,8 @@ function advanceBracketRound(tournament: Tournament, matches: Match[]): boolean 
         player1Id: winners[i],
         player2Id: winners[i + 1],
         round: 'bracket',
-        bracketRound: nextBracketRoundConfig.round,
-        bestOf: nextBracketRoundConfig.bestOf,
+        bracketRound: currentRound + 1,
+        bestOf: bestOf,
         games: [],
       };
       matches.push(newMatch);
@@ -233,20 +245,33 @@ function createBracketMatches(tournament: Tournament, matches: Match[]): void {
     return Math.random() - 0.5;
   });
 
-  // Take top players, but ensure even number for bracket
+  // Take top players for bracket
   const numBracketPlayers = Math.min(rankedPlayers.length, 8);
   const bracketPlayers = rankedPlayers.slice(0, numBracketPlayers);
-
-  // If odd number, remove the last one (or handle bye, but for simplicity remove)
-  if (bracketPlayers.length % 2 === 1) {
-    bracketPlayers.pop();
-  }
 
   // Create first round bracket matches
   const bracketRound = tournament.bracketRounds[0];
   if (bracketRound && bracketPlayers.length >= 2) {
-    // Simple pairing: 1st vs 2nd, 3rd vs 4th, etc. (not snake draft for simplicity)
-    for (let i = 0; i < bracketPlayers.length; i += 2) {
+    let startIndex = 0;
+    // If odd number, give bye to the top player
+    if (bracketPlayers.length % 2 === 1) {
+      const byeMatch: Match = {
+        id: Date.now().toString() + Math.random(),
+        tournamentId: tournament.id,
+        player1Id: bracketPlayers[0],
+        player2Id: 'BYE',
+        round: 'bracket',
+        bracketRound: bracketRound.round,
+        bestOf: bracketRound.bestOf,
+        games: [],
+        winnerId: bracketPlayers[0], // Automatic win
+      };
+      matches.push(byeMatch);
+      startIndex = 1; // Start pairing from the next player
+    }
+
+    // Pair the remaining players: 1st vs 2nd, 3rd vs 4th, etc.
+    for (let i = startIndex; i < bracketPlayers.length; i += 2) {
       const newMatch: Match = {
         id: Date.now().toString() + Math.random(),
         tournamentId: tournament.id,
@@ -258,7 +283,8 @@ function createBracketMatches(tournament: Tournament, matches: Match[]): void {
         games: [],
       };
       matches.push(newMatch);
-}
+    }
+  }
 
 // Function to advance to next round robin round
 function advanceRoundRobinRound(tournament: Tournament, matches: Match[]): Match[] {
