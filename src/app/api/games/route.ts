@@ -1,15 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Game, Match } from '../../../types/pingpong';
-import fs from 'fs';
-import path from 'path';
-
-const gamesPath = path.join(process.cwd(), 'src/data/games.json');
-const matchesPath = path.join(process.cwd(), 'src/data/matches.json');
+import { getGames, setGames, getMatches, setMatches, saveData } from '../../../data/data';
 
 export async function GET() {
   try {
-    const data = fs.readFileSync(gamesPath, 'utf8');
-    const games: Game[] = JSON.parse(data);
+    const games = getGames();
     return NextResponse.json(games);
   } catch (error) {
     console.error(error);
@@ -37,8 +32,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Game must be won by 2 points' }, { status: 400 });
     }}
 
-    const gamesData = fs.readFileSync(gamesPath, 'utf8');
-    const games: Game[] = JSON.parse(gamesData);
+    const games = getGames();
     const newGame: Game = {
       id: Date.now().toString(),
       matchId,
@@ -49,12 +43,11 @@ export async function POST(request: NextRequest) {
       date: new Date().toISOString(),
     };
     games.push(newGame);
-    fs.writeFileSync(gamesPath, JSON.stringify(games, null, 2));
+    setGames(games);
 
     // Update match if matchId provided
     if (matchId) {
-      const matchesData = fs.readFileSync(matchesPath, 'utf8');
-      const matches: Match[] = JSON.parse(matchesData);
+      const matches = getMatches();
       const match = matches.find(m => m.id === matchId);
       if (match) {
         match.games.push(newGame);
@@ -67,7 +60,8 @@ export async function POST(request: NextRequest) {
         } else if (p2Wins >= requiredWins) {
           match.winnerId = match.player2Id;
         }
-        fs.writeFileSync(matchesPath, JSON.stringify(matches, null, 2));
+        setMatches(matches);
+        saveData();
       }
     }
 

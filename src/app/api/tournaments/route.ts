@@ -1,17 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Tournament, Match } from '../../../types/pingpong';
-import fs from 'fs';
-import path from 'path';
 import { Game } from '../../../types/pingpong';
-
-const tournamentsPath = path.join(process.cwd(), 'src/data/tournaments.json');
-const matchesPath = path.join(process.cwd(), 'src/data/matches.json');
-const gamesPath = path.join(process.cwd(), 'src/data/games.json');
+import { getTournaments, setTournaments, getMatches, setMatches, getGames, setGames, saveData } from '../../../data/data';
 
 export async function GET() {
   try {
-    const data = fs.readFileSync(tournamentsPath, 'utf8');
-    const tournaments: Tournament[] = JSON.parse(data);
+    const tournaments = getTournaments();
     return NextResponse.json(tournaments);
   } catch (error) {
     console.error(error);
@@ -27,8 +21,7 @@ export async function POST(request: NextRequest) {
     if (!name || !roundRobinRounds || !bracketRounds || !uniquePlayers || uniquePlayers.length < 2) {
       return NextResponse.json({ error: 'Invalid data' }, { status: 400 });
     }
-    const tournamentsData = fs.readFileSync(tournamentsPath, 'utf8');
-    const tournaments: Tournament[] = JSON.parse(tournamentsData);
+    const tournaments = getTournaments();
     const newTournament: Tournament = {
       id: Date.now().toString(),
       name,
@@ -39,17 +32,17 @@ export async function POST(request: NextRequest) {
       players: uniquePlayers,
     };
     tournaments.push(newTournament);
-    fs.writeFileSync(tournamentsPath, JSON.stringify(tournaments, null, 2));
+    setTournaments(tournaments);
 
     // Generate first round of round robin matches
-    const matchesData = fs.readFileSync(matchesPath, 'utf8');
-    const matches: Match[] = JSON.parse(matchesData);
-    
+    const matches = getMatches();
+
     // Create balanced pairings for first round
     const shuffledPlayers = [...uniquePlayers].sort(() => Math.random() - 0.5);
     createRoundRobinPairings(shuffledPlayers, newTournament.id, matches, 1);
-    
-    fs.writeFileSync(matchesPath, JSON.stringify(matches, null, 2));
+
+    setMatches(matches);
+    saveData();
 
     return NextResponse.json(newTournament, { status: 201 });
   } catch (error) {
@@ -63,16 +56,14 @@ export async function PUT(request: NextRequest) {
     const body = await request.json();
     const { id, status, action }: { id: string; status?: 'roundRobin' | 'bracket' | 'completed'; action?: 'advanceRound' } = body;
     
-    const data = fs.readFileSync(tournamentsPath, 'utf8');
-    const tournaments: Tournament[] = JSON.parse(data);
+    const tournaments = getTournaments();
     const tournament = tournaments.find(t => t.id === id);
-    
+
     if (!tournament) {
       return NextResponse.json({ error: 'Tournament not found' }, { status: 404 });
     }
-    
-    const matchesData = fs.readFileSync(matchesPath, 'utf8');
-    const matches: Match[] = JSON.parse(matchesData);
+
+    const matches = getMatches();
     
 if (action === 'advanceRound') {
       if (tournament.status === 'roundRobin') {
@@ -97,14 +88,16 @@ if (action === 'advanceRound') {
           createBracketMatches(tournament, matches);
         }
 
-        fs.writeFileSync(matchesPath, JSON.stringify(matches, null, 2));
+        setMatches(matches);
+        saveData();
       } else if (tournament.status === 'bracket') {
         // Advance bracket round
         const advanced = advanceBracketRound(tournament, matches);
         if (!advanced) {
           return NextResponse.json({ error: 'Cannot advance bracket round' }, { status: 400 });
         }
-        fs.writeFileSync(matchesPath, JSON.stringify(matches, null, 2));
+        setMatches(matches);
+        saveData();
       }
     }
     
@@ -114,11 +107,13 @@ if (action === 'advanceRound') {
       // If changing to bracket status or already bracket but no matches, create bracket matches
       if (status === 'bracket' && (oldStatus !== 'bracket' || !matches.some(m => m.tournamentId === tournament.id && m.round === 'bracket'))) {
         createBracketMatches(tournament, matches);
-        fs.writeFileSync(matchesPath, JSON.stringify(matches, null, 2));
+        setMatches(matches);
+        saveData();
       }
     }
-    
-    fs.writeFileSync(tournamentsPath, JSON.stringify(tournaments, null, 2));
+
+    setTournaments(tournaments);
+    saveData();
     return NextResponse.json(tournament);
   } catch (error) {
     console.error(error);
@@ -134,8 +129,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Tournament ID required' }, { status: 400 });
     }
 
-    const tournamentsData = fs.readFileSync(tournamentsPath, 'utf8');
-    const tournaments: Tournament[] = JSON.parse(tournamentsData);
+    const tournaments = getTournaments();
     const tournamentIndex = tournaments.findIndex(t => t.id === id);
     if (tournamentIndex === -1) {
       return NextResponse.json({ error: 'Tournament not found' }, { status: 404 });
@@ -143,19 +137,17 @@ export async function DELETE(request: NextRequest) {
 
     // Remove the tournament
     tournaments.splice(tournamentIndex, 1);
-    fs.writeFileSync(tournamentsPath, JSON.stringify(tournaments, null, 2));
+    setTournaments(tournaments);
 
     // Remove associated matches
-    const matchesData = fs.readFileSync(matchesPath, 'utf8');
-    const matches: Match[] = JSON.parse(matchesData);
+    const matches = getMatches();
     const filteredMatches = matches.filter(m => m.tournamentId !== id);
-    fs.writeFileSync(matchesPath, JSON.stringify(filteredMatches, null, 2));
+    setMatches(filteredMatches);
 
     // Remove associated games
-    const gamesData = fs.readFileSync(gamesPath, 'utf8');
-    const games: Game[] = JSON.parse(gamesData);
+    const games = getGames();
     const filteredGames = games.filter(g => !filteredMatches.some(m => m.id === g.matchId));
-    fs.writeFileSync(gamesPath, JSON.stringify(filteredGames, null, 2));
+    setGames(filteredGames);
 
     return NextResponse.json({ message: 'Tournament deleted successfully' });
   } catch (error) {
@@ -168,24 +160,46 @@ export async function DELETE(request: NextRequest) {
 function createRoundRobinPairings(players: string[], tournamentId: string, matches: Match[], bracketRound: number = 1): Match[] {
   const newMatches: Match[] = [];
   const shuffled = [...players];
-  // If odd number of players, add a bye (null)
-  if (shuffled.length % 2 === 1) shuffled.push('BYE');
-  for (let i = 0; i < shuffled.length; i += 2) {
-    if (shuffled[i] !== 'BYE' && shuffled[i + 1] !== 'BYE') {
-      const newMatch: Match = {
-        id: Date.now().toString() + Math.random(),
-        tournamentId,
-        player1Id: shuffled[i],
-        player2Id: shuffled[i + 1],
-        round: 'roundRobin',
-        bracketRound: bracketRound,
-        bestOf: 1,
-        games: [],
-      };
-      newMatches.push(newMatch);
-      matches.push(newMatch);
-    }
+
+  // If odd number of players, the last one gets a bye
+  let byePlayer: string | null = null;
+  if (shuffled.length % 2 === 1) {
+    byePlayer = shuffled.pop()!;
   }
+
+  // Pair the remaining players
+  for (let i = 0; i < shuffled.length; i += 2) {
+    const newMatch: Match = {
+      id: Date.now().toString() + Math.random(),
+      tournamentId,
+      player1Id: shuffled[i],
+      player2Id: shuffled[i + 1],
+      round: 'roundRobin',
+      bracketRound: bracketRound,
+      bestOf: 1,
+      games: [],
+    };
+    newMatches.push(newMatch);
+    matches.push(newMatch);
+  }
+
+  // Create bye match if any
+  if (byePlayer) {
+    const byeMatch: Match = {
+      id: Date.now().toString() + Math.random(),
+      tournamentId,
+      player1Id: byePlayer,
+      player2Id: 'BYE',
+      round: 'roundRobin',
+      bracketRound: bracketRound,
+      bestOf: 1,
+      games: [],
+      winnerId: byePlayer, // Automatic win
+    };
+    newMatches.push(byeMatch);
+    matches.push(byeMatch);
+  }
+
   return newMatches;
 }
 

@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
 import { Match, Game } from '../../../../types/pingpong';
-
-const matchesFilePath = path.join(process.cwd(), 'data', 'matches.json');
-const gamesFilePath = path.join(process.cwd(), 'data', 'games.json');
+import { getMatches, setMatches, getGames, setGames } from '../../../../data/data';
 
 export async function PUT(
   request: NextRequest,
@@ -15,9 +11,7 @@ export async function PUT(
     const updates = await request.json();
 
     // Read current matches
-    const matchesData: Match[] = fs.existsSync(matchesFilePath)
-      ? JSON.parse(fs.readFileSync(matchesFilePath, 'utf-8'))
-      : [];
+    const matchesData = getMatches();
 
     // Find and update the match
     const matchIndex = matchesData.findIndex((match: Match) => match.id === matchId);
@@ -28,8 +22,8 @@ export async function PUT(
     // Update the match with the provided fields
     matchesData[matchIndex] = { ...matchesData[matchIndex], ...updates };
 
-    // Write updated data back to file
-    fs.writeFileSync(matchesFilePath, JSON.stringify(matchesData, null, 2));
+    // Write updated data back
+    setMatches(matchesData);
 
     return NextResponse.json(matchesData[matchIndex]);
 
@@ -47,9 +41,7 @@ export async function DELETE(
     const { id: matchId } = await params;
 
     // Read current matches
-    const matchesData: Match[] = fs.existsSync(matchesFilePath)
-      ? JSON.parse(fs.readFileSync(matchesFilePath, 'utf-8'))
-      : [];
+    const matchesData = getMatches();
 
     // Find the match to delete
     const matchIndex = matchesData.findIndex((match: Match) => match.id === matchId);
@@ -60,9 +52,7 @@ export async function DELETE(
     const matchToDelete = matchesData[matchIndex];
 
     // Read current games
-    const gamesData: Game[] = fs.existsSync(gamesFilePath)
-      ? JSON.parse(fs.readFileSync(gamesFilePath, 'utf-8'))
-      : [];
+    const gamesData = getGames();
 
     // Remove all games associated with this match
     const updatedGames = gamesData.filter((game: Game) => game.matchId !== matchId);
@@ -70,9 +60,9 @@ export async function DELETE(
     // Remove the match
     matchesData.splice(matchIndex, 1);
 
-    // Write updated data back to files
-    fs.writeFileSync(matchesFilePath, JSON.stringify(matchesData, null, 2));
-    fs.writeFileSync(gamesFilePath, JSON.stringify(updatedGames, null, 2));
+    // Write updated data back
+    setMatches(matchesData);
+    setGames(updatedGames);
 
     return NextResponse.json({
       message: 'Match and associated games deleted successfully',

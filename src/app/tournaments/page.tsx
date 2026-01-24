@@ -56,7 +56,7 @@ export default function TournamentsPage() {
 
   const createTournament = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || selectedPlayers.length < 2) return;
+    if (!name || [...new Set(selectedPlayers)].length < 2) return;
     const res = await fetch('/api/tournaments', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -73,6 +73,7 @@ export default function TournamentsPage() {
       setShowForm(false);
       setFormMode(null);
       setEditingTournament(null);
+      fetchPlayers();
       fetchTournaments();
       fetchMatches();
     }
@@ -80,7 +81,7 @@ export default function TournamentsPage() {
 
   const updateTournament = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingTournament || selectedPlayers.length < 2) return;
+    if (!editingTournament || [...new Set(selectedPlayers)].length < 2) return;
     const res = await fetch('/api/tournaments', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -715,6 +716,23 @@ export default function TournamentsPage() {
     }
   };
 
+  const saveData = async () => {
+    try {
+      const res = await fetch('/api/save-data', {
+        method: 'POST',
+      });
+      if (res.ok) {
+        alert('Data saved to files successfully');
+      } else {
+        const error = await res.json();
+        alert(error.error || 'Failed to save data');
+      }
+    } catch (error) {
+      console.error(error);
+      alert('Failed to save data');
+    }
+  };
+
   const getPlayerStandings = (tournamentId: string, players: string[]) => {
     const playerStats: { [playerId: string]: { wins: number; losses: number; totalGames: number } } = {};
     players.forEach(playerId => {
@@ -799,6 +817,12 @@ export default function TournamentsPage() {
             >
               Tournament History
             </button>
+            <button
+              onClick={saveData}
+              className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-md font-medium transition-all shadow-md"
+            >
+              💾 Save Data
+            </button>
           </div>
         </div>
 
@@ -844,7 +868,9 @@ export default function TournamentsPage() {
                         checked={selectedPlayers.includes(p.id)}
                         onChange={(e) => {
                           if (e.target.checked) {
-                            setSelectedPlayers([...selectedPlayers, p.id]);
+                            if (!selectedPlayers.includes(p.id)) {
+                              setSelectedPlayers([...selectedPlayers, p.id]);
+                            }
                           } else {
                             setSelectedPlayers(selectedPlayers.filter(id => id !== p.id));
                           }
@@ -989,7 +1015,7 @@ export default function TournamentsPage() {
                           ))}
                         </div>
 
-                        {roundRobinMatches.every(m => m.winnerId) && (
+                        {roundRobinMatches.length > 0 && roundRobinMatches.every(m => m.winnerId) && (
                           <div className="mt-8 text-center">
                             {getCurrentRound(tournament.id) < tournament.roundRobinRounds ? (
                               <button
@@ -1174,6 +1200,57 @@ export default function TournamentsPage() {
               </div>
 
               <div className="p-6">
+                {/* Tournament Matches */}
+                <div className="mb-8">
+                  <h4 className="text-lg font-semibold text-gray-900 mb-4">All Matches</h4>
+                  {(() => {
+                    const tournamentMatches = getTournamentMatches(selectedTournament.id);
+                    
+                    if (tournamentMatches.length === 0) {
+                      return <p className="text-gray-600 text-center py-4">No matches yet</p>;
+                    }
+
+                    return (
+                      <div className="space-y-3">
+                        {tournamentMatches
+                          .sort((a, b) => {
+                            // Sort by round type, then round number, then date
+                            if (a.round !== b.round) {
+                              return a.round === 'roundRobin' ? -1 : 1;
+                            }
+                            return (a.bracketRound || 0) - (b.bracketRound || 0);
+                          })
+                          .map((match) => (
+                            <div key={match.id} className="bg-white p-4 rounded-lg border border-gray-200">
+                              <div className="flex justify-between items-center mb-2">
+                                <div className="flex items-center space-x-4">
+                                  <span className="font-medium text-gray-900">
+                                    {getPlayerName(match.player1Id)}
+                                  </span>
+                                  <span className="text-gray-500">vs</span>
+                                  <span className="font-medium text-gray-900">
+                                    {match.player2Id === 'BYE' ? 'BYE' : getPlayerName(match.player2Id)}
+                                  </span>
+                                </div>
+                                <div className="text-sm text-gray-600">
+                                  {match.round === 'roundRobin' ? `Round Robin Round ${match.bracketRound}` : `Bracket Round ${match.bracketRound}`}
+                                </div>
+                              </div>
+                              {match.winnerId && (
+                                <div className="text-green-600 font-medium">
+                                  Winner: {getPlayerName(match.winnerId)}
+                                </div>
+                              )}
+                              <div className="text-sm text-gray-500 mt-1">
+                                {match.games.length} games played
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    );
+                  })()}
+                </div>
+
                 {/* Tournament Games */}
                 <div className="mb-8">
                   <h4 className="text-lg font-semibold text-gray-900 mb-4">All Games Played</h4>
