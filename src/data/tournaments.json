@@ -125,7 +125,7 @@
     "id": "1769278363164",
     "name": "week 69",
     "startDate": "2026-01-24T18:12:43.164Z",
-    "status": "roundRobin",
+    "status": "completed",
     "roundRobinRounds": 3,
     "bracketRounds": [
       {
@@ -144,6 +144,81 @@
       "1756940905740",
       "1756941473618",
       "1756941480724"
+    ]
+  },
+  {
+    "id": "1769284791796",
+    "name": "boobs",
+    "startDate": "2026-01-24T19:59:51.796Z",
+    "status": "completed",
+    "roundRobinRounds": 3,
+    "bracketRounds": [
+      {
+        "round": 1,
+        "bestOf": 3
+      },
+      {
+        "round": 2,
+        "bestOf": 5
+      }
+    ],
+    "players": [
+      "1756940902661",
+      "1756960181875",
+      "1768864563311",
+      "1756940905740",
+      "1756941473618",
+      "1756941480724"
+    ]
+  },
+  {
+    "id": "1769978144897",
+    "name": "week 89.5",
+    "startDate": "2026-02-01T20:35:44.898Z",
+    "status": "completed",
+    "roundRobinRounds": 3,
+    "bracketRounds": [
+      {
+        "round": 1,
+        "bestOf": 3
+      },
+      {
+        "round": 2,
+        "bestOf": 5
+      }
+    ],
+    "players": [
+      "1756960181875",
+      "1756940902661",
+      "1756940905740",
+      "1768864563311",
+      "1756941473618",
+      "1756941480724"
+    ]
+  },
+  {
+    "id": "1769978809344",
+    "name": "week 69.42",
+    "startDate": "2026-02-01T20:46:49.344Z",
+    "status": "completed",
+    "roundRobinRounds": 3,
+    "bracketRounds": [
+      {
+        "round": 1,
+        "bestOf": 3
+      },
+      {
+        "round": 2,
+        "bestOf": 5
+      }
+    ],
+    "players": [
+      "1756940902661",
+      "1756960181875",
+      "1768864563311",
+      "1756940905740",
+      "1756941480724",
+      "1756941473618"
     ]
   }
 ]

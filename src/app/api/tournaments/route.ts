@@ -242,6 +242,15 @@ function advanceBracketRound(tournament: Tournament, matches: Match[]): boolean 
     }
   }
 
+  // Sort winners by seeding to maintain bracket integrity
+  if (tournament.playerRanking) {
+    winners.sort((a, b) => {
+      const indexA = tournament.playerRanking!.indexOf(a);
+      const indexB = tournament.playerRanking!.indexOf(b);
+      return indexA - indexB;
+    });
+  }
+
   // Create next round matches
   for (let i = 0; i < winners.length; i += 2) {
     if (i + 1 < winners.length) {
@@ -263,6 +272,11 @@ function advanceBracketRound(tournament: Tournament, matches: Match[]): boolean 
 }
 
 // Function to create bracket matches
+function nextPowerOf2(n: number): number {
+  if (n <= 1) return 1;
+  return Math.pow(2, Math.ceil(Math.log2(n)));
+}
+
 function createBracketMatches(tournament: Tournament, matches: Match[]): void {
   // Check if bracket matches already exist for round 1
   const existingBracketMatches = matches.filter(m =>
@@ -303,40 +317,46 @@ function createBracketMatches(tournament: Tournament, matches: Match[]): void {
   const numBracketPlayers = Math.min(rankedPlayers.length, 8);
   const bracketPlayers = rankedPlayers.slice(0, numBracketPlayers);
 
+  // Set player ranking on tournament
+  tournament.playerRanking = rankedPlayers;
+
   // Create first round bracket matches
   const bracketRound = tournament.bracketRounds[0];
   if (bracketRound && bracketPlayers.length >= 2) {
-    let startIndex = 0;
-    // If odd number, give bye to the top player
-    if (bracketPlayers.length % 2 === 1) {
+    // Calculate number of byes to give to top players
+    const numByes = nextPowerOf2(bracketPlayers.length) - bracketPlayers.length;
+
+    // Give byes to top numByes players
+    for (let i = 0; i < numByes; i++) {
       const byeMatch: Match = {
         id: Date.now().toString() + Math.random(),
         tournamentId: tournament.id,
-        player1Id: bracketPlayers[0],
+        player1Id: bracketPlayers[i],
         player2Id: 'BYE',
         round: 'bracket',
         bracketRound: bracketRound.round,
         bestOf: bracketRound.bestOf,
         games: [],
-        winnerId: bracketPlayers[0], // Automatic win
+        winnerId: bracketPlayers[i], // Automatic win
       };
       matches.push(byeMatch);
-      startIndex = 1; // Start pairing from the next player
     }
 
-    // Pair the remaining players: 1st vs 2nd, 3rd vs 4th, etc.
-    for (let i = startIndex; i < bracketPlayers.length; i += 2) {
-      const newMatch: Match = {
-        id: Date.now().toString() + Math.random(),
-        tournamentId: tournament.id,
-        player1Id: bracketPlayers[i],
-        player2Id: bracketPlayers[i + 1],
-        round: 'bracket',
-        bracketRound: bracketRound.round,
-        bestOf: bracketRound.bestOf,
-        games: [],
-      };
-      matches.push(newMatch);
+    // Pair the remaining players
+    for (let i = numByes; i < bracketPlayers.length; i += 2) {
+      if (i + 1 < bracketPlayers.length) {
+        const newMatch: Match = {
+          id: Date.now().toString() + Math.random(),
+          tournamentId: tournament.id,
+          player1Id: bracketPlayers[i],
+          player2Id: bracketPlayers[i + 1],
+          round: 'bracket',
+          bracketRound: bracketRound.round,
+          bestOf: bracketRound.bestOf,
+          games: [],
+        };
+        matches.push(newMatch);
+      }
     }
   }
 }

@@ -21,6 +21,7 @@ export interface Tournament {
   roundRobinRounds: number;
   bracketRounds: { round: number; bestOf: number }[];
   players: string[];
+  playerRanking?: string[];
 }
 
 export interface Match {
