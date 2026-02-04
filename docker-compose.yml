@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-mypassword}
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-mypassword}
+
+volumes:
+  redis_data:

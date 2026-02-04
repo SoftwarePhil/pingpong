@@ -1,88 +1,151 @@
-import fs from 'fs';
-import path from 'path';
+import { createClient, RedisClientType } from 'redis';
 import { Player, Tournament, Match, Game } from '../types/pingpong';
 
-const DATA_DIR = path.join(process.cwd(), 'src/data');
+// Redis client
+let redisClient: RedisClientType;
 
-// In-memory data store
-let players: Player[] = [];
-let tournaments: Tournament[] = [];
-let matches: Match[] = [];
-let games: Game[] = [];
+// Redis keys
+const PLAYERS_KEY = 'pingpong:players';
+const TOURNAMENTS_KEY = 'pingpong:tournaments';
+const MATCHES_KEY = 'pingpong:matches';
+const GAMES_KEY = 'pingpong:games';
 
-// File paths
-const playersPath = path.join(DATA_DIR, 'players.json');
-const tournamentsPath = path.join(DATA_DIR, 'tournaments.json');
-const matchesPath = path.join(DATA_DIR, 'matches.json');
-const gamesPath = path.join(DATA_DIR, 'games.json');
-
-// Load data from files
-export function loadData() {
+// Initialize Redis client
+async function initRedis() {
   try {
-    if (fs.existsSync(playersPath)) {
-      players = JSON.parse(fs.readFileSync(playersPath, 'utf8'));
-    }
-    if (fs.existsSync(tournamentsPath)) {
-      tournaments = JSON.parse(fs.readFileSync(tournamentsPath, 'utf8'));
-    }
-    if (fs.existsSync(matchesPath)) {
-      matches = JSON.parse(fs.readFileSync(matchesPath, 'utf8'));
-    }
-    if (fs.existsSync(gamesPath)) {
-      games = JSON.parse(fs.readFileSync(gamesPath, 'utf8'));
-    }
-    console.log('Data loaded from files');
+    redisClient = createClient({
+      url: process.env.REDIS_URL || 'redis://localhost:6379'
+    });
+
+    redisClient.on('error', (err) => {
+      console.error('Redis Client Error:', err);
+    });
+
+    redisClient.on('connect', () => {
+      console.log('Connected to Redis');
+    });
+
+    await redisClient.connect();
   } catch (error) {
-    console.error('Error loading data:', error);
+    console.error('Failed to connect to Redis:', error);
+    throw error;
   }
 }
 
-// Save data to files
-export function saveData() {
+// Load data from Redis
+export async function loadData() {
   try {
-    fs.writeFileSync(playersPath, JSON.stringify(players, null, 2));
-    fs.writeFileSync(tournamentsPath, JSON.stringify(tournaments, null, 2));
-    fs.writeFileSync(matchesPath, JSON.stringify(matches, null, 2));
-    fs.writeFileSync(gamesPath, JSON.stringify(games, null, 2));
-    console.log('Data saved to files');
+    if (!redisClient) {
+      await initRedis();
+    }
+
+    // Data is loaded on-demand, no need to preload
+    console.log('Redis data layer initialized');
   } catch (error) {
-    console.error('Error saving data:', error);
+    console.error('Error initializing Redis:', error);
+    throw error;
   }
+}
+
+// Save data to Redis (no-op since we save immediately on changes)
+export async function saveData() {
+  // Redis saves immediately, so this is a no-op
+  console.log('Data saved to Redis');
 }
 
 // Getters
-export function getPlayers(): Player[] {
-  return [...players];
+export async function getPlayers(): Promise<Player[]> {
+  try {
+    if (!redisClient) await initRedis();
+
+    const data = await redisClient.get(PLAYERS_KEY);
+    return data ? JSON.parse(data) : [];
+  } catch (error) {
+    console.error('Error getting players:', error);
+    return [];
+  }
 }
 
-export function getTournaments(): Tournament[] {
-  return [...tournaments];
+export async function getTournaments(): Promise<Tournament[]> {
+  try {
+    if (!redisClient) await initRedis();
+
+    const data = await redisClient.get(TOURNAMENTS_KEY);
+    return data ? JSON.parse(data) : [];
+  } catch (error) {
+    console.error('Error getting tournaments:', error);
+    return [];
+  }
 }
 
-export function getMatches(): Match[] {
-  return [...matches];
+export async function getMatches(): Promise<Match[]> {
+  try {
+    if (!redisClient) await initRedis();
+
+    const data = await redisClient.get(MATCHES_KEY);
+    return data ? JSON.parse(data) : [];
+  } catch (error) {
+    console.error('Error getting matches:', error);
+    return [];
+  }
 }
 
-export function getGames(): Game[] {
-  return [...games];
+export async function getGames(): Promise<Game[]> {
+  try {
+    if (!redisClient) await initRedis();
+
+    const data = await redisClient.get(GAMES_KEY);
+    return data ? JSON.parse(data) : [];
+  } catch (error) {
+    console.error('Error getting games:', error);
+    return [];
+  }
 }
 
 // Setters (for replacing entire arrays)
-export function setPlayers(data: Player[]) {
-  players = [...data];
+export async function setPlayers(data: Player[]) {
+  try {
+    if (!redisClient) await initRedis();
+
+    await redisClient.set(PLAYERS_KEY, JSON.stringify(data));
+  } catch (error) {
+    console.error('Error setting players:', error);
+    throw error;
+  }
 }
 
-export function setTournaments(data: Tournament[]) {
-  tournaments = [...data];
+export async function setTournaments(data: Tournament[]) {
+  try {
+    if (!redisClient) await initRedis();
+
+    await redisClient.set(TOURNAMENTS_KEY, JSON.stringify(data));
+  } catch (error) {
+    console.error('Error setting tournaments:', error);
+    throw error;
+  }
 }
 
-export function setMatches(data: Match[]) {
-  matches = [...data];
+export async function setMatches(data: Match[]) {
+  try {
+    if (!redisClient) await initRedis();
+
+    await redisClient.set(MATCHES_KEY, JSON.stringify(data));
+  } catch (error) {
+    console.error('Error setting matches:', error);
+    throw error;
+  }
 }
 
-export function setGames(data: Game[]) {
-  games = [...data];
+export async function setGames(data: Game[]) {
+  try {
+    if (!redisClient) await initRedis();
+
+    await redisClient.set(GAMES_KEY, JSON.stringify(data));
+  } catch (error) {
+    console.error('Error setting games:', error);
+    throw error;
+  }
 }
 
 // Initialize on module load
-loadData();
+loadData().catch(console.error);

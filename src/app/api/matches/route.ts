@@ -6,7 +6,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const tournamentId = searchParams.get('tournamentId');
-    let matches = getMatches();
+    let matches = await getMatches();
     if (tournamentId) {
       matches = matches.filter(m => m.tournamentId === tournamentId);
     }
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     if (!tournamentId || !player1Id || !player2Id || !round || !bestOf) {
       return NextResponse.json({ error: 'All fields are required' }, { status: 400 });
     }
-    const matches = getMatches();
+    const matches = await getMatches();
     const newMatch: Match = {
       id: Date.now().toString(),
       tournamentId,
@@ -36,8 +36,8 @@ export async function POST(request: NextRequest) {
       games: [],
     };
     matches.push(newMatch);
-    setMatches(matches);
-    saveData();
+    await setMatches(matches);
+    await saveData();
     return NextResponse.json(newMatch, { status: 201 });
   } catch (error) {
     console.error(error);

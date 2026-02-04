@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Game, Match } from '../../../../types/pingpong';
-import fs from 'fs';
-import path from 'path';
-
-const gamesPath = path.join(process.cwd(), 'src/data/games.json');
-const matchesPath = path.join(process.cwd(), 'src/data/matches.json');
+import { getGames, setGames, getMatches, setMatches } from '../../../../data/data';
 
 export async function PUT(
   request: NextRequest,
@@ -16,8 +12,7 @@ export async function PUT(
     const { player1Id, player2Id, score1, score2 }: { player1Id?: string; player2Id?: string; score1?: number; score2?: number } = body;
 
     // Read current games
-    const gamesData = fs.readFileSync(gamesPath, 'utf8');
-    const games: Game[] = JSON.parse(gamesData);
+    const games = await getGames();
 
     // Find the game to update
     const gameIndex = games.findIndex((game: Game) => game.id === gameId);
@@ -51,12 +46,11 @@ export async function PUT(
     };
 
     games[gameIndex] = updatedGame;
-    fs.writeFileSync(gamesPath, JSON.stringify(games, null, 2));
+    await setGames(games);
 
     // Update match if this game belongs to a match
     if (updatedGame.matchId) {
-      const matchesData = fs.readFileSync(matchesPath, 'utf8');
-      const matches: Match[] = JSON.parse(matchesData);
+      const matches = await getMatches();
       const match = matches.find(m => m.id === updatedGame.matchId);
 
       if (match) {
@@ -78,7 +72,7 @@ export async function PUT(
             match.winnerId = undefined; // No winner yet
           }
 
-          fs.writeFileSync(matchesPath, JSON.stringify(matches, null, 2));
+          await setMatches(matches);
         }
       }
     }
@@ -98,8 +92,7 @@ export async function DELETE(
     const { id: gameId } = await params;
 
     // Read current games
-    const gamesData = fs.readFileSync(gamesPath, 'utf8');
-    const games: Game[] = JSON.parse(gamesData);
+    const games = await getGames();
 
     // Find the game to delete
     const gameIndex = games.findIndex((game: Game) => game.id === gameId);
@@ -111,12 +104,11 @@ export async function DELETE(
 
     // Remove the game
     games.splice(gameIndex, 1);
-    fs.writeFileSync(gamesPath, JSON.stringify(games, null, 2));
+    await setGames(games);
 
     // Update match if this game belonged to a match
     if (gameToDelete.matchId) {
-      const matchesData = fs.readFileSync(matchesPath, 'utf8');
-      const matches: Match[] = JSON.parse(matchesData);
+      const matches = await getMatches();
       const match = matches.find(m => m.id === gameToDelete.matchId);
 
       if (match) {
@@ -136,7 +128,7 @@ export async function DELETE(
           match.winnerId = undefined; // No winner yet
         }
 
-        fs.writeFileSync(matchesPath, JSON.stringify(matches, null, 2));
+        await setMatches(matches);
       }
     }
 

@@ -11,7 +11,7 @@ export async function PUT(
     const updates = await request.json();
 
     // Read current matches
-    const matchesData = getMatches();
+    const matchesData = await getMatches();
 
     // Find and update the match
     const matchIndex = matchesData.findIndex((match: Match) => match.id === matchId);
@@ -23,7 +23,7 @@ export async function PUT(
     matchesData[matchIndex] = { ...matchesData[matchIndex], ...updates };
 
     // Write updated data back
-    setMatches(matchesData);
+    await setMatches(matchesData);
 
     return NextResponse.json(matchesData[matchIndex]);
 
@@ -41,7 +41,7 @@ export async function DELETE(
     const { id: matchId } = await params;
 
     // Read current matches
-    const matchesData = getMatches();
+    const matchesData = await getMatches();
 
     // Find the match to delete
     const matchIndex = matchesData.findIndex((match: Match) => match.id === matchId);
@@ -52,7 +52,7 @@ export async function DELETE(
     const matchToDelete = matchesData[matchIndex];
 
     // Read current games
-    const gamesData = getGames();
+    const gamesData = await getGames();
 
     // Remove all games associated with this match
     const updatedGames = gamesData.filter((game: Game) => game.matchId !== matchId);
@@ -61,8 +61,8 @@ export async function DELETE(
     matchesData.splice(matchIndex, 1);
 
     // Write updated data back
-    setMatches(matchesData);
-    setGames(updatedGames);
+    await setMatches(matchesData);
+    await setGames(updatedGames);
 
     return NextResponse.json({
       message: 'Match and associated games deleted successfully',

@@ -5,7 +5,7 @@ import { getTournaments, setTournaments, getMatches, setMatches, getGames, setGa
 
 export async function GET() {
   try {
-    const tournaments = getTournaments();
+    const tournaments = await getTournaments();
     return NextResponse.json(tournaments);
   } catch (error) {
     console.error(error);
@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     if (!name || !roundRobinRounds || !bracketRounds || !uniquePlayers || uniquePlayers.length < 2) {
       return NextResponse.json({ error: 'Invalid data' }, { status: 400 });
     }
-    const tournaments = getTournaments();
+    const tournaments = await getTournaments();
     const newTournament: Tournament = {
       id: Date.now().toString(),
       name,
@@ -32,17 +32,17 @@ export async function POST(request: NextRequest) {
       players: uniquePlayers,
     };
     tournaments.push(newTournament);
-    setTournaments(tournaments);
+    await setTournaments(tournaments);
 
     // Generate first round of round robin matches
-    const matches = getMatches();
+    const matches = await getMatches();
 
     // Create balanced pairings for first round
     const shuffledPlayers = [...uniquePlayers].sort(() => Math.random() - 0.5);
     createRoundRobinPairings(shuffledPlayers, newTournament.id, matches, 1);
 
-    setMatches(matches);
-    saveData();
+    await setMatches(matches);
+    await saveData();
 
     return NextResponse.json(newTournament, { status: 201 });
   } catch (error) {
@@ -55,16 +55,16 @@ export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
     const { id, status, action }: { id: string; status?: 'roundRobin' | 'bracket' | 'completed'; action?: 'advanceRound' } = body;
-    
-    const tournaments = getTournaments();
+
+    const tournaments = await getTournaments();
     const tournament = tournaments.find(t => t.id === id);
 
     if (!tournament) {
       return NextResponse.json({ error: 'Tournament not found' }, { status: 404 });
     }
 
-    const matches = getMatches();
-    
+    const matches = await getMatches();
+
 if (action === 'advanceRound') {
       if (tournament.status === 'roundRobin') {
         // Check if all current round matches are completed
@@ -88,32 +88,32 @@ if (action === 'advanceRound') {
           createBracketMatches(tournament, matches);
         }
 
-        setMatches(matches);
-        saveData();
+        await setMatches(matches);
+        await saveData();
       } else if (tournament.status === 'bracket') {
         // Advance bracket round
         const advanced = advanceBracketRound(tournament, matches);
         if (!advanced) {
           return NextResponse.json({ error: 'Cannot advance bracket round' }, { status: 400 });
         }
-        setMatches(matches);
-        saveData();
+        await setMatches(matches);
+        await saveData();
       }
     }
-    
+
     if (status) {
       const oldStatus = tournament.status;
       tournament.status = status;
       // If changing to bracket status or already bracket but no matches, create bracket matches
       if (status === 'bracket' && (oldStatus !== 'bracket' || !matches.some(m => m.tournamentId === tournament.id && m.round === 'bracket'))) {
         createBracketMatches(tournament, matches);
-        setMatches(matches);
-        saveData();
+        await setMatches(matches);
+        await saveData();
       }
     }
 
-    setTournaments(tournaments);
-    saveData();
+    await setTournaments(tournaments);
+    await saveData();
     return NextResponse.json(tournament);
   } catch (error) {
     console.error(error);
@@ -129,7 +129,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Tournament ID required' }, { status: 400 });
     }
 
-    const tournaments = getTournaments();
+    const tournaments = await getTournaments();
     const tournamentIndex = tournaments.findIndex(t => t.id === id);
     if (tournamentIndex === -1) {
       return NextResponse.json({ error: 'Tournament not found' }, { status: 404 });
@@ -137,17 +137,17 @@ export async function DELETE(request: NextRequest) {
 
     // Remove the tournament
     tournaments.splice(tournamentIndex, 1);
-    setTournaments(tournaments);
+    await setTournaments(tournaments);
 
     // Remove associated matches
-    const matches = getMatches();
+    const matches = await getMatches();
     const filteredMatches = matches.filter(m => m.tournamentId !== id);
-    setMatches(filteredMatches);
+    await setMatches(filteredMatches);
 
     // Remove associated games
-    const games = getGames();
+    const games = await getGames();
     const filteredGames = games.filter(g => !filteredMatches.some(m => m.id === g.matchId));
-    setGames(filteredGames);
+    await setGames(filteredGames);
 
     return NextResponse.json({ message: 'Tournament deleted successfully' });
   } catch (error) {

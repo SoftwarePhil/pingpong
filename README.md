@@ -4,6 +4,45 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
+### Prerequisites
+
+This application uses Redis for data storage. Start Redis using one of these methods:
+
+**Using npm scripts:**
+```bash
+npm run redis:start  # Start Redis
+npm run redis:stop   # Stop Redis
+```
+
+**Or using Docker Compose directly:**
+```bash
+docker compose up -d redis  # Start Redis
+docker compose down         # Stop Redis
+```
+
+#### Redis Configuration
+
+Redis connection settings are configured via environment variables in `.env.local`. Copy `.env.example` to `.env.local` and update the values:
+
+```bash
+# Local Redis (no password)
+REDIS_URL=redis://localhost:6379
+
+# Local Redis with password
+REDIS_URL=redis://:mypassword@localhost:6379
+
+# Remote Redis instance
+REDIS_URL=redis://username:password@redis.example.com:6379/0
+```
+
+**Environment Variables:**
+- `REDIS_URL`: Full Redis connection URL
+- `REDIS_PASSWORD`: Password for Docker Compose Redis instance
+
+The Docker Compose setup uses the `REDIS_PASSWORD` environment variable (defaults to `mypassword`). Update the `REDIS_URL` in `.env.local` to match your Redis setup.
+
+### Running the Development Server
+
 First, run the development server:
 
 ```bash

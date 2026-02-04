@@ -4,7 +4,7 @@ import { getGames, setGames, getMatches, setMatches, saveData } from '../../../d
 
 export async function GET() {
   try {
-    const games = getGames();
+    const games = await getGames();
     return NextResponse.json(games);
   } catch (error) {
     console.error(error);
@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Game must be won by 2 points' }, { status: 400 });
     }}
 
-    const games = getGames();
+    const games = await getGames();
     const newGame: Game = {
       id: Date.now().toString(),
       matchId,
@@ -43,11 +43,11 @@ export async function POST(request: NextRequest) {
       date: new Date().toISOString(),
     };
     games.push(newGame);
-    setGames(games);
+    await setGames(games);
 
     // Update match if matchId provided
     if (matchId) {
-      const matches = getMatches();
+      const matches = await getMatches();
       const match = matches.find(m => m.id === matchId);
       if (match) {
         match.games.push(newGame);
