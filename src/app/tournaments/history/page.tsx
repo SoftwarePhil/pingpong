@@ -118,16 +118,25 @@ export default function TournamentHistoryPage() {
                   </div>
 
                   {/* Tournament Completed */}
-                  <div className="text-center py-12">
-                    <div className="text-7xl mb-6">🏆</div>
-                    <h3 className="text-3xl font-bold text-gray-900 mb-4">Tournament Completed!</h3>
-                    <p className="text-gray-600 mb-8 text-lg">Congratulations to all participants</p>
+                  <div className="text-center py-12 relative overflow-hidden">
+                    {/* Fireworks Background */}
+                    <div className="absolute inset-0 pointer-events-none">
+                      <div className="absolute top-4 left-1/4 text-4xl animate-ping text-red-500">✨</div>
+                      <div className="absolute top-8 right-1/3 text-3xl animate-ping text-blue-500" style={{animationDelay: '0.5s'}}>🎆</div>
+                      <div className="absolute top-12 left-2/3 text-4xl animate-ping text-yellow-500" style={{animationDelay: '1s'}}>🎇</div>
+                      <div className="absolute top-16 right-1/4 text-3xl animate-ping text-purple-500" style={{animationDelay: '1.5s'}}>✨</div>
+                      <div className="absolute top-20 left-1/2 text-4xl animate-ping text-green-500" style={{animationDelay: '2s'}}>🎆</div>
+                    </div>
+
+                    <div className="text-7xl mb-6 relative z-10">🏆</div>
+                    <h3 className="text-3xl font-bold text-gray-900 mb-4 relative z-10">Tournament Completed!</h3>
+                    <p className="text-gray-600 mb-8 text-lg relative z-10">Congratulations to all participants</p>
                     {(() => {
                       const finalMatch = bracketMatches.find(m => m.bracketRound === Math.max(...bracketMatches.map(m => m.bracketRound || 0)));
                       if (finalMatch?.winnerId) {
                         return (
-                          <div className="bg-yellow-50 border-2 border-yellow-300 rounded-lg p-6 inline-block">
-                            <div className="text-2xl font-bold text-yellow-800">
+                          <div className="bg-gradient-to-r from-yellow-400 to-yellow-600 border-2 border-yellow-300 rounded-lg p-6 inline-block shadow-lg relative z-10">
+                            <div className="text-2xl font-bold text-white">
                               🥇 Champion: {getPlayerName(finalMatch.winnerId)}
                             </div>
                           </div>
