@@ -698,23 +698,6 @@ export default function ActiveTournamentsPage() {
     }
   };
 
-  const saveData = async () => {
-    try {
-      const res = await fetch('/api/save-data', {
-        method: 'POST',
-      });
-      if (res.ok) {
-        alert('Data saved to files successfully');
-      } else {
-        const error = await res.json();
-        alert(error.error || 'Failed to save data');
-      }
-    } catch (error) {
-      console.error(error);
-      alert('Failed to save data');
-    }
-  };
-
   const getPlayerStandings = (tournamentId: string, players: string[]) => {
     const playerStats: { [playerId: string]: { wins: number; losses: number; totalGames: number } } = {};
     players.forEach(playerId => {
@@ -725,13 +708,15 @@ export default function ActiveTournamentsPage() {
     const tournamentMatches = matches.filter(m => m.tournamentId === tournamentId && m.round === 'roundRobin');
     
     tournamentMatches.forEach(match => {
-      if (match.winnerId) {
+      if (match.winnerId && match.player2Id !== 'BYE') {
         playerStats[match.winnerId].wins++;
         playerStats[match.winnerId].totalGames++;
-        
+
         const loserId = match.player1Id === match.winnerId ? match.player2Id : match.player1Id;
-        playerStats[loserId].losses++;
-        playerStats[loserId].totalGames++;
+        if (loserId && playerStats[loserId]) {
+          playerStats[loserId].losses++;
+          playerStats[loserId].totalGames++;
+        }
       }
     });
     
@@ -770,16 +755,6 @@ export default function ActiveTournamentsPage() {
               + New Tournament
             </Link>
           </div>
-        </div>
-
-        {/* Save Data Button */}
-        <div className="mb-8">
-          <button
-            onClick={saveData}
-            className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-medium transition-colors border-2 border-green-700 shadow-md"
-          >
-            💾 Save Data
-          </button>
         </div>
 
         {/* Edit Tournament Form */}
