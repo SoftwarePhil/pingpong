@@ -5,9 +5,9 @@ export default function Home() {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       <div className="container mx-auto px-4 py-16">
         <div className="text-center mb-16">
-          <h1 className="text-6xl font-bold text-gray-900 mb-4">🏓</h1>
+          <h1 className="text-6xl font-bold text-gray-900 mb-4">🏓🍺</h1>
           <h1 className="text-5xl font-bold text-gray-900 mb-6">
-            Ping Pong Tracker
+            pingpong.beer
           </h1>
           <p className="text-xl text-gray-600 max-w-2xl mx-auto">
             Track games, manage players, and organize tournaments for your weekly
@@ -59,7 +59,7 @@ export default function Home() {
 
         <div className="bg-white rounded-xl shadow-lg p-8 border border-gray-200">
           <h2 className="text-3xl font-bold text-gray-900 mb-4">
-            Welcome to Ping Pong Tracker!
+            Welcome to pingpong.beer!
           </h2>
           <p className="text-gray-600 mb-6 text-lg">
             Keep track of your weekly ping pong games with our comprehensive
