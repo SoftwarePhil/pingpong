@@ -48,6 +48,44 @@ export default function TournamentHistoryPage() {
     return player ? player.name : 'Unknown';
   };
 
+  const getPlayerStandings = (tournamentId: string, players: string[]) => {
+    const playerStats: { [playerId: string]: { wins: number; losses: number; totalGames: number } } = {};
+    players.forEach(playerId => {
+      playerStats[playerId] = { wins: 0, losses: 0, totalGames: 0 };
+    });
+
+    // Get all matches for this tournament (both round robin and bracket)
+    const tournamentMatches = matches.filter(m => m.tournamentId === tournamentId);
+
+    tournamentMatches.forEach(match => {
+      if (match.winnerId && match.player2Id !== 'BYE') {
+        playerStats[match.winnerId].wins++;
+        playerStats[match.winnerId].totalGames++;
+
+        const loserId = match.player1Id === match.winnerId ? match.player2Id : match.player1Id;
+        if (loserId && playerStats[loserId]) {
+          playerStats[loserId].losses++;
+          playerStats[loserId].totalGames++;
+        }
+      }
+    });
+
+    // Convert to array and sort
+    return players
+      .map(playerId => ({
+        playerId,
+        ...playerStats[playerId]
+      }))
+      .sort((a, b) => {
+        // First by wins (descending)
+        if (a.wins !== b.wins) {
+          return b.wins - a.wins;
+        }
+        // Then by total games played (ascending)
+        return a.totalGames - b.totalGames;
+      });
+  };
+
   const getTournamentMatches = (tournamentId: string) => {
     return matches.filter(m => m.tournamentId === tournamentId);
   };
@@ -114,6 +152,43 @@ export default function TournamentHistoryPage() {
                           {getPlayerName(playerId)}
                         </span>
                       ))}
+                    </div>
+                  </div>
+
+                  {/* Final Standings */}
+                  <div className="mb-8">
+                    <h3 className="text-2xl font-semibold text-gray-900 mb-4">Final Standings</h3>
+                    <div className="bg-gray-50 rounded-lg p-6 border-2 border-gray-200">
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-gray-300">
+                              <th className="text-left py-3 px-4 font-medium text-gray-700">Rank</th>
+                              <th className="text-left py-3 px-4 font-medium text-gray-700">Player</th>
+                              <th className="text-center py-3 px-4 font-medium text-gray-700">Wins</th>
+                              <th className="text-center py-3 px-4 font-medium text-gray-700">Losses</th>
+                              <th className="text-center py-3 px-4 font-medium text-gray-700">Win %</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {getPlayerStandings(tournament.id, tournament.players).map((standing, index) => (
+                              <tr key={standing.playerId} className={`border-b border-gray-200 ${index === 0 ? 'bg-yellow-50' : index === 1 ? 'bg-gray-50' : ''}`}>
+                                <td className="py-3 px-4 font-medium text-gray-900">
+                                  {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`}
+                                </td>
+                                <td className="py-3 px-4 font-medium text-gray-900">
+                                  {getPlayerName(standing.playerId)}
+                                </td>
+                                <td className="text-center py-3 px-4">{standing.wins}</td>
+                                <td className="text-center py-3 px-4">{standing.losses}</td>
+                                <td className="text-center py-3 px-4">
+                                  {standing.totalGames > 0 ? Math.round((standing.wins / standing.totalGames) * 100) : 0}%
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   </div>
 
@@ -210,6 +285,43 @@ export default function TournamentHistoryPage() {
               </div>
 
               <div className="p-6">
+                {/* Final Standings */}
+                <div className="mb-8">
+                  <h4 className="text-lg font-semibold text-gray-900 mb-4">Final Standings</h4>
+                  <div className="bg-gray-50 rounded-lg p-6 border-2 border-gray-200">
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-gray-300">
+                            <th className="text-left py-3 px-4 font-medium text-gray-700">Rank</th>
+                            <th className="text-left py-3 px-4 font-medium text-gray-700">Player</th>
+                            <th className="text-center py-3 px-4 font-medium text-gray-700">Wins</th>
+                            <th className="text-center py-3 px-4 font-medium text-gray-700">Losses</th>
+                            <th className="text-center py-3 px-4 font-medium text-gray-700">Win %</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {getPlayerStandings(selectedTournament.id, selectedTournament.players).map((standing, index) => (
+                            <tr key={standing.playerId} className={`border-b border-gray-200 ${index === 0 ? 'bg-yellow-50' : index === 1 ? 'bg-gray-50' : ''}`}>
+                              <td className="py-3 px-4 font-medium text-gray-900">
+                                {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`}
+                              </td>
+                              <td className="py-3 px-4 font-medium text-gray-900">
+                                {getPlayerName(standing.playerId)}
+                              </td>
+                              <td className="text-center py-3 px-4">{standing.wins}</td>
+                              <td className="text-center py-3 px-4">{standing.losses}</td>
+                              <td className="text-center py-3 px-4">
+                                {standing.totalGames > 0 ? Math.round((standing.wins / standing.totalGames) * 100) : 0}%
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Tournament Matches */}
                 <div className="mb-8">
                   <h4 className="text-lg font-semibold text-gray-900 mb-4">All Matches</h4>
