@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { tournamentId, player1Id, player2Id, round, bracketRound, bestOf }: { tournamentId: string; player1Id: string; player2Id: string; round: 'roundRobin' | 'bracket'; bracketRound?: number; bestOf: number } = body;
+    const { tournamentId, player1Id, player2Id, round, bracketRound, bestOf, winnerId }: { tournamentId: string; player1Id: string; player2Id: string; round: 'roundRobin' | 'bracket'; bracketRound?: number; bestOf: number; winnerId?: string } = body;
     if (!tournamentId || !player1Id || !player2Id || !round || !bestOf) {
       return NextResponse.json({ error: 'All fields are required' }, { status: 400 });
     }
@@ -34,6 +34,7 @@ export async function POST(request: NextRequest) {
       bracketRound,
       bestOf,
       games: [],
+      ...(winnerId && { winnerId }),
     };
     matches.push(newMatch);
     await setMatches(matches);

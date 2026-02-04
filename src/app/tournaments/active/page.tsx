@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Tournament, Player, Match, Game } from '../../../types/pingpong';
 import Link from 'next/link';
+import CelebrationModal from './CelebrationModal';
 
 export default function ActiveTournamentsPage() {
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
@@ -19,6 +20,8 @@ export default function ActiveTournamentsPage() {
   const [editScore1, setEditScore1] = useState('');
   const [editScore2, setEditScore2] = useState('');
   const [editingTournament, setEditingTournament] = useState<Tournament | null>(null);
+  const [celebrationTournament, setCelebrationTournament] = useState<Tournament | null>(null);
+  const [previousTournaments, setPreviousTournaments] = useState<Tournament[]>([]);
 
   useEffect(() => {
     fetchTournaments();
@@ -30,6 +33,18 @@ export default function ActiveTournamentsPage() {
   const fetchTournaments = async () => {
     const res = await fetch('/api/tournaments');
     const data = await res.json();
+
+    // Check if any tournament just completed
+    const justCompleted = data.find((t: Tournament) =>
+      t.status === 'completed' &&
+      previousTournaments.find(pt => pt.id === t.id && pt.status !== 'completed')
+    );
+
+    if (justCompleted) {
+      setCelebrationTournament(justCompleted);
+    }
+
+    setPreviousTournaments(data);
     setTournaments(data);
   };
 
@@ -158,6 +173,12 @@ export default function ActiveTournamentsPage() {
   const getPlayerName = (id: string) => {
     const player = players.find(p => p.id === id);
     return player ? player.name : 'Unknown';
+  };
+
+  const getWinnerName = (tournament: Tournament) => {
+    const tournamentMatches = matches.filter(m => m.tournamentId === tournament.id && m.round === 'bracket');
+    const finalMatch = tournamentMatches.find(m => m.bracketRound === Math.max(...tournamentMatches.map(tm => tm.bracketRound || 0)));
+    return finalMatch?.winnerId ? getPlayerName(finalMatch.winnerId) : 'Unknown Champion';
   };
 
   const getTournamentMatches = (tournamentId: string) => {
@@ -389,7 +410,7 @@ export default function ActiveTournamentsPage() {
         </div>
       )}
 
-      {match.games.length < match.bestOf && !match.winnerId && match.player1Id !== match.player2Id && (
+      {match.games.length < match.bestOf && !match.winnerId && match.player1Id !== match.player2Id && match.player2Id !== 'BYE' && (
         <form onSubmit={(e) => {
           e.preventDefault();
           const formData = new FormData(e.target as HTMLFormElement);
@@ -1031,6 +1052,14 @@ export default function ActiveTournamentsPage() {
               Create Tournament
             </Link>
           </div>
+        )}
+
+        {celebrationTournament && (
+          <CelebrationModal
+            winner={getWinnerName(celebrationTournament)}
+            tournamentName={celebrationTournament.name}
+            onClose={() => setCelebrationTournament(null)}
+          />
         )}
       </div>
     </div>
