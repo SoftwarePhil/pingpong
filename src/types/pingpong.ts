@@ -1,6 +1,7 @@
 export interface Player {
   id: string;
   name: string;
+  tournamentIds: string[]; // Tournaments this player has participated in
 }
 
 export interface Game {
@@ -22,6 +23,7 @@ export interface Tournament {
   bracketRounds: { round: number; bestOf: number }[];
   players: string[];
   playerRanking?: string[];
+  matches?: Match[]; // Embedded matches for hybrid schema
 }
 
 export interface Match {

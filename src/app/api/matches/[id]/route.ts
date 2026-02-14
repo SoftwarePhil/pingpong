@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Match, Game } from '../../../../types/pingpong';
-import { getMatches, setMatches, getGames, setGames } from '../../../../data/data';
+import { getMatches, setMatches, getGames, setGames, getTournament, setTournament } from '../../../../data/data';
 
 export async function PUT(
   request: NextRequest,
@@ -20,12 +20,23 @@ export async function PUT(
     }
 
     // Update the match with the provided fields
-    matchesData[matchIndex] = { ...matchesData[matchIndex], ...updates };
+    const updatedMatch = { ...matchesData[matchIndex], ...updates };
+    matchesData[matchIndex] = updatedMatch;
 
-    // Write updated data back
+    // Also update the embedded match in the tournament document
+    const tournament = await getTournament(updatedMatch.tournamentId);
+    if (tournament && tournament.matches) {
+      const embeddedMatchIndex = tournament.matches.findIndex(m => m.id === matchId);
+      if (embeddedMatchIndex !== -1) {
+        tournament.matches[embeddedMatchIndex] = updatedMatch;
+        await setTournament(tournament);
+      }
+    }
+
+    // Write updated data back to global matches array
     await setMatches(matchesData);
 
-    return NextResponse.json(matchesData[matchIndex]);
+    return NextResponse.json(updatedMatch);
 
   } catch (error) {
     console.error('Error updating match:', error);
@@ -50,6 +61,13 @@ export async function DELETE(
     }
 
     const matchToDelete = matchesData[matchIndex];
+
+    // Also remove from tournament's embedded matches
+    const tournament = await getTournament(matchToDelete.tournamentId);
+    if (tournament && tournament.matches) {
+      tournament.matches = tournament.matches.filter(m => m.id !== matchId);
+      await setTournament(tournament);
+    }
 
     // Read current games
     const gamesData = await getGames();

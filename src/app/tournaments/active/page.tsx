@@ -92,91 +92,36 @@ export default function ActiveTournamentsPage() {
   };
 
   const startBracket = async (tournament: Tournament) => {
-    const tournamentMatches = getTournamentMatches(tournament.id);
-    const roundRobinMatches = tournamentMatches.filter(m => m.round === 'roundRobin');
-    if (!roundRobinMatches.every(m => m.winnerId)) return;
-
-    // Compute standings
-    const wins: { [key: string]: number } = {};
-    tournament.players.forEach(p => wins[p] = 0);
-    roundRobinMatches.forEach(m => {
-      if (m.winnerId) wins[m.winnerId]++;
-    });
-    const sortedPlayers = tournament.players.sort((a, b) => wins[b] - wins[a]);
-
-    // Generate bracket matches
-    const bracketMatches: Match[] = [];
-    const nextPowerOf2 = (n: number) => n <= 1 ? 1 : Math.pow(2, Math.ceil(Math.log2(n)));
-    const numByes = nextPowerOf2(sortedPlayers.length) - sortedPlayers.length;
-
-    // Give byes to top numByes players
-    for (let i = 0; i < numByes; i++) {
-      const byePlayer = sortedPlayers[i];
-      console.log(`Player ${byePlayer} gets a bye`);
-      
-      const byeMatch: Partial<Match> = {
-        tournamentId: tournament.id,
-        player1Id: byePlayer,
-        player2Id: 'BYE',
-        round: 'bracket',
-        bracketRound: 1,
-        bestOf: tournament.bracketRounds[0]?.bestOf || 3,
-        games: [],
-        winnerId: byePlayer, // Automatically set winner
-      };
-      
-      const byeRes = await fetch('/api/matches', {
-        method: 'POST',
+    try {
+      const res = await fetch('/api/tournaments', {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(byeMatch),
+        body: JSON.stringify({ id: tournament.id, status: 'bracket' }),
       });
-      
-      if (byeRes.ok) {
-        bracketMatches.push(await byeRes.json());
+
+      if (res.ok) {
+        await fetchTournaments();
+        await fetchMatches();
+      } else {
+        const error = await res.json();
+        alert(error.error || 'Failed to start bracket');
       }
+    } catch (error) {
+      console.error('Error starting bracket:', error);
+      alert('Error starting bracket');
     }
-
-    // Pair the remaining players
-    for (let i = numByes; i < sortedPlayers.length; i += 2) {
-      if (i + 1 < sortedPlayers.length) {
-        const newMatch: Partial<Match> = {
-          tournamentId: tournament.id,
-          player1Id: sortedPlayers[i],
-          player2Id: sortedPlayers[i + 1],
-          round: 'bracket',
-          bracketRound: 1,
-          bestOf: tournament.bracketRounds[0]?.bestOf || 3,
-          games: [],
-        };
-        const res = await fetch('/api/matches', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(newMatch),
-        });
-        if (res.ok) {
-          bracketMatches.push(await res.json());
-        }
-      }
-    }
-
-    // Update tournament status
-    await fetch('/api/tournaments', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: tournament.id, status: 'bracket' }),
-    });
-
-    fetchTournaments();
-    fetchMatches();
   };
 
   const getPlayerName = (id: string) => {
+    if (id === 'PLAY_IN_WINNER') {
+      return 'Play-in Winner';
+    }
     const player = players.find(p => p.id === id);
     return player ? player.name : 'Unknown';
   };
 
   const getWinnerName = (tournament: Tournament) => {
-    const tournamentMatches = matches.filter(m => m.tournamentId === tournament.id && m.round === 'bracket');
+    const tournamentMatches = (tournament.matches || []).filter(m => m.round === 'bracket');
     const finalMatch = tournamentMatches.find(m => m.bracketRound === Math.max(...tournamentMatches.map(tm => tm.bracketRound || 0)));
     return finalMatch?.winnerId ? getPlayerName(finalMatch.winnerId) : 'Unknown Champion';
   };
@@ -199,155 +144,59 @@ export default function ActiveTournamentsPage() {
       }),
     });
     if (res.ok) {
-      // Fetch updated match data to check for winner
-      const matchRes = await fetch(`/api/matches/${match.id}`);
-      if (matchRes.ok) {
-        const updatedMatch = await matchRes.json();
-        
-        // Determine winner based on games won
-        const player1Wins = updatedMatch.games.filter((g: Game) => g.score1 > g.score2).length;
-        const player2Wins = updatedMatch.games.filter((g: Game) => g.score2 > g.score1).length;
-        const gamesNeededToWin = Math.ceil(updatedMatch.bestOf / 2);
-        
-        let winnerId = null;
-        if (updatedMatch.player1Id === updatedMatch.player2Id) {
-          // This is a bye match - the player automatically wins
-          winnerId = updatedMatch.player1Id;
-        } else if (player1Wins >= gamesNeededToWin) {
-          winnerId = updatedMatch.player1Id;
-        } else if (player2Wins >= gamesNeededToWin) {
-          winnerId = updatedMatch.player2Id;
-        }
-        
-        // Update match with winner if determined
-        if (winnerId && !updatedMatch.winnerId) {
-          await fetch(`/api/matches/${updatedMatch.id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              winnerId: winnerId 
-            }),
-          });
-        }
-      }
-      
-      fetchMatches();
-      fetchGames();
+      // Refresh all data to update UI - backend handles winner detection now
+      await Promise.all([
+        fetchMatches(),
+        fetchGames(),
+        fetchTournaments()
+      ]);
 
       // Check if we need to advance bracket rounds
-      checkBracketAdvancement(match.tournamentId);
+      await checkBracketAdvancement(match.tournamentId);
     }
   };
 
   const checkBracketAdvancement = async (tournamentId: string) => {
-    // Fetch fresh data instead of relying on state
-    const [tournamentsRes, matchesRes] = await Promise.all([
-      fetch('/api/tournaments'),
-      fetch('/api/matches')
-    ]);
-    const freshTournaments = await tournamentsRes.json();
-    const freshMatches = await matchesRes.json();
+    // Only advance bracket rounds automatically, keep round-robin manual
+    try {
+      // Fetch latest tournament data and matches
+      const [tournamentRes, matchesRes] = await Promise.all([
+        fetch(`/api/tournaments`),
+        fetch('/api/matches')
+      ]);
+      const allTournaments = await tournamentRes.json();
+      const allMatches = await matchesRes.json();
+      const tournament = allTournaments.find((t: Tournament) => t.id === tournamentId);
 
-    const tournament = freshTournaments.find((t: Tournament) => t.id === tournamentId);
-    if (!tournament || tournament.status !== 'bracket') return;
+      if (!tournament || tournament.status !== 'bracket') return;
 
-    const tournamentMatches = freshMatches.filter((m: Match) => m.tournamentId === tournamentId && m.round === 'bracket');
-    const currentRound = Math.max(...tournamentMatches.map((m: Match) => m.bracketRound || 0));
-    const currentRoundMatches = tournamentMatches.filter((m: Match) => m.bracketRound === currentRound);
+      const bracketMatches = allMatches.filter((m: Match) => m.tournamentId === tournamentId && m.round === 'bracket');
+      if (bracketMatches.length === 0) return;
 
-    // Check if all matches in current round are complete
-    const allComplete = currentRoundMatches.every((m: Match) => m.winnerId);
+      // Find the highest round number (excluding play-in round 0)
+      const bracketRounds = bracketMatches
+        .map((m: Match) => m.bracketRound ?? 0)
+        .filter((r: number) => r > 0); // Exclude play-in round
 
-    if (allComplete) {
-      const winners = currentRoundMatches.map((m: Match) => m.winnerId).filter((id: string | undefined) => id) as string[];
+      if (bracketRounds.length === 0) return; // No main bracket rounds yet
 
-      if (winners.length <= 1) {
-        // Tournament complete - only one player left or no players
+      const currentRound = Math.max(...bracketRounds);
+      const currentRoundMatches = bracketMatches.filter((m: Match) => m.bracketRound === currentRound);
+
+      // Check if all matches in the current highest round are complete
+      const allComplete = currentRoundMatches.length > 0 && currentRoundMatches.every((m: Match) => m.winnerId);
+
+      if (allComplete) {
         await fetch('/api/tournaments', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: tournamentId, status: 'completed' }),
+          body: JSON.stringify({ id: tournamentId, action: 'advanceRound' }),
         });
-        fetchTournaments();
-        return;
+        await fetchTournaments();
+        await fetchMatches();
       }
-
-      // Create next round matches by pairing winners
-      const nextRound = currentRound + 1;
-      const nextRoundBestOf = tournament.bracketRounds.find((br: { round: number; bestOf: number }) => br.round === nextRound)?.bestOf ||
-                              tournament.bracketRounds[tournament.bracketRounds.length - 1]?.bestOf || 3;
-
-      // Handle byes: if odd number of winners, the last one gets a bye
-      const playersForNextRound = winners.length % 2 === 1
-        ? winners.slice(0, -1)  // Remove last player for bye
-        : [...winners];
-
-      if (winners.length % 2 === 1) {
-        // Last player gets a bye and automatically advances to the final
-        const byePlayer = winners[winners.length - 1];
-        console.log(`Player ${byePlayer} gets a bye to the final round`);
-
-        if (nextRound === Math.max(...tournament.bracketRounds.map((br: { round: number; bestOf: number }) => br.round))) {
-          // If this is already the final round, the bye player wins the tournament
-          await fetch('/api/tournaments', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: tournamentId, status: 'completed' }),
-          });
-          fetchTournaments();
-          return;
-        } else {
-          // Create a bye match for the next round
-          const byeMatch: Partial<Match> = {
-            tournamentId: tournamentId,
-            player1Id: byePlayer,
-            player2Id: byePlayer, // Same player for bye
-            round: 'bracket',
-            bracketRound: nextRound,
-            bestOf: 1, // Bye matches are best of 1
-            games: [],
-            winnerId: byePlayer, // Automatically set winner
-          };
-          
-          await fetch('/api/matches', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(byeMatch),
-          });
-        }
-      }
-
-      // Create next round matches by pairing remaining players
-      // Sort by seeding to maintain bracket integrity
-      if (tournament.playerRanking) {
-        playersForNextRound.sort((a, b) => {
-          const indexA = tournament.playerRanking!.indexOf(a);
-          const indexB = tournament.playerRanking!.indexOf(b);
-          return indexA - indexB;
-        });
-      }
-      for (let i = 0; i < playersForNextRound.length; i += 2) {
-        if (i + 1 < playersForNextRound.length) {
-          const newMatch: Partial<Match> = {
-            tournamentId: tournamentId,
-            player1Id: playersForNextRound[i],
-            player2Id: playersForNextRound[i + 1],
-            round: 'bracket',
-            bracketRound: nextRound,
-            bestOf: nextRoundBestOf,
-            games: [],
-          };
-
-          await fetch('/api/matches', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(newMatch),
-          });
-        }
-      }
-
-      fetchTournaments();
-      fetchMatches();
+    } catch (error) {
+      console.error('Error in checkBracketAdvancement:', error);
     }
   };
 
@@ -364,7 +213,7 @@ export default function ActiveTournamentsPage() {
     <div className="bg-white border-2 border-gray-300 rounded-lg p-4 shadow-sm min-w-[250px] max-w-[300px] w-full">
       <div className="flex justify-between items-center mb-3">
         <span className="font-semibold text-gray-800 text-sm truncate">
-          {match.round === 'bracket' ? `Round ${match.bracketRound}` : `Round Robin - Round ${match.bracketRound || 1}`}
+          {match.round === 'bracket' ? (match.bracketRound === 0 ? 'Play-in Round' : `Round ${match.bracketRound}`) : `Round Robin - Round ${match.bracketRound || 1}`}
         </span>
         <div className="flex items-center space-x-2 flex-shrink-0">
           <span className="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded whitespace-nowrap">
@@ -636,11 +485,15 @@ export default function ActiveTournamentsPage() {
   };
 
   const getCurrentRound = (tournamentId: string): number => {
-    const tournamentMatches = matches.filter(m => m.tournamentId === tournamentId && m.round === 'roundRobin');
-    if (tournamentMatches.length === 0) return 1;
-    
+    const tournament = tournaments.find(t => t.id === tournamentId);
+    if (!tournament) return 1;
+
+    const tournamentMatches = tournament.matches || [];
+    const roundRobinMatches = tournamentMatches.filter(m => m.round === 'roundRobin');
+    if (roundRobinMatches.length === 0) return 1;
+
     // Find the highest bracketRound number among round robin matches
-    const maxRound = Math.max(...tournamentMatches.map(m => m.bracketRound || 1));
+    const maxRound = Math.max(...roundRobinMatches.map(m => m.bracketRound || 1));
     return maxRound;
   };
 
@@ -657,8 +510,8 @@ export default function ActiveTournamentsPage() {
 
       if (res.ok) {
         const updatedTournament = await res.json();
-        fetchTournaments();
-        fetchMatches();
+        await fetchTournaments();
+        await fetchMatches();
         // Check if tournament is now completed
         if (updatedTournament.status === 'completed') {
           alert('Tournament completed!');
@@ -719,14 +572,14 @@ export default function ActiveTournamentsPage() {
     }
   };
 
-  const getPlayerStandings = (tournamentId: string, players: string[]) => {
+  const getPlayerStandings = (tournament: Tournament, players: string[]) => {
     const playerStats: { [playerId: string]: { wins: number; losses: number; totalGames: number } } = {};
     players.forEach(playerId => {
       playerStats[playerId] = { wins: 0, losses: 0, totalGames: 0 };
     });
-    
-    // Get all round robin matches for this tournament
-    const tournamentMatches = matches.filter(m => m.tournamentId === tournamentId && m.round === 'roundRobin');
+
+    // Get all round robin matches for this tournament from embedded matches
+    const tournamentMatches = (tournament.matches || []).filter(m => m.round === 'roundRobin');
     
     tournamentMatches.forEach(match => {
       if (match.winnerId && match.player2Id !== 'BYE') {
@@ -835,9 +688,9 @@ export default function ActiveTournamentsPage() {
         {/* Tournaments List */}
         <div className="space-y-8">
           {activeTournaments.map((tournament) => {
-            const tournamentMatches = getTournamentMatches(tournament.id);
+            const tournamentMatches = tournament.matches || [];
             const currentRound = getCurrentRound(tournament.id);
-            const roundRobinMatches = tournamentMatches.filter(m => 
+            const roundRobinMatches = tournamentMatches.filter(m =>
               m.round === 'roundRobin' && (m.bracketRound || 1) === currentRound
             );
             const bracketMatches = tournamentMatches.filter(m => m.round === 'bracket');
@@ -905,7 +758,7 @@ export default function ActiveTournamentsPage() {
                               </tr>
                             </thead>
                             <tbody>
-                              {getPlayerStandings(tournament.id, tournament.players).map((standing, index) => (
+                              {getPlayerStandings(tournament, tournament.players).map((standing, index) => (
                                 <tr key={standing.playerId} className={`border-b border-gray-200 ${index < 2 ? 'bg-yellow-50' : ''}`}>
                                   <td className="py-2 px-3 font-medium text-gray-900">
                                     {index + 1}. {getPlayerName(standing.playerId)}
@@ -958,17 +811,17 @@ export default function ActiveTournamentsPage() {
                         <div className="flex items-start justify-center min-w-max">
                           {/* Get all bracket rounds */}
                           {(() => {
-                            const uniqueRounds = [...new Set(bracketMatches.map(m => m.bracketRound).filter(r => r !== undefined))].sort((a, b) => a - b);
+                            const uniqueRounds = [...new Set(bracketMatches.map(m => m.bracketRound).filter(r => r !== undefined && r !== null))].sort((a, b) => a - b);
                             
                             return uniqueRounds.map((roundNum) => {
                               const roundMatches = bracketMatches.filter(m => m.bracketRound === roundNum);
-                              const isFinalRound = roundNum === Math.max(...bracketMatches.map(m => m.bracketRound || 0));
+                              const isFinalRound = tournament.status === 'completed' && roundNum === Math.max(...bracketMatches.map(m => m.bracketRound || 0));
                               const isCompleted = roundMatches.every(m => m.winnerId);
 
                               return (
                                 <div key={roundNum} className="flex flex-col items-center mx-6">
                                   <h4 className={`text-center font-bold mb-6 text-xl ${isFinalRound ? 'text-yellow-600' : 'text-gray-800'}`}>
-                                    {isFinalRound ? '🏆 Final' : `Round ${roundNum}`}
+                                    {isFinalRound ? '🏆 Final' : roundNum === 0 ? 'Play-in' : `Round ${roundNum}`}
                                     {isCompleted && <span className="ml-3 text-green-600 text-lg">✓</span>}
                                   </h4>
 

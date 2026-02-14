@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Match } from '../../../types/pingpong';
-import { getMatches, setMatches, saveData } from '../../../data/data';
+import { getMatches, setMatches, saveData, getTournament, setTournament } from '../../../data/data';
 
 export async function GET(request: NextRequest) {
   try {
@@ -37,6 +37,15 @@ export async function POST(request: NextRequest) {
       ...(winnerId && { winnerId }),
     };
     matches.push(newMatch);
+
+    // Also add to tournament's embedded matches
+    const tournament = await getTournament(tournamentId);
+    if (tournament) {
+      if (!tournament.matches) tournament.matches = [];
+      tournament.matches.push(newMatch);
+      await setTournament(tournament);
+    }
+
     await setMatches(matches);
     await saveData();
     return NextResponse.json(newMatch, { status: 201 });

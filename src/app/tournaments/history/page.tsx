@@ -48,14 +48,14 @@ export default function TournamentHistoryPage() {
     return player ? player.name : 'Unknown';
   };
 
-  const getPlayerStandings = (tournamentId: string, players: string[]) => {
+  const getPlayerStandings = (tournament: Tournament, players: string[]) => {
     const playerStats: { [playerId: string]: { wins: number; losses: number; totalGames: number } } = {};
     players.forEach(playerId => {
       playerStats[playerId] = { wins: 0, losses: 0, totalGames: 0 };
     });
 
-    // Get all matches for this tournament (both round robin and bracket)
-    const tournamentMatches = matches.filter(m => m.tournamentId === tournamentId);
+    // Get all matches for this tournament from embedded matches
+    const tournamentMatches = tournament.matches || [];
 
     tournamentMatches.forEach(match => {
       if (match.winnerId && match.player2Id !== 'BYE') {
@@ -114,7 +114,7 @@ export default function TournamentHistoryPage() {
         {/* Tournaments List */}
         <div className="space-y-8">
           {completedTournaments.map((tournament) => {
-            const tournamentMatches = getTournamentMatches(tournament.id);
+            const tournamentMatches = tournament.matches || [];
             const bracketMatches = tournamentMatches.filter(m => m.round === 'bracket');
             
             return (
@@ -171,7 +171,7 @@ export default function TournamentHistoryPage() {
                             </tr>
                           </thead>
                           <tbody>
-                            {getPlayerStandings(tournament.id, tournament.players).map((standing, index) => (
+                            {getPlayerStandings(tournament, tournament.players).map((standing, index) => (
                               <tr key={standing.playerId} className={`border-b border-gray-200 ${index === 0 ? 'bg-yellow-50' : index === 1 ? 'bg-gray-50' : ''}`}>
                                 <td className="py-3 px-4 font-medium text-gray-900">
                                   {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`}
@@ -301,7 +301,7 @@ export default function TournamentHistoryPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {getPlayerStandings(selectedTournament.id, selectedTournament.players).map((standing, index) => (
+                          {getPlayerStandings(selectedTournament, selectedTournament.players).map((standing, index) => (
                             <tr key={standing.playerId} className={`border-b border-gray-200 ${index === 0 ? 'bg-yellow-50' : index === 1 ? 'bg-gray-50' : ''}`}>
                               <td className="py-3 px-4 font-medium text-gray-900">
                                 {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`}
@@ -326,8 +326,8 @@ export default function TournamentHistoryPage() {
                 <div className="mb-8">
                   <h4 className="text-lg font-semibold text-gray-900 mb-4">All Matches</h4>
                   {(() => {
-                    const tournamentMatches = getTournamentMatches(selectedTournament.id);
-                    
+                    const tournamentMatches = selectedTournament.matches || [];
+
                     if (tournamentMatches.length === 0) {
                       return <p className="text-gray-600 text-center py-4">No matches yet</p>;
                     }
@@ -377,8 +377,9 @@ export default function TournamentHistoryPage() {
                 <div className="mb-8">
                   <h4 className="text-lg font-semibold text-gray-900 mb-4">All Games Played</h4>
                   {(() => {
-                    const tournamentGames = games.filter(g => 
-                      getTournamentMatches(selectedTournament.id).some(m => m.id === g.matchId)
+                    const tournamentMatchIds = (selectedTournament.matches || []).map(m => m.id);
+                    const tournamentGames = games.filter(g =>
+                      tournamentMatchIds.includes(g.matchId || '')
                     );
                     
                     if (tournamentGames.length === 0) {
@@ -433,13 +434,16 @@ export default function TournamentHistoryPage() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div className="bg-gray-50 p-4 rounded-lg text-center">
                     <div className="text-2xl font-bold text-gray-900">
-                      {getTournamentMatches(selectedTournament.id).filter(m => m.winnerId).length}
+                      {(selectedTournament.matches || []).filter(m => m.winnerId).length}
                     </div>
                     <div className="text-gray-600 font-medium">Matches Completed</div>
                   </div>
                   <div className="bg-gray-50 p-4 rounded-lg text-center">
                     <div className="text-2xl font-bold text-gray-900">
-                      {games.filter(g => getTournamentMatches(selectedTournament.id).some(m => m.id === g.matchId)).length}
+                      {(() => {
+                        const tournamentMatchIds = (selectedTournament.matches || []).map(m => m.id);
+                        return games.filter(g => tournamentMatchIds.includes(g.matchId || '')).length;
+                      })()}
                     </div>
                     <div className="text-gray-600 font-medium">Games Played</div>
                   </div>

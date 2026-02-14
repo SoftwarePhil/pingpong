@@ -23,6 +23,7 @@ export async function POST(request: NextRequest) {
     const newPlayer: Player = {
       id: Date.now().toString(),
       name,
+      tournamentIds: [],
     };
     players.push(newPlayer);
     await setPlayers(players);

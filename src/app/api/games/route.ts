@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Game, Match } from '../../../types/pingpong';
-import { getGames, setGames, getMatches, setMatches, saveData } from '../../../data/data';
+import { getGames, setGames, getMatches, setMatches, saveData, getTournament, setTournament } from '../../../data/data';
 
 export async function GET() {
   try {
@@ -60,8 +60,65 @@ export async function POST(request: NextRequest) {
         } else if (p2Wins >= requiredWins) {
           match.winnerId = match.player2Id;
         }
-        setMatches(matches);
-        saveData();
+
+        // Update global matches array
+        await setMatches(matches);
+
+        // Also update embedded match in tournament document
+        const tournament = await getTournament(match.tournamentId);
+        if (tournament && tournament.matches) {
+          const embeddedMatchIndex = tournament.matches.findIndex(m => m.id === matchId);
+          if (embeddedMatchIndex !== -1) {
+            tournament.matches[embeddedMatchIndex] = match;
+            await setTournament(tournament);
+          }
+        }
+
+        // Handle play-in match completion
+        if (match.winnerId && match.bracketRound === 0) {
+          // This was a play-in match, create the main bracket matches now
+          const tournamentDoc = await getTournament(match.tournamentId);
+          const allMatches = await getMatches();
+
+          if (tournamentDoc && tournamentDoc.players.length % 2 === 1) {
+            // For odd number of players, create main bracket with play-in winner
+            const rankedPlayers = tournamentDoc.playerRanking || tournamentDoc.players;
+            const mainBracketPlayers = [
+              rankedPlayers[0], // 1st place
+              rankedPlayers[1], // 2nd place
+              rankedPlayers[2], // 3rd place
+              match.winnerId!  // Play-in winner
+            ];
+
+            const bracketRound = tournamentDoc.bracketRounds[0];
+            const newMatches: Match[] = [];
+
+            // Create round 1 matches for main bracket
+            for (let i = 0; i < mainBracketPlayers.length; i += 2) {
+              const newMatch: Match = {
+                id: Date.now().toString() + Math.random(),
+                tournamentId: tournamentDoc.id,
+                player1Id: mainBracketPlayers[i],
+                player2Id: mainBracketPlayers[i + 1],
+                round: 'bracket',
+                bracketRound: bracketRound.round,
+                bestOf: bracketRound.bestOf,
+                games: [],
+              };
+              allMatches.push(newMatch);
+              newMatches.push(newMatch);
+            }
+
+            // Add to tournament embedded matches
+            if (!tournamentDoc.matches) tournamentDoc.matches = [];
+            tournamentDoc.matches.push(...newMatches);
+
+            await setMatches(allMatches);
+            await setTournament(tournamentDoc);
+          }
+        }
+
+        await saveData();
       }
     }
 
