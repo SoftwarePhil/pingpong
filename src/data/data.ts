@@ -4,11 +4,22 @@ import { Player, Tournament, Match, Game } from '../types/pingpong';
 // Redis client
 let redisClient: RedisClientType;
 
+// Environment prefix for Redis keys — prevents test/dev data from leaking into production
+if (!process.env.NODE_ENV) {
+  console.warn('NODE_ENV is not set; Redis keys will use the "development" prefix. Set NODE_ENV explicitly to ensure correct data isolation.');
+}
+const ENV_PREFIX = process.env.NODE_ENV || 'development';
+
 // Redis keys
-const PLAYERS_KEY = 'pingpong:players';
-const ACTIVE_TOURNAMENTS_KEY = 'pingpong:active_tournaments';
-const COMPLETED_TOURNAMENTS_KEY = 'pingpong:completed_tournaments';
-const MATCH_INDEX_KEY = 'pingpong:match_index'; // Hash: matchId → tournamentId
+const PLAYERS_KEY = `${ENV_PREFIX}:pingpong:players`;
+const ACTIVE_TOURNAMENTS_KEY = `${ENV_PREFIX}:pingpong:active_tournaments`;
+const COMPLETED_TOURNAMENTS_KEY = `${ENV_PREFIX}:pingpong:completed_tournaments`;
+const MATCH_INDEX_KEY = `${ENV_PREFIX}:pingpong:match_index`; // Hash: matchId → tournamentId
+
+// Returns the Redis key for a given tournament ID (environment-scoped)
+function tournamentKey(id: string): string {
+  return `${ENV_PREFIX}:pingpong:tournament:${id}`;
+}
 
 // Initialize Redis client
 async function initRedis() {
@@ -77,7 +88,7 @@ export async function saveData() {
 export async function getTournament(id: string): Promise<Tournament | null> {
   try {
     if (!redisClient) await initRedis();
-    const key = `pingpong:tournament:${id}`;
+    const key = tournamentKey(id);
     const data = await redisClient.get(key);
     return data ? JSON.parse(data) : null;
   } catch (error) {
@@ -89,7 +100,7 @@ export async function getTournament(id: string): Promise<Tournament | null> {
 export async function setTournament(tournament: Tournament): Promise<void> {
   try {
     if (!redisClient) await initRedis();
-    const key = `pingpong:tournament:${tournament.id}`;
+    const key = tournamentKey(tournament.id);
     await redisClient.set(key, JSON.stringify(tournament));
 
     // Update active/completed indexes
@@ -164,7 +175,7 @@ export async function deleteTournament(id: string): Promise<void> {
       });
       await setPlayers(updatedPlayers);
     }
-    await redisClient.del(`pingpong:tournament:${id}`);
+    await redisClient.del(tournamentKey(id));
   } catch (error) {
     console.error('Error deleting tournament:', error);
     throw error;
