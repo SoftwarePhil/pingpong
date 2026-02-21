@@ -505,7 +505,7 @@ export default function PlayersPage() {
                               <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                               <XAxis dataKey="game" tick={{ fontSize: 11 }} label={{ value: 'Game #', position: 'insideBottomRight', offset: -5, fontSize: 11 }} />
                               <YAxis domain={[0, 100]} tickFormatter={v => `${v}%`} tick={{ fontSize: 11 }} />
-                              <Tooltip formatter={(v: number) => [`${v}%`, 'Win Rate']} labelFormatter={l => `Game ${l}`} />
+                              <Tooltip formatter={(v) => [`${v ?? 0}%`, 'Win Rate']} labelFormatter={l => `Game ${l}`} />
                               <Line
                                 type="monotone"
                                 dataKey="winRate"
