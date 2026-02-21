@@ -12,6 +12,7 @@
     "start": "next start",
     "build-run": "npm run build && npm start",
     "lint": "eslint",
+    "test": "jest",
     "redis:start": "docker compose up -d redis",
     "redis:stop": "docker compose down"
   },
@@ -25,12 +26,16 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
+    "@types/jest": "^29.5.14",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "15.5.2",
+    "jest": "^29.7.0",
     "tailwindcss": "^4",
+    "ts-jest": "^29.4.6",
+    "ts-node": "^10.9.2",
     "typescript": "^5"
   }
 }
