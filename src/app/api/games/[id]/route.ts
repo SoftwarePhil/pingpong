@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Game, Match } from '../../../../types/pingpong';
-import { getGames, setGames, getMatches, setMatches } from '../../../../data/data';
+import { Game } from '../../../../types/pingpong';
+import { getAllGames, updateGameInMatch, removeGameFromMatch } from '../../../../data/data';
 
 export async function PUT(
   request: NextRequest,
@@ -10,17 +10,6 @@ export async function PUT(
     const { id: gameId } = await params;
     const body = await request.json();
     const { player1Id, player2Id, score1, score2 }: { player1Id?: string; player2Id?: string; score1?: number; score2?: number } = body;
-
-    // Read current games
-    const games = await getGames();
-
-    // Find the game to update
-    const gameIndex = games.findIndex((game: Game) => game.id === gameId);
-    if (gameIndex === -1) {
-      return NextResponse.json({ error: 'Game not found' }, { status: 404 });
-    }
-
-    const gameToUpdate = games[gameIndex];
 
     // Validate ping pong scoring rules if scores are being updated
     //DO NOT CHANGE THIS BLOCK OF CODE
@@ -36,44 +25,25 @@ export async function PUT(
       }
     }
 
-    // Update the game
+    // Find the current game (needed to preserve matchId for tournament lookup)
+    const allGames = await getAllGames();
+    const currentGame = allGames.find((g: Game) => g.id === gameId);
+    if (!currentGame) {
+      return NextResponse.json({ error: 'Game not found' }, { status: 404 });
+    }
+
     const updatedGame: Game = {
-      ...gameToUpdate,
+      ...currentGame,
       ...(player1Id !== undefined && { player1Id }),
       ...(player2Id !== undefined && { player2Id }),
       ...(score1 !== undefined && { score1 }),
       ...(score2 !== undefined && { score2 }),
     };
 
-    games[gameIndex] = updatedGame;
-    await setGames(games);
-
-    // Update match if this game belongs to a match
     if (updatedGame.matchId) {
-      const matches = await getMatches();
-      const match = matches.find(m => m.id === updatedGame.matchId);
-
-      if (match) {
-        // Update the game in the match's games array
-        const gameInMatchIndex = match.games.findIndex((g: Game) => g.id === gameId);
-        if (gameInMatchIndex !== -1) {
-          match.games[gameInMatchIndex] = updatedGame;
-
-          // Recalculate winner based on updated games
-          const p1Wins = match.games.filter((g: Game) => g.score1 > g.score2).length;
-          const p2Wins = match.games.filter((g: Game) => g.score2 > g.score1).length;
-          const requiredWins = Math.ceil(match.bestOf / 2);
-
-          if (p1Wins >= requiredWins) {
-            match.winnerId = match.player1Id;
-          } else if (p2Wins >= requiredWins) {
-            match.winnerId = match.player2Id;
-          } else {
-            match.winnerId = undefined; // No winner yet
-          }
-
-          await setMatches(matches);
-        }
+      const result = await updateGameInMatch(updatedGame);
+      if (!result) {
+        return NextResponse.json({ error: 'Match not found for this game' }, { status: 404 });
       }
     }
 
@@ -91,50 +61,25 @@ export async function DELETE(
   try {
     const { id: gameId } = await params;
 
-    // Read current games
-    const games = await getGames();
-
-    // Find the game to delete
-    const gameIndex = games.findIndex((game: Game) => game.id === gameId);
-    if (gameIndex === -1) {
+    // Find the game to get its matchId for the tournament lookup
+    const allGames = await getAllGames();
+    const gameToDelete = allGames.find((g: Game) => g.id === gameId);
+    if (!gameToDelete) {
       return NextResponse.json({ error: 'Game not found' }, { status: 404 });
     }
 
-    const gameToDelete = games[gameIndex];
+    if (!gameToDelete.matchId) {
+      return NextResponse.json({ error: 'Game has no associated match' }, { status: 400 });
+    }
 
-    // Remove the game
-    games.splice(gameIndex, 1);
-    await setGames(games);
-
-    // Update match if this game belonged to a match
-    if (gameToDelete.matchId) {
-      const matches = await getMatches();
-      const match = matches.find(m => m.id === gameToDelete.matchId);
-
-      if (match) {
-        // Remove the game from the match's games array
-        match.games = match.games.filter((g: Game) => g.id !== gameId);
-
-        // Recalculate winner based on remaining games
-        const p1Wins = match.games.filter((g: Game) => g.score1 > g.score2).length;
-        const p2Wins = match.games.filter((g: Game) => g.score2 > g.score1).length;
-        const requiredWins = Math.ceil(match.bestOf / 2);
-
-        if (p1Wins >= requiredWins) {
-          match.winnerId = match.player1Id;
-        } else if (p2Wins >= requiredWins) {
-          match.winnerId = match.player2Id;
-        } else {
-          match.winnerId = undefined; // No winner yet
-        }
-
-        await setMatches(matches);
-      }
+    const result = await removeGameFromMatch(gameId, gameToDelete.matchId);
+    if (!result) {
+      return NextResponse.json({ error: 'Failed to remove game from match' }, { status: 500 });
     }
 
     return NextResponse.json({
       message: 'Game deleted successfully',
-      deletedGame: gameToDelete
+      deletedGame: result.game,
     });
   } catch (error) {
     console.error('Error deleting game:', error);

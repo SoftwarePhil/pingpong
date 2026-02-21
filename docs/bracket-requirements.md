@@ -74,5 +74,4 @@
   - Round 1: 1 bye + 3 matches
   - Round 2: 2 matches (4 winners)
   - Round 3: 1 final match
-  - Winner: Single player</content>
-</xai:function_call<parameter name="filePath">/Users/phil/code/pingpong/bracket-requirements.md
+  - Winner: Single player

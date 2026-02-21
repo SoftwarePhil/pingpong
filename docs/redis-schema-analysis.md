@@ -1,103 +1,46 @@
-# Redis Schema Analysis & Alternatives
+# Redis Schema
 
-## Current Implementation Analysis
+## Implemented Schema
 
-### Current Schema
-- **4 separate keys**: `pingpong:players`, `pingpong:tournaments`, `pingpong:matches`, `pingpong:games`
-- **Storage**: Each key contains a JSON array of all items
-- **Operations**: Load entire arrays → modify → save entire arrays
+### Keys
 
-### Problems Identified
-1. **Performance**: Every operation loads/saves entire datasets
-2. **Scalability**: O(n) operations on growing datasets
-3. **Atomicity**: Related updates across multiple keys aren't transactional
-4. **Memory**: Unnecessary data loading when only subsets needed
-5. **Relationships**: No stored relationships, all computed at runtime
+| Key | Type | Contents |
+|-----|------|----------|
+| `pingpong:players` | String (JSON) | Array of all `Player` objects |
+| `pingpong:tournament:{id}` | String (JSON) | Full `Tournament` document including embedded matches and games |
+| `pingpong:active_tournaments` | Sorted Set | Tournament IDs scored by `startDate` timestamp |
+| `pingpong:completed_tournaments` | Sorted Set | Tournament IDs scored by `startDate` timestamp |
+| `pingpong:match_index` | Hash | `{ matchId → tournamentId }` for O(1) match lookups |
 
-## Alternative Schema Proposals
+### Why tournament documents embed matches and games
 
-### Option 1: Document-Based Schema (Recommended)
-Store complete tournament documents with embedded relationships:
+The access pattern is always **tournament → matches → games**. Embedding means:
 
-```
-pingpong:tournament:{id} → Tournament document with embedded matches/games
-pingpong:players → Player array (global, rarely changes)
-pingpong:active_tournaments → Set of active tournament IDs
-pingpong:completed_tournaments → Sorted set by completion date
-```
+- A single `GET pingpong:tournament:{id}` returns everything needed to render a tournament page
+- All round-advancement and game-recording operations are a single atomic write
+- No orphaned matches or games can exist
 
-**Pros:**
-- Atomic tournament operations
-- Reduced network round trips
-- Better data locality
-- Easier querying of tournament data
+### Why the match index exists
 
-**Cons:**
-- Data duplication (players in tournaments)
-- More complex updates for shared data
+Without it, looking up which tournament owns a given match requires scanning every tournament document — O(n). The `pingpong:match_index` hash maps `matchId → tournamentId` directly, making the lookup O(1). It is rebuilt automatically from tournament documents on server startup (`migrateMatchIndex`).
 
-### Option 2: Normalized Schema with Indexes
-Use Redis hashes and sets for better indexing:
+### Player records
 
-```
-pingpong:players:{id} → Player hash
-pingpong:tournaments:{id} → Tournament hash
-pingpong:matches:{id} → Match hash
-pingpong:games:{id} → Game hash
+Players are stored as a flat JSON array under `pingpong:players`. Each player object carries a `tournamentIds` list that is updated via `syncTournamentPlayers()`, which is called **only** when a tournament's player roster changes (creation or player add/remove) — not on every game write.
 
-# Indexes
-pingpong:tournament_matches:{tournamentId} → Set of match IDs
-pingpong:match_games:{matchId} → Set of game IDs
-pingpong:player_tournaments:{playerId} → Set of tournament IDs
-pingpong:active_tournaments → Set of tournament IDs
-```
+## What was removed
 
-**Pros:**
-- Minimal data duplication
-- Fast lookups by ID
-- Efficient filtering/indexing
-- Scalable for large datasets
+The following keys existed in an earlier schema and have been removed:
 
-**Cons:**
-- More complex queries require multiple round trips
-- Index maintenance overhead
+| Old Key | Why removed |
+|---------|-------------|
+| `pingpong:matches` | Duplicate of `tournament.matches[]`; caused sync drift |
+| `pingpong:games` | Duplicate of `tournament.matches[].games[]`; caused sync drift |
+| `pingpong:tournaments` | Legacy fallback array; superseded by per-document keys |
 
-### Option 3: Hybrid Schema (Best of Both)
-Combine document and indexed approaches:
+## Stats
 
-```
-# Tournament documents (with embedded data)
-pingpong:tournament:{id} → Full tournament with matches/games
-
-# Global entities
-pingpong:players:{id} → Player hash
-pingpong:players → Set of all player IDs
-
-# Indexes for queries
-pingpong:active_tournaments → Sorted set by start date
-pingpong:completed_tournaments → Sorted set by completion date
-pingpong:player_tournaments:{playerId} → Set of tournament IDs
-```
-
-**Pros:**
-- Fast tournament-centric operations
-- Efficient global queries
-- Balanced complexity
-- Good for current access patterns
-
-**Cons:**
-- Some data duplication
-- More complex schema management
-
-## Recommendation: Hybrid Schema
-
-For your pingpong application, I recommend **Option 3 (Hybrid Schema)** because:
-
-1. **Tournament-Centric Access**: Most operations are tournament-focused
-2. **Current Scale**: Small dataset, tournament operations dominate
-3. **Query Patterns**: Need both individual tournament details and filtered lists
-4. **Performance**: Balances read/write performance for your use case
-
+Player stats are computed server-side by `/api/stats`, which reads all tournament documents and aggregates game results. No denormalized stats counters are stored in Redis.
 ### Migration Strategy
 1. Keep existing API contracts
 2. Implement new schema alongside old

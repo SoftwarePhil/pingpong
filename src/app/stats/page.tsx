@@ -23,54 +23,8 @@ export default function StatsPage() {
   useEffect(() => {
     fetchPlayers();
     fetchGames();
+    fetchStats();
   }, []);
-
-  useEffect(() => {
-    if (players.length && games.length) {
-      const playerStats: { [key: string]: PlayerStats } = {};
-      players.forEach(p => {
-        playerStats[p.id] = { 
-          id: p.id, 
-          name: p.name, 
-          gamesPlayed: 0, 
-          wins: 0, 
-          losses: 0,
-          winRate: 0,
-          totalPoints: 0,
-          avgPointsPerGame: 0
-        };
-      });
-
-      // Calculate stats from all games (both standalone and tournament)
-      games.forEach(game => {
-        const p1 = playerStats[game.player1Id];
-        const p2 = playerStats[game.player2Id];
-        
-        if (p1 && p2) {
-          p1.gamesPlayed++;
-          p2.gamesPlayed++;
-          p1.totalPoints += game.score1;
-          p2.totalPoints += game.score2;
-
-          if (game.score1 > game.score2) {
-            p1.wins++;
-            p2.losses++;
-          } else if (game.score2 > game.score1) {
-            p2.wins++;
-            p1.losses++;
-          }
-        }
-      });
-
-      // Calculate derived stats
-      Object.values(playerStats).forEach(stat => {
-        stat.winRate = stat.gamesPlayed > 0 ? Math.round((stat.wins / stat.gamesPlayed) * 100) : 0;
-        stat.avgPointsPerGame = stat.gamesPlayed > 0 ? Math.round(stat.totalPoints / stat.gamesPlayed) : 0;
-      });
-
-      setStats(Object.values(playerStats).sort((a, b) => b.winRate - a.winRate));
-    }
-  }, [players, games]);
 
   const fetchPlayers = async () => {
     const res = await fetch('/api/players');
@@ -82,6 +36,12 @@ export default function StatsPage() {
     const res = await fetch('/api/games');
     const data = await res.json();
     setGames(data);
+  };
+
+  const fetchStats = async () => {
+    const res = await fetch('/api/stats');
+    const data = await res.json();
+    if (data.stats) setStats(data.stats);
   };
 
   const getRankEmoji = (index: number) => {
