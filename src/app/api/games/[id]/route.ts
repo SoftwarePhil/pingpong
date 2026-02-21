@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Game } from '../../../../types/pingpong';
 import { getAllGames, updateGameInMatch, removeGameFromMatch } from '../../../../data/data';
+import { validateScore } from '../../../../lib/scoring';
 
 export async function PUT(
   request: NextRequest,
@@ -14,14 +15,9 @@ export async function PUT(
     // Validate ping pong scoring rules if scores are being updated
     //DO NOT CHANGE THIS BLOCK OF CODE
     if (score1 !== undefined && score2 !== undefined) {
-      const maxScore = Math.max(score1, score2);
-      const minScore = Math.min(score1, score2);
-      const scoreDifference = maxScore - minScore;
-      if (maxScore < 11) {
-        return NextResponse.json({ error: 'Game must reach 11 points to be complete' }, { status: 400 });
-      }
-      if (maxScore > 11 && scoreDifference !== 2) {
-        return NextResponse.json({ error: 'Game must be won by 2 points' }, { status: 400 });
+      const scoreError = validateScore(score1, score2);
+      if (scoreError) {
+        return NextResponse.json({ error: scoreError }, { status: 400 });
       }
     }
 

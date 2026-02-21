@@ -1,0 +1,290 @@
+import { Tournament, Match } from '../types/pingpong';
+
+// Helper function to create a single round of round robin pairings
+export function createRoundRobinPairings(players: string[], tournamentId: string, bracketRound: number = 1): Match[] {
+  const newMatches: Match[] = [];
+  const shuffled = [...players];
+
+  // If odd number of players, the last one gets a bye
+  let byePlayer: string | null = null;
+  if (shuffled.length % 2 === 1) {
+    byePlayer = shuffled.pop()!;
+  }
+
+  // Pair the remaining players
+  for (let i = 0; i < shuffled.length; i += 2) {
+    const newMatch: Match = {
+      id: Date.now().toString() + Math.random(),
+      tournamentId,
+      player1Id: shuffled[i],
+      player2Id: shuffled[i + 1],
+      round: 'roundRobin',
+      bracketRound: bracketRound,
+      bestOf: 1,
+      games: [],
+    };
+    newMatches.push(newMatch);
+  }
+
+  // Create bye match if any
+  if (byePlayer) {
+    const byeMatch: Match = {
+      id: Date.now().toString() + Math.random(),
+      tournamentId,
+      player1Id: byePlayer,
+      player2Id: 'BYE',
+      round: 'roundRobin',
+      bracketRound: bracketRound,
+      bestOf: 1,
+      games: [],
+      winnerId: byePlayer, // Automatic win
+    };
+    newMatches.push(byeMatch);
+  }
+
+  return newMatches;
+}
+
+// Function to advance bracket round
+export function advanceBracketRound(tournament: Tournament): Match[] {
+  const newMatches: Match[] = [];
+
+  // Exclude play-in matches (bracketRound === 0) — they are handled separately
+  // when their game is recorded. Including them here would treat the play-in winner
+  // as an extra Round 1 winner, causing a phantom bye in Round 2.
+  const bracketMatches = (tournament.matches ?? []).filter(
+    m => m.round === 'bracket' && (m.bracketRound ?? 0) > 0
+  );
+  if (bracketMatches.length === 0) {
+    return []; // No bracket matches exist
+  }
+
+  const currentRound = Math.max(...bracketMatches.map(m => m.bracketRound ?? 1));
+  const currentRoundMatches = bracketMatches.filter(m => (m.bracketRound ?? 1) === currentRound);
+
+  // Check if all current round matches are completed
+  const incompleteMatches = currentRoundMatches.filter(m => !m.winnerId);
+  if (incompleteMatches.length > 0) {
+    return []; // Current round not complete
+  }
+
+  // Get winners
+  const winners = currentRoundMatches.map(m => m.winnerId).filter(id => id) as string[];
+
+  if (winners.length < 2) {
+    // Tournament completed
+    tournament.status = 'completed';
+    return [];
+  }
+
+  // Find next bracket round config
+  const nextBracketRoundConfig = tournament.bracketRounds.find(br => br.round === currentRound + 1);
+  let bestOf = 1; // default
+  if (nextBracketRoundConfig) {
+    bestOf = nextBracketRoundConfig.bestOf;
+  } else {
+    // Use the bestOf from the last configured round
+    const lastConfig = tournament.bracketRounds[tournament.bracketRounds.length - 1];
+    if (lastConfig) {
+      bestOf = lastConfig.bestOf;
+    }
+  }
+
+  // Sort winners by seeding to maintain bracket integrity
+  if (tournament.playerRanking) {
+    winners.sort((a, b) => {
+      const indexA = tournament.playerRanking!.indexOf(a);
+      const indexB = tournament.playerRanking!.indexOf(b);
+      return indexA - indexB;
+    });
+  }
+
+  // Ensure bye players don't play each other in the next round
+  const byePlayers = (tournament.matches ?? [])
+    .filter(m => m.bracketRound === 1 && m.player2Id === 'BYE')
+    .map(m => m.player1Id);
+
+  if (winners.length >= 3 && byePlayers.includes(winners[0]) && byePlayers.includes(winners[1])) {
+    [winners[1], winners[2]] = [winners[2], winners[1]];
+  }
+
+  // Handle byes: if odd number of winners, the last one gets a bye
+  let playersForNextRound = [...winners];
+  if (winners.length % 2 === 1) {
+    if (currentRound === 1) {
+      playersForNextRound = winners.slice(0, -1);
+      const byePlayer = winners[winners.length - 1];
+
+      const byeMatch: Match = {
+        id: Date.now().toString() + Math.random(),
+        tournamentId: tournament.id,
+        player1Id: byePlayer,
+        player2Id: 'BYE',
+        round: 'bracket',
+        bracketRound: currentRound + 1,
+        bestOf: 1,
+        games: [],
+        winnerId: byePlayer,
+      };
+      newMatches.push(byeMatch);
+    } else {
+      playersForNextRound = winners;
+    }
+  }
+
+  for (let i = 0; i < playersForNextRound.length; i += 2) {
+    if (i + 1 < playersForNextRound.length) {
+      const newMatch: Match = {
+        id: Date.now().toString() + Math.random(),
+        tournamentId: tournament.id,
+        player1Id: playersForNextRound[i],
+        player2Id: playersForNextRound[i + 1],
+        round: 'bracket',
+        bracketRound: currentRound + 1,
+        bestOf: bestOf,
+        games: [],
+      };
+      newMatches.push(newMatch);
+    }
+  }
+
+  return newMatches;
+}
+
+// Function to create bracket matches
+export function createBracketMatches(tournament: Tournament, createMainBracket = true): Match[] {
+  const newMatches: Match[] = [];
+  // Check if bracket matches already exist for round 1
+  const existingBracketMatches = (tournament.matches ?? []).filter(m =>
+    m.round === 'bracket' &&
+    (m.bracketRound || 1) >= 1
+  );
+
+  if (existingBracketMatches.length > 0) {
+    return []; // Already created
+  }
+
+  // Get round robin matches to determine rankings
+  const roundRobinMatches = (tournament.matches ?? []).filter(m => m.round === 'roundRobin');
+
+  // Count wins for each player
+  const playerWins: { [key: string]: number } = {};
+  tournament.players.forEach(playerId => {
+    playerWins[playerId] = 0;
+  });
+
+  roundRobinMatches.forEach(match => {
+    if (match.winnerId) {
+      playerWins[match.winnerId] = (playerWins[match.winnerId] || 0) + 1;
+    }
+  });
+
+  // Sort players by wins (descending)
+  const rankedPlayers = [...tournament.players].sort((a, b) => {
+    const winsA = playerWins[a] || 0;
+    const winsB = playerWins[b] || 0;
+    if (winsA !== winsB) return winsB - winsA;
+    return Math.random() - 0.5;
+  });
+
+  const bracketPlayers = rankedPlayers;
+
+  // Set player ranking on tournament
+  tournament.playerRanking = rankedPlayers;
+
+  // Create bracket matches
+  const bracketRound = tournament.bracketRounds[0];
+  if (bracketRound && bracketPlayers.length >= 2) {
+    if (bracketPlayers.length % 2 === 1) {
+      // Odd number of players: create a play-in round first
+      const playInMatch: Match = {
+        id: Date.now().toString() + Math.random(),
+        tournamentId: tournament.id,
+        player1Id: bracketPlayers[bracketPlayers.length - 2], // 4th place
+        player2Id: bracketPlayers[bracketPlayers.length - 1], // 5th place
+        round: 'bracket',
+        bracketRound: 0, // Play-in round
+        bestOf: bracketRound.bestOf,
+        games: [],
+      };
+      newMatches.push(playInMatch);
+
+      if (createMainBracket) {
+        const mainBracketPlayers = [
+          bracketPlayers[0],
+          bracketPlayers[1],
+          bracketPlayers[2],
+          'PLAY_IN_WINNER',
+        ];
+
+        for (let i = 0; i < mainBracketPlayers.length; i += 2) {
+          const newMatch: Match = {
+            id: Date.now().toString() + Math.random(),
+            tournamentId: tournament.id,
+            player1Id: mainBracketPlayers[i],
+            player2Id: mainBracketPlayers[i + 1],
+            round: 'bracket',
+            bracketRound: bracketRound.round,
+            bestOf: bracketRound.bestOf,
+            games: [],
+          };
+          newMatches.push(newMatch);
+        }
+      }
+    } else {
+      // Even number of players: create balanced bracket with byes if needed
+      const nextPowerOf2 = Math.pow(2, Math.ceil(Math.log2(bracketPlayers.length)));
+      const numByes = nextPowerOf2 - bracketPlayers.length;
+
+      for (let i = 0; i < numByes; i++) {
+        const byeMatch: Match = {
+          id: Date.now().toString() + Math.random(),
+          tournamentId: tournament.id,
+          player1Id: bracketPlayers[i],
+          player2Id: 'BYE',
+          round: 'bracket',
+          bracketRound: bracketRound.round,
+          bestOf: bracketRound.bestOf,
+          games: [],
+          winnerId: bracketPlayers[i],
+        };
+        newMatches.push(byeMatch);
+      }
+
+      for (let i = numByes; i < bracketPlayers.length; i += 2) {
+        if (i + 1 < bracketPlayers.length) {
+          const newMatch: Match = {
+            id: Date.now().toString() + Math.random(),
+            tournamentId: tournament.id,
+            player1Id: bracketPlayers[i],
+            player2Id: bracketPlayers[i + 1],
+            round: 'bracket',
+            bracketRound: bracketRound.round,
+            bestOf: bracketRound.bestOf,
+            games: [],
+          };
+          newMatches.push(newMatch);
+        }
+      }
+    }
+  }
+
+  return newMatches;
+}
+
+// Function to advance to next round robin round
+export function advanceRoundRobinRound(tournament: Tournament): Match[] {
+  // Find the next round number
+  const tournamentMatches = (tournament.matches ?? []).filter(m => m.round === 'roundRobin');
+  const existingRounds = tournamentMatches.map(m => m.bracketRound || 1);
+  const nextRound = existingRounds.length > 0 ? Math.max(...existingRounds) + 1 : 2;
+
+  // Check if we've reached the round robin rounds limit
+  if (nextRound > tournament.roundRobinRounds) {
+    return []; // No more round robin rounds
+  }
+
+  // Sort players by performance for pairing (optional, can be random)
+  const shuffledPlayers = [...tournament.players].sort(() => Math.random() - 0.5);
+  return createRoundRobinPairings(shuffledPlayers, tournament.id, nextRound);
+}

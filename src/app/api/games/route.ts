@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Game, Match } from '../../../types/pingpong';
 import { getAllGames, addGameToMatch, setTournament, registerMatchesIndex } from '../../../data/data';
+import { validateScore } from '../../../lib/scoring';
 
 export async function GET() {
   try {
@@ -21,15 +22,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate ping pong scoring rules (deuce logic)
-    const maxScore = Math.max(score1, score2);
-    const minScore = Math.min(score1, score2);
-    const scoreDifference = maxScore - minScore;
-    if (maxScore < 11) {
-      return NextResponse.json({ error: 'Game must reach 11 points to be complete' }, { status: 400 });
-    } else {
-      if (maxScore > 11 && scoreDifference !== 2) {
-        return NextResponse.json({ error: 'Game must be won by 2 points' }, { status: 400 });
-      }
+    const scoreError = validateScore(score1, score2);
+    if (scoreError) {
+      return NextResponse.json({ error: scoreError }, { status: 400 });
     }
 
     const newGame: Game = {
