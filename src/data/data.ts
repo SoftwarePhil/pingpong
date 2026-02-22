@@ -16,7 +16,6 @@ export const ENV_PREFIX = process.env.NODE_ENV || 'development';
 let redisClient: RedisClientType;
 
 const ACTIVE_TOURNAMENTS_KEY = `${ENV_PREFIX}:pingpong:active_tournaments`;
-const COMPLETED_TOURNAMENTS_KEY = `${ENV_PREFIX}:pingpong:completed_tournaments`;
 const MATCH_INDEX_KEY = `${ENV_PREFIX}:pingpong:match_index`;
 
 function tournamentKey(id: string): string {
@@ -43,9 +42,11 @@ let db: Db;
 
 const PLAYERS_COLLECTION = 'players';
 const GAMES_COLLECTION = 'games';
+const TOURNAMENTS_COLLECTION = 'tournaments';
 
 type PlayerDoc = Omit<Player, 'id'> & { _id: string };
 type GameDoc = Omit<Game, 'id'> & { _id: string };
+type TournamentDoc = Omit<Tournament, 'id'> & { _id: string };
 
 // Database name is environment-scoped (e.g. pingpong_test, pingpong_development, pingpong_production)
 export function dbName(): string {
@@ -71,6 +72,10 @@ function playersCol(): Collection<PlayerDoc> {
 
 function gamesCol(): Collection<GameDoc> {
   return db.collection<GameDoc>(GAMES_COLLECTION);
+}
+
+function tournamentsCol(): Collection<TournamentDoc> {
+  return db.collection<TournamentDoc>(TOURNAMENTS_COLLECTION);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -121,8 +126,15 @@ export async function saveData() {
 export async function getTournament(id: string): Promise<Tournament | null> {
   try {
     if (!redisClient) await initRedis();
+    // Active tournaments are in Redis
     const data = await redisClient.get(tournamentKey(id));
-    return data ? JSON.parse(data) : null;
+    if (data) return JSON.parse(data);
+    // Completed tournaments are in MongoDB
+    if (!db) await initMongo();
+    const doc = await tournamentsCol().findOne({ _id: id });
+    if (!doc) return null;
+    const { _id, ...rest } = doc;
+    return { id: _id, ...rest } as Tournament;
   } catch (error) {
     console.error('Error getting tournament:', error);
     return null;
@@ -132,19 +144,21 @@ export async function getTournament(id: string): Promise<Tournament | null> {
 export async function setTournament(tournament: Tournament): Promise<void> {
   try {
     if (!redisClient) await initRedis();
-    await redisClient.set(tournamentKey(tournament.id), JSON.stringify(tournament));
     if (tournament.status === 'completed') {
-      await redisClient.zAdd(COMPLETED_TOURNAMENTS_KEY, {
-        score: new Date(tournament.startDate).getTime(),
-        value: tournament.id,
-      });
+      // Completed tournaments live in MongoDB — remove from Redis
       await redisClient.zRem(ACTIVE_TOURNAMENTS_KEY, tournament.id);
+      await redisClient.del(tournamentKey(tournament.id));
+      // Persist to MongoDB tournaments collection
+      if (!db) await initMongo();
+      const { id, ...doc } = tournament;
+      await tournamentsCol().replaceOne({ _id: id }, doc, { upsert: true });
     } else {
+      // Active tournaments live in Redis
+      await redisClient.set(tournamentKey(tournament.id), JSON.stringify(tournament));
       await redisClient.zAdd(ACTIVE_TOURNAMENTS_KEY, {
         score: new Date(tournament.startDate).getTime(),
         value: tournament.id,
       });
-      await redisClient.zRem(COMPLETED_TOURNAMENTS_KEY, tournament.id);
     }
   } catch (error) {
     console.error('Error setting tournament:', error);
@@ -182,7 +196,6 @@ export async function deleteTournament(id: string): Promise<void> {
     const tournament = await getTournament(id);
     if (tournament) {
       await redisClient.zRem(ACTIVE_TOURNAMENTS_KEY, id);
-      await redisClient.zRem(COMPLETED_TOURNAMENTS_KEY, id);
       const matchIds = (tournament.matches ?? []).map(m => m.id);
       if (matchIds.length > 0) {
         await redisClient.hDel(MATCH_INDEX_KEY, matchIds);
@@ -200,7 +213,10 @@ export async function deleteTournament(id: string): Promise<void> {
       });
       await setPlayers(updatedPlayers);
     }
+    // Remove from Redis (active) and MongoDB (completed) — only one will have it
     await redisClient.del(tournamentKey(id));
+    if (!db) await initMongo();
+    await tournamentsCol().deleteOne({ _id: id });
   } catch (error) {
     console.error('Error deleting tournament:', error);
     throw error;
@@ -219,8 +235,12 @@ export async function getActiveTournamentIds(): Promise<string[]> {
 
 export async function getCompletedTournamentIds(): Promise<string[]> {
   try {
-    if (!redisClient) await initRedis();
-    return await redisClient.zRange(COMPLETED_TOURNAMENTS_KEY, 0, -1);
+    if (!db) await initMongo();
+    const docs = await tournamentsCol()
+      .find({ status: 'completed' }, { projection: { _id: 1 } })
+      .sort({ startDate: 1 })
+      .toArray();
+    return docs.map(d => d._id);
   } catch (error) {
     console.error('Error getting completed tournament IDs:', error);
     return [];
@@ -231,13 +251,18 @@ export async function getCompletedTournamentIds(): Promise<string[]> {
 export async function getTournaments(): Promise<Tournament[]> {
   try {
     if (!redisClient) await initRedis();
-    const [activeIds, completedIds] = await Promise.all([
-      getActiveTournamentIds(),
-      getCompletedTournamentIds(),
-    ]);
-    const allIds = [...activeIds, ...completedIds];
-    const tournaments = await Promise.all(allIds.map(id => getTournament(id)));
-    return tournaments.filter((t): t is Tournament => t !== null);
+    if (!db) await initMongo();
+    // Active tournaments: IDs from Redis sorted set, documents from Redis
+    const activeIds = await getActiveTournamentIds();
+    const active = (await Promise.all(activeIds.map(id => getTournament(id))))
+      .filter((t): t is Tournament => t !== null);
+    // Completed tournaments: documents directly from MongoDB
+    const completedDocs = await tournamentsCol()
+      .find({ status: 'completed' })
+      .sort({ startDate: 1 })
+      .toArray();
+    const completed = completedDocs.map(({ _id, ...rest }) => ({ id: _id, ...rest } as Tournament));
+    return [...active, ...completed];
   } catch (error) {
     console.error('Error getting tournaments:', error);
     return [];
