@@ -16,7 +16,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, roundRobinRounds, bracketRounds, players }: { name: string; roundRobinRounds: number; bracketRounds: { round: number; bestOf: number }[]; players: string[] } = body;
+    const { name, roundRobinRounds, bracketRounds, players, rrBestOf }: { name: string; roundRobinRounds: number; bracketRounds: { matchCount: number; bestOf: number }[]; players: string[]; rrBestOf: number } = body;
     const uniquePlayers = [...new Set(players)];
     if (!name || !roundRobinRounds || !bracketRounds || !uniquePlayers || uniquePlayers.length < 2) {
       return NextResponse.json({ error: 'Invalid data' }, { status: 400 });
@@ -27,6 +27,7 @@ export async function POST(request: NextRequest) {
       startDate: new Date().toISOString(),
       status: 'roundRobin',
       roundRobinRounds,
+      rrBestOf: rrBestOf ?? 1,
       bracketRounds,
       players: uniquePlayers,
       matches: [], // Will be populated with embedded matches
@@ -34,7 +35,7 @@ export async function POST(request: NextRequest) {
 
     // Create first round robin pairings
     const shuffledPlayers = [...uniquePlayers].sort(() => Math.random() - 0.5);
-    const embeddedMatches = createRoundRobinPairings(shuffledPlayers, newTournament.id, 1);
+    const embeddedMatches = createRoundRobinPairings(shuffledPlayers, newTournament.id, 1, newTournament.rrBestOf);
 
     // Embed matches in tournament document
     newTournament.matches = embeddedMatches;

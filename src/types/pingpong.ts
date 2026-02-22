@@ -20,7 +20,8 @@ export interface Tournament {
   startDate: string;
   status: 'roundRobin' | 'bracket' | 'completed';
   roundRobinRounds: number;
-  bracketRounds: { round: number; bestOf: number }[];
+  rrBestOf: number;
+  bracketRounds: { matchCount: number; bestOf: number }[];
   players: string[];
   playerRanking?: string[];
   matches?: Match[]; // Embedded matches for hybrid schema

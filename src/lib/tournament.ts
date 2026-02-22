@@ -1,5 +1,12 @@
 import { Tournament, Match } from '../types/pingpong';
 
+/** Returns the configured bestOf for a bracket round with the given match count.
+ * Falls back to 1 if no config entry matches. */
+function getBestOfForMatchCount(tournament: Tournament, matchCount: number): number {
+  const config = tournament.bracketRounds.find(b => b.matchCount === matchCount);
+  return config?.bestOf ?? 1;
+}
+
 /**
  * Applies a player swap to a round-robin match and cascades the displaced
  * player(s) into any other unplayed match in the same round, so each player
@@ -53,7 +60,7 @@ export function cascadeRoundRobinPlayerSwap(
 }
 
 // Helper function to create a single round of round robin pairings
-export function createRoundRobinPairings(players: string[], tournamentId: string, bracketRound: number = 1): Match[] {
+export function createRoundRobinPairings(players: string[], tournamentId: string, bracketRound: number = 1, bestOf: number = 1): Match[] {
   const newMatches: Match[] = [];
   const shuffled = [...players];
 
@@ -72,7 +79,7 @@ export function createRoundRobinPairings(players: string[], tournamentId: string
       player2Id: shuffled[i + 1],
       round: 'roundRobin',
       bracketRound: bracketRound,
-      bestOf: 1,
+      bestOf: bestOf,
       games: [],
     };
     newMatches.push(newMatch);
@@ -87,7 +94,7 @@ export function createRoundRobinPairings(players: string[], tournamentId: string
       player2Id: 'BYE',
       round: 'roundRobin',
       bracketRound: bracketRound,
-      bestOf: 1,
+      bestOf: bestOf,
       games: [],
       winnerId: byePlayer, // Automatic win
     };
@@ -129,18 +136,9 @@ export function advanceBracketRound(tournament: Tournament): Match[] {
     return [];
   }
 
-  // Find next bracket round config
-  const nextBracketRoundConfig = tournament.bracketRounds.find(br => br.round === currentRound + 1);
-  let bestOf = 1; // default
-  if (nextBracketRoundConfig) {
-    bestOf = nextBracketRoundConfig.bestOf;
-  } else {
-    // Use the bestOf from the last configured round
-    const lastConfig = tournament.bracketRounds[tournament.bracketRounds.length - 1];
-    if (lastConfig) {
-      bestOf = lastConfig.bestOf;
-    }
-  }
+  // Determine bestOf based on match count in next round
+  const nextMatchCount = Math.floor(winners.length / 2);
+  const bestOf = getBestOfForMatchCount(tournament, nextMatchCount);
 
   // Sort winners by seeding to maintain bracket integrity
   if (tournament.playerRanking) {
@@ -245,10 +243,9 @@ export function createBracketMatches(tournament: Tournament, createMainBracket =
   tournament.playerRanking = rankedPlayers;
 
   // Create bracket matches
-  const bracketRound = tournament.bracketRounds[0];
-  if (bracketRound && bracketPlayers.length >= 2) {
+  if (bracketPlayers.length >= 2) {
     if (bracketPlayers.length % 2 === 1) {
-      // Odd number of players: create a play-in round first
+      // Odd number of players: create a play-in round first (always Bo1)
       const playInMatch: Match = {
         id: Date.now().toString() + Math.random(),
         tournamentId: tournament.id,
@@ -256,7 +253,7 @@ export function createBracketMatches(tournament: Tournament, createMainBracket =
         player2Id: bracketPlayers[bracketPlayers.length - 1], // 5th place
         round: 'bracket',
         bracketRound: 0, // Play-in round
-        bestOf: bracketRound.bestOf,
+        bestOf: 1,
         games: [],
       };
       newMatches.push(playInMatch);
@@ -268,6 +265,9 @@ export function createBracketMatches(tournament: Tournament, createMainBracket =
           bracketPlayers[2],
           'PLAY_IN_WINNER',
         ];
+        // main bracket has mainBracketPlayers.length / 2 matches (e.g. 2 semis for 4 players)
+        const mainMatchCount = mainBracketPlayers.length / 2;
+        const mainBestOf = getBestOfForMatchCount(tournament, mainMatchCount);
 
         for (let i = 0; i < mainBracketPlayers.length; i += 2) {
           const newMatch: Match = {
@@ -276,8 +276,8 @@ export function createBracketMatches(tournament: Tournament, createMainBracket =
             player1Id: mainBracketPlayers[i],
             player2Id: mainBracketPlayers[i + 1],
             round: 'bracket',
-            bracketRound: bracketRound.round,
-            bestOf: bracketRound.bestOf,
+            bracketRound: 1,
+            bestOf: mainBestOf,
             games: [],
           };
           newMatches.push(newMatch);
@@ -287,6 +287,8 @@ export function createBracketMatches(tournament: Tournament, createMainBracket =
       // Even number of players: create balanced bracket with byes if needed
       const nextPowerOf2 = Math.pow(2, Math.ceil(Math.log2(bracketPlayers.length)));
       const numByes = nextPowerOf2 - bracketPlayers.length;
+      const firstRoundMatchCount = nextPowerOf2 / 2;
+      const bestOf = getBestOfForMatchCount(tournament, firstRoundMatchCount);
 
       for (let i = 0; i < numByes; i++) {
         const byeMatch: Match = {
@@ -295,8 +297,8 @@ export function createBracketMatches(tournament: Tournament, createMainBracket =
           player1Id: bracketPlayers[i],
           player2Id: 'BYE',
           round: 'bracket',
-          bracketRound: bracketRound.round,
-          bestOf: bracketRound.bestOf,
+          bracketRound: 1,
+          bestOf: bestOf,
           games: [],
           winnerId: bracketPlayers[i],
         };
@@ -311,8 +313,8 @@ export function createBracketMatches(tournament: Tournament, createMainBracket =
             player1Id: bracketPlayers[i],
             player2Id: bracketPlayers[i + 1],
             round: 'bracket',
-            bracketRound: bracketRound.round,
-            bestOf: bracketRound.bestOf,
+            bracketRound: 1,
+            bestOf: bestOf,
             games: [],
           };
           newMatches.push(newMatch);
@@ -338,5 +340,5 @@ export function advanceRoundRobinRound(tournament: Tournament): Match[] {
 
   // Sort players by performance for pairing (optional, can be random)
   const shuffledPlayers = [...tournament.players].sort(() => Math.random() - 0.5);
-  return createRoundRobinPairings(shuffledPlayers, tournament.id, nextRound);
+  return createRoundRobinPairings(shuffledPlayers, tournament.id, nextRound, tournament.rrBestOf ?? 1);
 }

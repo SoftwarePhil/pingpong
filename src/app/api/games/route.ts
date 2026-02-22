@@ -54,7 +54,9 @@ export async function POST(request: NextRequest) {
             rankedPlayers[2], // 3rd place
             match.winnerId,   // Play-in winner
           ];
-          const bracketRound = tournament.bracketRounds[0];
+          const mainMatchCount = mainBracketPlayers.length / 2;
+          const bracketConfig = tournament.bracketRounds.find(b => b.matchCount === mainMatchCount);
+          const mainBestOf = bracketConfig?.bestOf ?? 1;
           const newMatches: Match[] = [];
           for (let i = 0; i < mainBracketPlayers.length; i += 2) {
             newMatches.push({
@@ -63,8 +65,8 @@ export async function POST(request: NextRequest) {
               player1Id: mainBracketPlayers[i],
               player2Id: mainBracketPlayers[i + 1],
               round: 'bracket',
-              bracketRound: bracketRound.round,
-              bestOf: bracketRound.bestOf,
+              bracketRound: 1,
+              bestOf: mainBestOf,
               games: [],
             });
           }

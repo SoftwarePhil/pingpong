@@ -8,7 +8,8 @@ function makeTournament(overrides: Partial<Tournament> = {}): Tournament {
     startDate: new Date().toISOString(),
     status: 'roundRobin',
     roundRobinRounds: 2,
-    bracketRounds: [{ round: 1, bestOf: 3 }],
+    rrBestOf: 1,
+    bracketRounds: [{ matchCount: 1, bestOf: 3 }, { matchCount: 2, bestOf: 3 }],
     players: ['p1', 'p2', 'p3', 'p4'],
     matches: [],
     ...overrides,
@@ -168,7 +169,7 @@ describe('advanceBracketRound', () => {
 
   it('creates next-round matches when current round is complete (4 → 2 players)', () => {
     const tournament = makeTournament({
-      bracketRounds: [{ round: 1, bestOf: 3 }, { round: 2, bestOf: 5 }],
+      bracketRounds: [{ matchCount: 2, bestOf: 3 }, { matchCount: 1, bestOf: 5 }],
       matches: [
         makeMatch('m1', { bracketRound: 1, player1Id: 'p1', player2Id: 'p2', winnerId: 'p1' }),
         makeMatch('m2', { bracketRound: 1, player1Id: 'p3', player2Id: 'p4', winnerId: 'p4' }),
@@ -185,7 +186,7 @@ describe('advanceBracketRound', () => {
 
   it('marks tournament as completed when only one winner remains', () => {
     const tournament = makeTournament({
-      bracketRounds: [{ round: 1, bestOf: 3 }],
+      bracketRounds: [{ matchCount: 1, bestOf: 3 }],
       matches: [
         makeMatch('m1', { bracketRound: 1, player1Id: 'p1', player2Id: 'p2', winnerId: 'p1' }),
       ],
@@ -195,9 +196,9 @@ describe('advanceBracketRound', () => {
     expect(tournament.status).toBe('completed');
   });
 
-  it('uses bestOf from the last configured bracket round when no config for next round', () => {
+  it('uses the configured bestOf for the specific match count (final = matchCount 1)', () => {
     const tournament = makeTournament({
-      bracketRounds: [{ round: 1, bestOf: 7 }], // only one config entry
+      bracketRounds: [{ matchCount: 1, bestOf: 7 }], // final configured as Bo7
       matches: [
         makeMatch('m1', { bracketRound: 1, player1Id: 'p1', player2Id: 'p2', winnerId: 'p1' }),
         makeMatch('m2', { bracketRound: 1, player1Id: 'p3', player2Id: 'p4', winnerId: 'p3' }),
@@ -209,7 +210,7 @@ describe('advanceBracketRound', () => {
 
   it('excludes play-in matches (bracketRound === 0) from advancement logic', () => {
     const tournament = makeTournament({
-      bracketRounds: [{ round: 1, bestOf: 3 }],
+      bracketRounds: [{ matchCount: 1, bestOf: 3 }, { matchCount: 2, bestOf: 3 }],
       matches: [
         // play-in — should be ignored
         makeMatch('m0', { bracketRound: 0, player1Id: 'p4', player2Id: 'p5', winnerId: 'p4' }),

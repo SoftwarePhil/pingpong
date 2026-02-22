@@ -46,7 +46,7 @@ export default function Home() {
             </div>
           </Link>
 
-          <Link href="/stats" className="group">
+          <Link href="/players" className="group">
             <div className="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 border border-gray-200">
               <div className="text-4xl mb-4">📊</div>
               <h3 className="text-xl font-bold text-gray-900 mb-2 group-hover:text-indigo-600 transition-colors">

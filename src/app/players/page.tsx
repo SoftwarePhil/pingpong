@@ -218,19 +218,6 @@ export default function PlayersPage() {
     };
   };
 
-  // Keep old getPlayerStats for the summary cards on the main list
-  const getPlayerStats = (playerId: string) => {
-    const playerGames = games.filter(g => g.player1Id === playerId || g.player2Id === playerId);
-    let wins = 0;
-    playerGames.forEach(g => {
-      if (g.player1Id === playerId ? g.score1 > g.score2 : g.score2 > g.score1) wins++;
-    });
-    return {
-      totalGames: playerGames.length,
-      winRate: playerGames.length > 0 ? Math.round((wins / playerGames.length) * 100) : 0,
-    };
-  };
-
   const getPlayerName = (id: string) => {
     const player = players.find(p => p.id === id);
     return player ? player.name : 'Unknown';
@@ -327,39 +314,113 @@ export default function PlayersPage() {
           </div>
         )}
 
-        {/* Stats Card */}
-        {players.length > 0 && (
-          <div className="mt-8 bg-white rounded-xl shadow-lg p-6 border border-gray-200">
-            <h3 className="text-xl font-bold text-gray-900 mb-4">Team Overview</h3>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <div className="text-center">
-                <div className="text-3xl font-bold text-indigo-600 mb-2">{players.length}</div>
-                <div className="text-gray-600">Total Players</div>
+        {/* Leaderboard */}
+        {players.length > 0 && (() => {
+          const leaderboard = players.map(player => {
+            const pm = matches.filter(
+              m => (m.player1Id === player.id || m.player2Id === player.id) && m.player2Id !== 'BYE'
+            );
+            let matchWins = 0, matchLosses = 0, gameWins = 0, gameLosses = 0;
+            pm.forEach(m => {
+              if (m.winnerId === player.id) matchWins++;
+              else if (m.winnerId) matchLosses++;
+              m.games.forEach(g => {
+                const won = g.player1Id === player.id ? g.score1 > g.score2 : g.score2 > g.score1;
+                if (won) gameWins++; else gameLosses++;
+              });
+            });
+            const totalMatches = matchWins + matchLosses;
+            const totalGames = gameWins + gameLosses;
+            return {
+              player,
+              matchWins,
+              matchLosses,
+              gameWins,
+              gameLosses,
+              matchWinRate: totalMatches > 0 ? Math.round((matchWins / totalMatches) * 100) : 0,
+              gameWinRate: totalGames > 0 ? Math.round((gameWins / totalGames) * 100) : 0,
+              totalMatches,
+              totalGames,
+            };
+          }).sort((a, b) => {
+            if (b.matchWinRate !== a.matchWinRate) return b.matchWinRate - a.matchWinRate;
+            if (b.gameWinRate !== a.gameWinRate) return b.gameWinRate - a.gameWinRate;
+            return b.totalMatches - a.totalMatches;
+          });
+
+          return (
+            <div className="mt-8 bg-white rounded-xl shadow-lg overflow-hidden border border-gray-200">
+              <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-5">
+                <h2 className="text-xl font-bold">🏆 Leaderboard</h2>
+                <p className="text-indigo-200 text-sm mt-0.5">Ranked by match win rate</p>
               </div>
-              <div className="text-center">
-                <div className="text-3xl font-bold text-green-600 mb-2">
-                  {Math.round(players.reduce((sum, player) => {
-                    const stats = getPlayerStats(player.id);
-                    return sum + stats.winRate;
-                  }, 0) / players.length) || 0}%
-                </div>
-                <div className="text-gray-600">Avg Win Rate</div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-12">Rank</th>
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Player</th>
+                      <th className="px-5 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Matches</th>
+                      <th className="px-5 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Match W–L</th>
+                      <th className="px-5 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Game W–L</th>
+                      <th className="px-5 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider w-36">Game Win %</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {leaderboard.map((row, i) => (
+                      <tr
+                        key={row.player.id}
+                        className={`hover:bg-gray-50 cursor-pointer transition-colors ${
+                          i === 0 ? 'bg-amber-50' : i === 1 ? 'bg-gray-50/60' : ''
+                        }`}
+                        onClick={() => selectPlayer(row.player)}
+                      >
+                        <td className="px-5 py-3.5 whitespace-nowrap">
+                          <span className="text-xl">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`}</span>
+                        </td>
+                        <td className="px-5 py-3.5 whitespace-nowrap">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0">
+                              {row.player.name.charAt(0).toUpperCase()}
+                            </div>
+                            <span className="font-semibold text-gray-900">{row.player.name}</span>
+                          </div>
+                        </td>
+                        <td className="px-5 py-3.5 text-center tabular-nums font-medium text-gray-700">{row.totalMatches}</td>
+                        <td className="px-5 py-3.5 text-center tabular-nums">
+                          <span className="text-green-600 font-semibold">{row.matchWins}</span>
+                          <span className="text-gray-300 mx-1">–</span>
+                          <span className="text-red-500 font-semibold">{row.matchLosses}</span>
+                        </td>
+                        <td className="px-5 py-3.5 text-center tabular-nums">
+                          <span className="text-green-600 font-semibold">{row.gameWins}</span>
+                          <span className="text-gray-300 mx-1">–</span>
+                          <span className="text-red-500 font-semibold">{row.gameLosses}</span>
+                        </td>
+                        <td className="px-5 py-3.5">
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-gradient-to-r from-indigo-500 to-purple-600 rounded-full transition-all"
+                                style={{ width: `${row.gameWinRate}%` }}
+                              />
+                            </div>
+                            <span className="text-xs font-semibold text-gray-700 w-9 text-right tabular-nums">
+                              {row.totalGames > 0 ? `${row.gameWinRate}%` : '—'}
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-              <div className="text-center">
-                <div className="text-3xl font-bold text-purple-600 mb-2">
-                  {players.reduce((sum, player) => sum + getPlayerStats(player.id).totalGames, 0)}
-                </div>
-                <div className="text-gray-600">Total Games Played</div>
-              </div>
-              <div className="text-center">
-                <div className="text-3xl font-bold text-blue-600 mb-2">
-                  {tournaments.filter(t => t.status !== 'completed').length}
-                </div>
-                <div className="text-gray-600">Active Tournaments</div>
-              </div>
+              {leaderboard.every(r => r.totalMatches === 0) && (
+                <div className="text-center py-10 text-gray-400 text-sm">No games played yet — play some matches to see rankings.</div>
+              )}
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Player Report Modal */}
         {showPlayerReport && selectedPlayer && (
