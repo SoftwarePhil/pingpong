@@ -79,9 +79,12 @@ export async function POST(request: NextRequest) {
               ...(isBye ? { winnerId: p1 === 'BYE' ? p2 : p1 } : {}),
             });
           }
+          // Reverse the bottom half so seed 2 appears at the bottom
+          const half = newMatches.length / 2;
+          const orderedMatches = [...newMatches.slice(0, half), ...newMatches.slice(half).reverse()];
           if (!tournament.matches) tournament.matches = [];
-          tournament.matches.push(...newMatches);
-          await registerMatchesIndex(newMatches);
+          tournament.matches.push(...orderedMatches);
+          await registerMatchesIndex(orderedMatches);
           await setTournament(tournament);
         }
       }

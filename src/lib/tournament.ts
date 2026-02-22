@@ -251,7 +251,9 @@ function createSeededBracketMatches(
       ...(isBye ? { winnerId: p1 === 'BYE' ? p2 : p1 } : {}),
     });
   }
-  return newMatches;
+  // Reverse the bottom half so that seed 1 is at the top and seed 2 is at the bottom
+  const half = newMatches.length / 2;
+  return [...newMatches.slice(0, half), ...newMatches.slice(half).reverse()];
 }
 
 export function createBracketMatches(tournament: Tournament, createMainBracket = true): Match[] {

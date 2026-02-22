@@ -284,12 +284,14 @@ export default function ActiveTournamentsPage() {
                         </button>
                         {openMenuId === t.id && (
                           <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-xl shadow-xl border border-gray-200 py-1 z-50">
-                            <button
-                              onClick={() => { setOpenMenuId(null); setEditingTournament(t); setSelectedPlayers(t.activePlayers ?? t.players); setShowEditForm(true); }}
-                              className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                            >
-                              ✏️ Edit Players
-                            </button>
+                            {t.status !== 'bracket' && (
+                              <button
+                                onClick={() => { setOpenMenuId(null); setEditingTournament(t); setSelectedPlayers(t.activePlayers ?? t.players); setShowEditForm(true); }}
+                                className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                              >
+                                ✏️ Edit Players
+                              </button>
+                            )}
                             <button
                               onClick={() => { setOpenMenuId(null); endTournament(t); }}
                               className="w-full text-left px-4 py-2.5 text-sm text-orange-600 hover:bg-orange-50 flex items-center gap-2"

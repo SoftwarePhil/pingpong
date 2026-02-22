@@ -149,29 +149,54 @@ if (action === 'advanceRound') {
         tournament.activePlayers = [...new Set([...tournament.activePlayers, ...newPlayerIds])];
       }
 
-      // For each newly added player during round robin, convert the current
-      // round's bye match (if any) into a real match against that player
+      // For newly added players during round robin, create current-round matches
       if (newPlayerIds.length > 0 && tournament.status === 'roundRobin') {
         const rrMatches = (tournament.matches ?? []).filter(m => m.round === 'roundRobin');
         const currentRound = rrMatches.length > 0
           ? Math.max(...rrMatches.map(m => m.bracketRound ?? 1))
           : 1;
 
-        for (const newPlayerId of newPlayerIds) {
+        const unmatched = [...newPlayerIds];
+        const freshMatches = [];
+
+        // Pair new players with each other first (2 at a time)
+        while (unmatched.length >= 2) {
+          const p1 = unmatched.shift()!;
+          const p2 = unmatched.shift()!;
+          freshMatches.push({
+            id: Date.now().toString() + Math.random(),
+            tournamentId: tournament.id,
+            player1Id: p1,
+            player2Id: p2,
+            round: 'roundRobin' as const,
+            bracketRound: currentRound,
+            bestOf: tournament.rrBestOf ?? 1,
+            games: [],
+          });
+        }
+
+        // One leftover — try to slot them into an existing bye match
+        if (unmatched.length === 1) {
+          const newPlayerId = unmatched[0];
           const byeIdx = (tournament.matches ?? []).findIndex(m =>
             m.round === 'roundRobin' &&
             (m.bracketRound ?? 1) === currentRound &&
             m.player2Id === 'BYE'
           );
           if (byeIdx !== -1) {
-            // Replace the auto-won bye with a real unplayed match
             tournament.matches![byeIdx] = {
               ...tournament.matches![byeIdx],
               player2Id: newPlayerId,
               winnerId: undefined,
             };
           }
-          // If no bye exists the new player is simply included in future round pairings
+          // If no bye exists the player is included in future round pairings
+        }
+
+        if (freshMatches.length > 0) {
+          if (!tournament.matches) tournament.matches = [];
+          tournament.matches.push(...freshMatches);
+          await registerMatchesIndex(freshMatches);
         }
       }
 
