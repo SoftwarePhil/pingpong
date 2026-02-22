@@ -45,8 +45,9 @@ export async function POST(request: NextRequest) {
 
       // Handle play-in match completion (bracketRound === 0 is the play-in round)
       const { match, tournament } = result;
-      if (match.winnerId && match.bracketRound === 0 && tournament.players.length % 2 === 1) {
-        const rankedPlayers = tournament.playerRanking || tournament.players;
+      const bracketPool = tournament.activePlayers ?? tournament.players;
+      if (match.winnerId && match.bracketRound === 0 && bracketPool.length % 2 === 1) {
+        const rankedPlayers = tournament.playerRanking || bracketPool;
         if (rankedPlayers.length >= 3) {
           const mainBracketPlayers = [
             rankedPlayers[0], // 1st place (round robin)

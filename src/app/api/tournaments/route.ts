@@ -21,6 +21,13 @@ export async function POST(request: NextRequest) {
     if (!name || !roundRobinRounds || !bracketRounds || !uniquePlayers || uniquePlayers.length < 2) {
       return NextResponse.json({ error: 'Invalid data' }, { status: 400 });
     }
+
+    // Prevent creating a tournament if one is already active
+    const existingTournaments = await getTournaments();
+    const activeTournament = existingTournaments.find(t => t.status !== 'completed');
+    if (activeTournament) {
+      return NextResponse.json({ error: `There is already an active tournament: "${activeTournament.name}". Complete or end it before creating a new one.` }, { status: 409 });
+    }
     const newTournament: Tournament = {
       id: Date.now().toString(),
       name,
@@ -56,7 +63,7 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, status, action }: { id: string; status?: 'roundRobin' | 'bracket' | 'completed'; action?: 'advanceRound' } = body;
+    const { id, status, action, activePlayers, players }: { id: string; status?: 'roundRobin' | 'bracket' | 'completed'; action?: 'advanceRound'; activePlayers?: string[]; players?: string[] } = body;
 
     const tournament = await getTournament(id);
 
@@ -80,8 +87,9 @@ if (action === 'advanceRound') {
         const newMatches = advanceRoundRobinRound(tournament);
 
         if (newMatches.length === 0) {
-          // No more round robin rounds — transition to bracket
+                // No more round robin rounds — transition to bracket
           tournament.status = 'bracket';
+          // players list is narrowed to activePlayers when bracket is created (inside createBracketMatches via tournament.activePlayers)
           const bracketMatches = createBracketMatches(tournament);
           if (!tournament.matches) tournament.matches = [];
           tournament.matches.push(...bracketMatches);
@@ -112,12 +120,71 @@ if (action === 'advanceRound') {
       }
     }
 
+    if (activePlayers !== undefined) {
+      // Determine which players were just removed
+      const removedIds = new Set(
+        tournament.players.filter(id => !activePlayers.includes(id))
+      );
+      if (removedIds.size > 0) {
+        // Find the current (highest) RR round
+        const rrMatches = (tournament.matches ?? []).filter(m => m.round === 'roundRobin');
+        const currentRound = rrMatches.length > 0 ? Math.max(...rrMatches.map(m => m.bracketRound ?? 1)) : 0;
+        // Drop unplayed matches in the current round involving removed players
+        tournament.matches = (tournament.matches ?? []).filter(m => {
+          if (m.round !== 'roundRobin' || (m.bracketRound ?? 1) !== currentRound) return true;
+          if (m.games.length > 0 || m.winnerId) return true; // already played — keep for stats
+          return !removedIds.has(m.player1Id) && !removedIds.has(m.player2Id);
+        });
+      }
+      tournament.activePlayers = activePlayers;
+    }
+
+    if (players !== undefined) {
+      // Detect newly added players (not previously in the roster)
+      const newPlayerIds = players.filter(pid => !tournament.players.includes(pid));
+
+      // Append new players to the roster and to activePlayers (if that field is in use)
+      tournament.players = [...new Set([...tournament.players, ...newPlayerIds])];
+      if (tournament.activePlayers !== undefined) {
+        tournament.activePlayers = [...new Set([...tournament.activePlayers, ...newPlayerIds])];
+      }
+
+      // For each newly added player during round robin, convert the current
+      // round's bye match (if any) into a real match against that player
+      if (newPlayerIds.length > 0 && tournament.status === 'roundRobin') {
+        const rrMatches = (tournament.matches ?? []).filter(m => m.round === 'roundRobin');
+        const currentRound = rrMatches.length > 0
+          ? Math.max(...rrMatches.map(m => m.bracketRound ?? 1))
+          : 1;
+
+        for (const newPlayerId of newPlayerIds) {
+          const byeIdx = (tournament.matches ?? []).findIndex(m =>
+            m.round === 'roundRobin' &&
+            (m.bracketRound ?? 1) === currentRound &&
+            m.player2Id === 'BYE'
+          );
+          if (byeIdx !== -1) {
+            // Replace the auto-won bye with a real unplayed match
+            tournament.matches![byeIdx] = {
+              ...tournament.matches![byeIdx],
+              player2Id: newPlayerId,
+              winnerId: undefined,
+            };
+          }
+          // If no bye exists the new player is simply included in future round pairings
+        }
+      }
+
+      await syncTournamentPlayers(tournament);
+    }
+
     if (status) {
       const oldStatus = tournament.status;
       tournament.status = status;
       // If changing to bracket status or already bracket but no matches, create bracket matches
       if (status === 'bracket' && (oldStatus !== 'bracket' || !(tournament.matches ?? []).some(m => m.round === 'bracket'))) {
-        const bracketMatches = createBracketMatches(tournament, false); // Don't create main bracket yet
+        // activePlayers is used inside createBracketMatches via tournament.activePlayers
+        const bracketMatches = createBracketMatches(tournament, false);
         if (!tournament.matches) tournament.matches = [];
         tournament.matches.push(...bracketMatches);
         await registerMatchesIndex(bracketMatches);

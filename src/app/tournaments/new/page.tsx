@@ -35,6 +35,13 @@ export default function NewTournamentPage() {
 
   const activeTournaments = tournaments.filter(t => t.status !== 'completed');
 
+  // Redirect immediately once we know there's an active tournament
+  useEffect(() => {
+    if (activeTournaments.length > 0) {
+      router.replace('/tournaments/active');
+    }
+  }, [activeTournaments.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const createTournament = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || [...new Set(selectedPlayers)].length < 2) {

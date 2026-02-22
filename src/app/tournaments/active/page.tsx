@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Tournament, Player, Match, Game } from '../../../types/pingpong';
 import Link from 'next/link';
@@ -18,6 +18,18 @@ export default function ActiveTournamentsPage() {
   const [selectedPlayers, setSelectedPlayers]     = useState<string[]>([]);
 
   const [showRRHistory, setShowRRHistory] = useState(false);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpenMenuId(null);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   const fetchTournaments = async () => {
     const res  = await fetch('/api/tournaments');
@@ -116,6 +128,19 @@ export default function ActiveTournamentsPage() {
     else { const err = await res.json(); alert(err.error ?? 'Failed to update players'); }
   };
 
+  const toggleActivePlayer = async (tournament: Tournament, playerId: string) => {
+    const current = tournament.activePlayers ?? tournament.players;
+    const updated = current.includes(playerId)
+      ? current.filter(id => id !== playerId)
+      : [...current, playerId];
+    await fetch('/api/tournaments', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: tournament.id, activePlayers: updated }),
+    });
+    await fetchTournaments();
+  };
+
   const advanceRound = async (tournament: Tournament) => {
     const res = await fetch('/api/tournaments', {
       method: 'PUT',
@@ -196,9 +221,6 @@ export default function ActiveTournamentsPage() {
             <Link href="/tournaments" className="bg-white hover:bg-gray-50 text-gray-700 px-5 py-2.5 rounded-xl shadow-sm border-2 border-gray-200 transition-colors font-semibold text-sm">
               ← Back
             </Link>
-            <Link href="/tournaments/new" className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl shadow-sm font-semibold text-sm transition-colors border-2 border-blue-700">
-              + New Tournament
-            </Link>
           </div>
         </div>
 
@@ -250,19 +272,83 @@ export default function ActiveTournamentsPage() {
                         {t.players.length} players · Started {new Date(t.startDate).toLocaleDateString()}
                       </p>
                     </div>
-                    {statusBadge(t)}
+                    <div className="flex items-center gap-3">
+                      {statusBadge(t)}
+                      <div className="relative" ref={openMenuId === t.id ? menuRef : null}>
+                        <button
+                          onClick={() => setOpenMenuId(openMenuId === t.id ? null : t.id)}
+                          className="text-gray-400 hover:text-white hover:bg-white/10 rounded-lg p-2 transition-colors text-lg leading-none"
+                          title="More actions"
+                        >
+                          ⋯
+                        </button>
+                        {openMenuId === t.id && (
+                          <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-xl shadow-xl border border-gray-200 py-1 z-50">
+                            <button
+                              onClick={() => { setOpenMenuId(null); setEditingTournament(t); setSelectedPlayers(t.players); setShowEditForm(true); }}
+                              className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                            >
+                              ✏️ Edit Players
+                            </button>
+                            <button
+                              onClick={() => { setOpenMenuId(null); endTournament(t); }}
+                              className="w-full text-left px-4 py-2.5 text-sm text-orange-600 hover:bg-orange-50 flex items-center gap-2"
+                            >
+                              🏁 End Tournament
+                            </button>
+                            <div className="border-t border-gray-100 my-1" />
+                            <button
+                              onClick={() => { setOpenMenuId(null); deleteTournament(t); }}
+                              className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                            >
+                              🗑️ Delete Tournament
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
 
                 <div className="px-8 py-6 space-y-8">
 
-                  <div className="flex flex-wrap gap-2">
-                    {t.players.map(pid => (
-                      <span key={pid} className="bg-gray-100 text-gray-700 text-xs font-medium px-3 py-1.5 rounded-full border border-gray-200">
-                        {getPlayerName(pid)}
-                      </span>
-                    ))}
-                  </div>
+                  {t.status === 'roundRobin' && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Players</span>
+                        <span className="text-xs text-gray-400">(toggle to mark who is playing today)</span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {t.players.map(pid => {
+                          const activeList = t.activePlayers ?? t.players;
+                          const isActive = activeList.includes(pid);
+                          return (
+                            <button
+                              key={pid}
+                              onClick={() => toggleActivePlayer(t, pid)}
+                              className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
+                                isActive
+                                  ? 'bg-green-100 text-green-800 border-green-300 hover:bg-green-200'
+                                  : 'bg-gray-100 text-gray-400 border-gray-200 hover:bg-gray-200 line-through'
+                              }`}
+                            >
+                              {getPlayerName(pid)}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {t.status === 'bracket' && (
+                    <div className="flex flex-wrap gap-2">
+                      {t.players.map(pid => (
+                        <span key={pid} className="bg-gray-100 text-gray-700 text-xs font-medium px-3 py-1.5 rounded-full border border-gray-200">
+                          {getPlayerName(pid)}
+                        </span>
+                      ))}
+                    </div>
+                  )}
 
                   {t.status === 'roundRobin' && (
                     <RoundRobinView
@@ -377,22 +463,7 @@ export default function ActiveTournamentsPage() {
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap justify-center gap-3 pt-2">
-                    <button
-                      onClick={() => { setEditingTournament(t); setSelectedPlayers(t.players); setShowEditForm(true); }}
-                      className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-semibold text-sm transition-colors border-2 border-blue-700"
-                    >
-                      ✏️ Edit Players
-                    </button>
-                    <button onClick={() => endTournament(t)}
-                      className="bg-orange-500 hover:bg-orange-600 text-white px-5 py-2.5 rounded-xl font-semibold text-sm transition-colors border-2 border-orange-600">
-                      🏁 End Tournament
-                    </button>
-                    <button onClick={() => deleteTournament(t)}
-                      className="bg-red-600 hover:bg-red-700 text-white px-5 py-2.5 rounded-xl font-semibold text-sm transition-colors border-2 border-red-700">
-                      🗑️ Delete
-                    </button>
-                  </div>
+
                 </div>
               </div>
             );

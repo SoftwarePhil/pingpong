@@ -217,7 +217,7 @@ export function createBracketMatches(tournament: Tournament, createMainBracket =
   // Get round robin matches to determine rankings
   const roundRobinMatches = (tournament.matches ?? []).filter(m => m.round === 'roundRobin');
 
-  // Count wins for each player
+  // Count wins for each player (all players, including inactive, for historical accuracy)
   const playerWins: { [key: string]: number } = {};
   tournament.players.forEach(playerId => {
     playerWins[playerId] = 0;
@@ -229,8 +229,9 @@ export function createBracketMatches(tournament: Tournament, createMainBracket =
     }
   });
 
-  // Sort players by wins (descending)
-  const rankedPlayers = [...tournament.players].sort((a, b) => {
+  // Only rank active players for the bracket
+  const activePlayerPool = tournament.activePlayers ?? tournament.players;
+  const rankedPlayers = [...activePlayerPool].sort((a, b) => {
     const winsA = playerWins[a] || 0;
     const winsB = playerWins[b] || 0;
     if (winsA !== winsB) return winsB - winsA;
@@ -339,6 +340,7 @@ export function advanceRoundRobinRound(tournament: Tournament): Match[] {
   }
 
   // Sort players by performance for pairing (optional, can be random)
-  const shuffledPlayers = [...tournament.players].sort(() => Math.random() - 0.5);
+  const activePlayers = tournament.activePlayers ?? tournament.players;
+  const shuffledPlayers = [...activePlayers].sort(() => Math.random() - 0.5);
   return createRoundRobinPairings(shuffledPlayers, tournament.id, nextRound, tournament.rrBestOf ?? 1);
 }
