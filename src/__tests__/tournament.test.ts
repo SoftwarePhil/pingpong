@@ -131,8 +131,10 @@ describe('createBracketMatches', () => {
     createBracketMatches(tournament);
     // Player ranking should be set on the tournament object
     expect(tournament.playerRanking).toBeDefined();
-    expect(tournament.playerRanking![0]).toBe('p1');
-    expect(tournament.playerRanking![1]).toBe('p4');
+    // p1 and p4 both have 1 win; they should both appear before p2 and p3 (0 wins)
+    const top2 = tournament.playerRanking!.slice(0, 2);
+    expect(top2).toContain('p1');
+    expect(top2).toContain('p4');
   });
 
   it('adds bye matches for player counts that are not a power of 2', () => {

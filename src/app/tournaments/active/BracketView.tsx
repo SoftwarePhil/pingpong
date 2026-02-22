@@ -316,8 +316,8 @@ export default function BracketView({ bracketMatches, getPlayerName, onAddGame, 
         </div>
       )}
 
-      {/* Read-only game scores panel — history mode */}
-      {activeMatch && readOnly && activeMatch.games.length > 0 && (
+      {/* Game scores panel — completed matches in both active and history mode */}
+      {activeMatch && (readOnly || !!activeMatch.winnerId) && activeMatch.games.length > 0 && (
         <div className="bg-white border-2 border-gray-100 rounded-2xl p-5 shadow-sm">
           <div className="flex justify-between items-center mb-3">
             <div>
@@ -385,7 +385,7 @@ function BracketCard({ match, getPlayerName, isActive, onSelect, isFinal, readOn
   const p2Wins = match.games.filter(g => g.score2 > g.score1).length;
   const canInteract = readOnly
     ? match.games.length > 0
-    : !match.winnerId && match.player2Id !== 'BYE'
+    : ((!match.winnerId && match.player2Id !== 'BYE') || (!!match.winnerId && match.games.length > 0))
       && match.player1Id !== 'PLAY_IN_WINNER' && match.player2Id !== 'PLAY_IN_WINNER';
 
   const ring = isFinal && match.winnerId

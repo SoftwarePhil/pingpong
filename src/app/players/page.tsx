@@ -236,45 +236,8 @@ export default function PlayersPage() {
             <Link href="/" className="bg-white hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg shadow-sm border border-gray-200 transition-colors">
               ← Back to Home
             </Link>
-            <button 
-              onClick={() => setShowAddForm(!showAddForm)}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg shadow-sm transition-colors flex items-center space-x-2"
-            >
-              <span>+</span>
-              <span>Add Player</span>
-            </button>
           </div>
         </div>
-
-        {/* Add Player Form */}
-        {showAddForm && (
-          <div className="bg-white rounded-xl shadow-lg p-6 mb-8 border border-gray-200">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Add New Player</h2>
-            <form onSubmit={addPlayer} className="flex space-x-4">
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Enter player name"
-                className="flex-1 border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                required
-              />
-              <button 
-                type="submit" 
-                className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors"
-              >
-                Add Player
-              </button>
-              <button 
-                type="button" 
-                onClick={() => setShowAddForm(false)}
-                className="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
-            </form>
-          </div>
-        )}
 
         {/* Players Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -298,6 +261,42 @@ export default function PlayersPage() {
               </div>
             </div>
           ))}
+
+          {/* Add Player card */}
+          {!showAddForm ? (
+            <div
+              onClick={() => { setShowAddForm(true); }}
+              className="bg-white rounded-xl shadow-lg p-6 border-2 border-dashed border-gray-300 hover:border-indigo-400 hover:shadow-xl transition-all cursor-pointer flex items-center justify-center"
+            >
+              <div className="text-center">
+                <div className="w-12 h-12 bg-gray-100 hover:bg-indigo-50 rounded-full flex items-center justify-center text-gray-400 text-2xl mx-auto mb-3 transition-colors">+</div>
+                <p className="text-gray-500 font-medium">Add Player</p>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl shadow-lg p-6 border-2 border-indigo-300">
+              <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">New Player</p>
+              <form onSubmit={addPlayer} className="space-y-3">
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Player name"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  autoFocus
+                  required
+                />
+                <div className="flex gap-2">
+                  <button type="submit" className="flex-1 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors">
+                    Add
+                  </button>
+                  <button type="button" onClick={() => { setShowAddForm(false); setName(''); }} className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors">
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
         </div>
 
         {players.length === 0 && (

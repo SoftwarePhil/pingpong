@@ -86,7 +86,7 @@ export default function ActiveTournamentsPage() {
         const updatedT = updated.find(x => x.id === tournamentId);
         setTournaments(updated);
         if (updatedT?.status === 'completed') {
-          router.push('/tournaments/history');
+          router.push(`/tournaments/history?id=${tournamentId}`);
           return;
         }
         await fetchTournaments();
@@ -167,7 +167,7 @@ export default function ActiveTournamentsPage() {
     const res = await fetch('/api/tournaments', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: editingTournament.id, players: [...new Set(selectedPlayers)] }),
+      body: JSON.stringify({ id: editingTournament.id, players: [...new Set(selectedPlayers)], activePlayers: [...new Set(selectedPlayers)] }),
     });
     if (res.ok) {
       setShowEditForm(false); setEditingTournament(null); setSelectedPlayers([]);
@@ -285,7 +285,7 @@ export default function ActiveTournamentsPage() {
                         {openMenuId === t.id && (
                           <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-xl shadow-xl border border-gray-200 py-1 z-50">
                             <button
-                              onClick={() => { setOpenMenuId(null); setEditingTournament(t); setSelectedPlayers(t.players); setShowEditForm(true); }}
+                              onClick={() => { setOpenMenuId(null); setEditingTournament(t); setSelectedPlayers(t.activePlayers ?? t.players); setShowEditForm(true); }}
                               className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
                             >
                               ✏️ Edit Players
@@ -350,24 +350,108 @@ export default function ActiveTournamentsPage() {
                     </div>
                   )}
 
-                  {t.status === 'roundRobin' && (
-                    <RoundRobinView
-                      tournament={t}
-                      getPlayerName={getPlayerName}
-                      onAddGame={addGameToMatch}
-                      onDeleteMatch={deleteMatch}
-                      onDeleteGame={deleteGame}
-                      onSaveGameEdit={saveGameEdit}
-                      onSwapPlayers={swapPlayers}
-                      onAdvanceRound={advanceRound}
-                      onStartBracket={startBracket}
-                    />
-                  )}
+                  {t.status === 'roundRobin' && (() => {
+                    const rrMatches = tm.filter(m => m.round === 'roundRobin');
+                    const currentRound = rrMatches.length > 0 ? Math.max(...rrMatches.map(m => m.bracketRound ?? 1)) : 1;
+                    const pastRounds = Array.from(new Set(
+                      rrMatches.filter(m => (m.bracketRound ?? 1) < currentRound).map(m => m.bracketRound ?? 1)
+                    )).sort((a, b) => a - b);
+
+                    return (
+                      <>
+                        <RoundRobinView
+                          tournament={t}
+                          getPlayerName={getPlayerName}
+                          onAddGame={addGameToMatch}
+                          onDeleteMatch={deleteMatch}
+                          onDeleteGame={deleteGame}
+                          onSaveGameEdit={saveGameEdit}
+                          onSwapPlayers={swapPlayers}
+                          onAdvanceRound={advanceRound}
+                          onStartBracket={startBracket}
+                        />
+
+                        {pastRounds.length > 0 && (
+                          <div className="mt-6 border-t border-gray-200 pt-6 space-y-5">
+                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Past Rounds</p>
+                            {pastRounds.map(round => {
+                              const roundMatches = rrMatches.filter(m => (m.bracketRound ?? 1) === round && m.player2Id !== 'BYE');
+                              return (
+                                <div key={round}>
+                                  <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Round {round}</div>
+                                  <div className="space-y-1.5">
+                                    {roundMatches.map(match => {
+                                      const p1Won = match.winnerId === match.player1Id;
+                                      const p2Won = match.winnerId === match.player2Id;
+                                      return (
+                                        <div key={match.id} className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
+                                          <div className="flex items-center px-4 py-2 text-sm gap-3">
+                                            <span className={`font-semibold flex-1 ${p1Won ? 'text-green-700' : 'text-gray-500'}`}>
+                                              {getPlayerName(match.player1Id)}
+                                            </span>
+                                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                                              {match.games.map((g, gi) => {
+                                                const g1w = g.score1 > g.score2;
+                                                return (
+                                                  <span key={g.id} className="text-xs tabular-nums text-gray-500">
+                                                    {gi > 0 && <span className="mx-1 text-gray-300">·</span>}
+                                                    <span className={g1w ? 'font-bold text-gray-800' : ''}>{g.score1}</span>
+                                                    <span className="text-gray-400">–</span>
+                                                    <span className={!g1w ? 'font-bold text-gray-800' : ''}>{g.score2}</span>
+                                                  </span>
+                                                );
+                                              })}
+                                              {match.games.length === 0 && <span className="text-xs text-gray-400 italic">no games</span>}
+                                            </div>
+                                            <span className={`font-semibold flex-1 text-right ${p2Won ? 'text-green-700' : 'text-gray-500'}`}>
+                                              {getPlayerName(match.player2Id)}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
 
                   {t.status === 'bracket' && (() => {
                     const rrMatches = tm.filter(m => m.round === 'roundRobin')
                       .sort((a, b) => (a.bracketRound || 0) - (b.bracketRound || 0));
                     const rrRounds = Array.from(new Set(rrMatches.map(m => m.bracketRound || 1))).sort((a, b) => a - b);
+
+                    // ── Bracket standings ────────────────────────────────────
+                    const mainBracketMatches = bracketMatches.filter(m => (m.bracketRound ?? 0) > 0);
+                    const maxBracketRound = mainBracketMatches.length > 0
+                      ? Math.max(...mainBracketMatches.map(m => m.bracketRound ?? 0))
+                      : 0;
+                    const bracketPlayerSet = new Set<string>();
+                    mainBracketMatches.forEach(m => {
+                      if (m.player1Id !== 'BYE') bracketPlayerSet.add(m.player1Id);
+                      if (m.player2Id !== 'BYE') bracketPlayerSet.add(m.player2Id);
+                    });
+                    const bracketStandings = Array.from(bracketPlayerSet).map(playerId => {
+                      const playerMatches = mainBracketMatches
+                        .filter(m => m.player1Id === playerId || m.player2Id === playerId)
+                        .sort((a, b) => (b.bracketRound ?? 0) - (a.bracketRound ?? 0));
+                      const wins   = playerMatches.filter(m => m.winnerId === playerId).length;
+                      const losses = playerMatches.filter(m => m.winnerId && m.winnerId !== playerId).length;
+                      if (playerMatches.length === 0) return { id: playerId, wins, losses, label: 'Active', sortKey: 1 };
+                      const latest = playerMatches[0];
+                      const round = latest.bracketRound ?? 0;
+                      if (!latest.winnerId) return { id: playerId, wins, losses, label: 'Active', sortKey: 1 };
+                      if (latest.winnerId === playerId) {
+                        if (round === maxBracketRound) return { id: playerId, wins, losses, label: '🏆 Champion', sortKey: 0 };
+                        return { id: playerId, wins, losses, label: 'Active', sortKey: 1 };
+                      }
+                      if (round === maxBracketRound) return { id: playerId, wins, losses, label: '🥈 Runner-up', sortKey: 2 };
+                      return { id: playerId, wins, losses, label: `Eliminated (R${round})`, sortKey: 1000 - round };
+                    }).sort((a, b) => a.sortKey - b.sortKey);
 
                     return (
                       <div>
@@ -378,6 +462,46 @@ export default function ActiveTournamentsPage() {
                           onAddGame={addGameToMatch}
                           onSaveGameEdit={saveGameEdit}
                         />
+
+                        {/* Bracket Standings */}
+                        {mainBracketMatches.length > 0 && (
+                          <div className="mt-8 bg-gray-50 border border-gray-200 rounded-xl overflow-hidden">
+                            <div className="px-4 py-3 border-b border-gray-200 bg-white">
+                              <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wide">Current Standings</h4>
+                            </div>
+                            <table className="min-w-full text-sm">
+                              <thead>
+                                <tr className="border-b border-gray-200 bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                                  <th className="px-4 py-2 text-left w-8">#</th>
+                                  <th className="px-2 py-2 text-left">Player</th>
+                                  <th className="px-4 py-2 text-center">W</th>
+                                  <th className="px-4 py-2 text-center">L</th>
+                                  <th className="px-4 py-2 text-right">Status</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-100">
+                                {bracketStandings.map((entry, i) => (
+                                  <tr key={entry.id} className="bg-white hover:bg-gray-50 transition-colors">
+                                    <td className="px-4 py-3 text-sm font-semibold text-gray-400 w-8">{i + 1}</td>
+                                    <td className="px-2 py-3 font-semibold text-gray-900">{getPlayerName(entry.id)}</td>
+                                    <td className="px-4 py-3 text-center font-bold text-green-700">{entry.wins}</td>
+                                    <td className="px-4 py-3 text-center font-bold text-red-500">{entry.losses}</td>
+                                    <td className="px-4 py-3 text-right">
+                                      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+                                        entry.label === '🏆 Champion' ? 'bg-yellow-100 text-yellow-800' :
+                                        entry.label === '🥈 Runner-up' ? 'bg-gray-200 text-gray-700' :
+                                        entry.label === 'Active' ? 'bg-green-100 text-green-700' :
+                                        'bg-red-50 text-red-600'
+                                      }`}>
+                                        {entry.label}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
 
                         {rrMatches.length > 0 && (
                           <div className="mt-8 border-t border-gray-200 pt-6">

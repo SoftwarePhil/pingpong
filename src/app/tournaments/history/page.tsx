@@ -1,24 +1,35 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Tournament, Player, Match, Game } from '../../../types/pingpong';
 import Link from 'next/link';
 import BracketView from '../active/BracketView';
 
 type DetailTab = 'overview' | 'matches';
 
-export default function TournamentHistoryPage() {
+function TournamentHistoryContent() {
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
   const [games, setGames] = useState<Game[]>([]);
   const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null);
   const [activeTab, setActiveTab] = useState<DetailTab>('overview');
+  const searchParams = useSearchParams();
 
   useEffect(() => {
     fetchTournaments();
     fetchPlayers();
     fetchGames();
   }, []);
+
+  // Auto-select tournament from ?id= query param once data is loaded
+  useEffect(() => {
+    const id = searchParams.get('id');
+    if (id && tournaments.length > 0 && !selectedTournament) {
+      const t = tournaments.find(t => t.id === id);
+      if (t) { setSelectedTournament(t); setActiveTab('overview'); }
+    }
+  }, [searchParams, tournaments]);
 
   const fetchTournaments = async () => {
     const res = await fetch('/api/tournaments');
@@ -86,6 +97,8 @@ export default function TournamentHistoryPage() {
   const completedTournaments = [...tournaments]
     .filter(t => t.status === 'completed')
     .sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
+
+  const activeTournament = tournaments.find(t => t.status !== 'completed') ?? null;
 
   const openDetail = (tournament: Tournament) => {
     setSelectedTournament(tournament);
@@ -282,12 +295,18 @@ export default function TournamentHistoryPage() {
             <p className="text-gray-500 mt-1">{completedTournaments.length} completed tournament{completedTournaments.length !== 1 ? 's' : ''}</p>
           </div>
           <div className="flex gap-3">
-            <Link href="/tournaments" className="bg-white hover:bg-gray-100 text-gray-700 px-4 py-2 rounded-lg shadow-sm border border-gray-300 transition-colors text-sm font-medium">
-              ← Back
+            <Link href="/" className="bg-white hover:bg-gray-100 text-gray-700 px-4 py-2 rounded-lg shadow-sm border border-gray-300 transition-colors text-sm font-medium">
+              ← Home
             </Link>
-            <Link href="/tournaments/new" className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-sm text-sm font-medium transition-colors">
-              + New Tournament
-            </Link>
+            {activeTournament ? (
+              <Link href="/tournaments/active" className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-sm text-sm font-medium transition-colors">
+                ⚡ Active Tournament
+              </Link>
+            ) : (
+              <Link href="/tournaments/new" className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-sm text-sm font-medium transition-colors">
+                + New Tournament
+              </Link>
+            )}
           </div>
         </div>
 
@@ -297,8 +316,8 @@ export default function TournamentHistoryPage() {
             <div className="text-6xl mb-4">🏆</div>
             <h3 className="text-xl font-semibold text-gray-900 mb-2">No completed tournaments yet</h3>
             <p className="text-gray-500 mb-6">Complete some tournaments to see them here.</p>
-            <Link href="/tournaments/active" className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors">
-              View Active Tournaments
+            <Link href={activeTournament ? '/tournaments/active' : '/tournaments/new'} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors">
+              {activeTournament ? '⚡ Active Tournament' : '+ New Tournament'}
             </Link>
           </div>
         ) : (
@@ -398,6 +417,14 @@ export default function TournamentHistoryPage() {
 
       </div>
     </div>
+  );
+}
+
+export default function TournamentHistoryPage() {
+  return (
+    <Suspense>
+      <TournamentHistoryContent />
+    </Suspense>
   );
 }
 

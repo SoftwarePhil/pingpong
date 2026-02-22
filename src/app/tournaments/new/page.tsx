@@ -91,11 +91,8 @@ export default function NewTournamentPage() {
             <p className="text-gray-600 text-lg">Create a new ping pong tournament</p>
           </div>
           <div className="flex space-x-4">
-            <Link href="/tournaments" className="bg-white hover:bg-gray-100 text-gray-800 px-6 py-3 rounded-lg shadow border-2 border-gray-300 transition-colors font-medium">
-              ← Back to Tournaments
-            </Link>
-            <Link href="/tournaments/active" className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg shadow font-medium transition-colors border-2 border-blue-700">
-              View Active Tournaments
+            <Link href="/" className="bg-white hover:bg-gray-100 text-gray-800 px-6 py-3 rounded-lg shadow border-2 border-gray-300 transition-colors font-medium">
+              ← Back
             </Link>
           </div>
         </div>
