@@ -1,20 +1,24 @@
 import { recalculateMatchWinner } from '../data/data';
 import { Match, Game } from '../types/pingpong';
 
-// Mock the Redis module so data.ts doesn't attempt to connect on import
-jest.mock('redis', () => ({
-  createClient: jest.fn(() => ({
+// Mock the mongodb module so data.ts doesn't attempt to connect on import
+jest.mock('mongodb', () => ({
+  MongoClient: jest.fn(() => ({
     on: jest.fn(),
     connect: jest.fn().mockResolvedValue(undefined),
-    get: jest.fn().mockResolvedValue(null),
-    set: jest.fn().mockResolvedValue('OK'),
-    zRange: jest.fn().mockResolvedValue([]),
-    zAdd: jest.fn().mockResolvedValue(1),
-    zRem: jest.fn().mockResolvedValue(1),
-    hGet: jest.fn().mockResolvedValue(null),
-    hSet: jest.fn().mockResolvedValue(1),
-    hDel: jest.fn().mockResolvedValue(1),
-    del: jest.fn().mockResolvedValue(1),
+    db: jest.fn().mockReturnValue({
+      collection: jest.fn().mockReturnValue({
+        find: jest.fn().mockReturnValue({
+          sort: jest.fn().mockReturnThis(),
+          toArray: jest.fn().mockResolvedValue([]),
+        }),
+        findOne: jest.fn().mockResolvedValue(null),
+        replaceOne: jest.fn().mockResolvedValue({ upsertedCount: 1 }),
+        deleteOne: jest.fn().mockResolvedValue({ deletedCount: 1 }),
+        deleteMany: jest.fn().mockResolvedValue({ deletedCount: 0 }),
+        bulkWrite: jest.fn().mockResolvedValue({}),
+      }),
+    }),
   })),
 }));
 
