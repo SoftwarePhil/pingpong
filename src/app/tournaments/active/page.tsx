@@ -22,6 +22,9 @@ export default function ActiveTournamentsPage() {
   const [editingTournament, setEditingTournament] = useState<Tournament | null>(null);
   const [celebrationTournament, setCelebrationTournament] = useState<Tournament | null>(null);
   const [previousTournaments, setPreviousTournaments] = useState<Tournament[]>([]);
+  const [editingMatchId, setEditingMatchId] = useState<string | null>(null);
+  const [swapPlayer1Id, setSwapPlayer1Id] = useState('');
+  const [swapPlayer2Id, setSwapPlayer2Id] = useState('');
 
   useEffect(() => {
     fetchTournaments();
@@ -219,6 +222,19 @@ export default function ActiveTournamentsPage() {
           <span className="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded whitespace-nowrap">
             Best of {match.bestOf}
           </span>
+          {match.round === 'roundRobin' && match.games.length === 0 && !match.winnerId && (
+            <button
+              onClick={() => {
+                setEditingMatchId(match.id);
+                setSwapPlayer1Id(match.player1Id);
+                setSwapPlayer2Id(match.player2Id);
+              }}
+              className="text-blue-600 hover:text-blue-800 text-sm font-medium px-2 py-1 rounded hover:bg-blue-50 transition-colors"
+              title="Change players"
+            >
+              ↔️
+            </button>
+          )}
           <button
             onClick={() => deleteMatch(match.id)}
             className="text-red-600 hover:text-red-800 text-sm font-medium px-2 py-1 rounded hover:bg-red-50 transition-colors"
@@ -228,6 +244,47 @@ export default function ActiveTournamentsPage() {
           </button>
         </div>
       </div>
+
+      {editingMatchId === match.id && (
+        <div className="mb-3 p-3 bg-blue-50 rounded-lg border-2 border-blue-200">
+          <p className="text-xs font-semibold text-blue-800 mb-2">Change Players</p>
+          <div className="space-y-2">
+            <select
+              value={swapPlayer1Id}
+              onChange={(e) => setSwapPlayer1Id(e.target.value)}
+              className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-gray-900 bg-white"
+            >
+              {(tournaments.find(t => t.id === match.tournamentId)?.players ?? []).map(pid => (
+                <option key={pid} value={pid}>{getPlayerName(pid)}</option>
+              ))}
+            </select>
+            <div className="text-center text-xs text-gray-500 font-bold">VS</div>
+            <select
+              value={swapPlayer2Id}
+              onChange={(e) => setSwapPlayer2Id(e.target.value)}
+              className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-gray-900 bg-white"
+            >
+              {(tournaments.find(t => t.id === match.tournamentId)?.players ?? []).map(pid => (
+                <option key={pid} value={pid}>{getPlayerName(pid)}</option>
+              ))}
+            </select>
+            <div className="flex space-x-2 pt-1">
+              <button
+                onClick={() => swapMatchPlayers(match.id)}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-sm px-3 py-1 rounded font-medium transition-colors"
+              >
+                Save
+              </button>
+              <button
+                onClick={() => setEditingMatchId(null)}
+                className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm px-3 py-1 rounded font-medium transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="space-y-3">
         <div className={`flex justify-between items-center p-3 rounded border ${match.winnerId === match.player1Id ? 'bg-green-100 border-green-300' : 'bg-gray-50 border-gray-200'}`}>
@@ -481,6 +538,35 @@ export default function ActiveTournamentsPage() {
     } catch (error) {
       console.error('Error deleting game:', error);
       alert('Error deleting game');
+    }
+  };
+
+  const swapMatchPlayers = async (matchId: string) => {
+    if (!swapPlayer1Id || !swapPlayer2Id) {
+      alert('Please select both players');
+      return;
+    }
+    if (swapPlayer1Id === swapPlayer2Id) {
+      alert('Player 1 and Player 2 must be different');
+      return;
+    }
+    try {
+      const res = await fetch(`/api/matches/${matchId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ player1Id: swapPlayer1Id, player2Id: swapPlayer2Id }),
+      });
+      if (res.ok) {
+        setEditingMatchId(null);
+        await fetchMatches();
+        await fetchTournaments();
+      } else {
+        const error = await res.json();
+        alert(error.error || 'Failed to update match players');
+      }
+    } catch (error) {
+      console.error('Error updating match players:', error);
+      alert('Error updating match players');
     }
   };
 
