@@ -3,15 +3,16 @@
 import { useState, useEffect } from 'react';
 import { Tournament, Player, Match, Game } from '../../../types/pingpong';
 import Link from 'next/link';
+import BracketView from '../active/BracketView';
 
-type DetailTab = 'standings' | 'matches' | 'games';
+type DetailTab = 'overview' | 'matches';
 
 export default function TournamentHistoryPage() {
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
   const [games, setGames] = useState<Game[]>([]);
   const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null);
-  const [activeTab, setActiveTab] = useState<DetailTab>('standings');
+  const [activeTab, setActiveTab] = useState<DetailTab>('overview');
 
   useEffect(() => {
     fetchTournaments();
@@ -88,7 +89,7 @@ export default function TournamentHistoryPage() {
 
   const openDetail = (tournament: Tournament) => {
     setSelectedTournament(tournament);
-    setActiveTab('standings');
+    setActiveTab('overview');
   };
 
   const closeDetail = () => setSelectedTournament(null);
@@ -247,73 +248,96 @@ export default function TournamentHistoryPage() {
 
                 {/* Tabs */}
                 <div className="flex gap-1 mt-4">
-                  {(['standings', 'matches', 'games'] as DetailTab[]).map(tab => (
-                    <button
-                      key={tab}
-                      onClick={() => setActiveTab(tab)}
-                      className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors capitalize ${
-                        activeTab === tab
-                          ? 'bg-blue-600 text-white'
-                          : 'text-gray-600 hover:bg-gray-100'
-                      }`}
-                    >
-                      {tab}
-                    </button>
-                  ))}
+                  {(['overview', 'matches'] as DetailTab[]).map(tab => {
+                    const tabLabel = tab === 'overview' ? '🏆 Bracket & Standings' : tab;
+                    return (
+                      <button
+                        key={tab}
+                        onClick={() => setActiveTab(tab)}
+                        className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors capitalize ${
+                          activeTab === tab
+                            ? 'bg-blue-600 text-white'
+                            : 'text-gray-600 hover:bg-gray-100'
+                        }`}
+                      >
+                        {tabLabel}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
               {/* Modal Content */}
               <div className="overflow-y-auto flex-1 p-6">
-                {/* Standings Tab */}
-                {activeTab === 'standings' && (
-                  <div>
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b-2 border-gray-200 text-gray-600">
-                          <th className="text-left py-2 pr-4 font-semibold w-10">Rank</th>
-                          <th className="text-left py-2 pr-4 font-semibold">Player</th>
-                          <th className="text-center py-2 px-3 font-semibold">Wins</th>
-                          <th className="text-center py-2 px-3 font-semibold">Losses</th>
-                          <th className="text-center py-2 px-3 font-semibold">Win %</th>
-                          <th className="text-center py-2 px-3 font-semibold">Matches</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {getPlayerStandings(selectedTournament).map((s, i) => (
-                          <tr
-                            key={s.playerId}
-                            className={`border-b border-gray-100 ${
-                              i === 0 ? 'bg-yellow-50 font-semibold' : i === 1 ? 'bg-gray-50' : ''
-                            }`}
-                          >
-                            <td className="py-3 pr-4 text-lg">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}`}</td>
-                            <td className="py-3 pr-4 font-medium text-gray-900">{getPlayerName(s.playerId)}</td>
-                            <td className="text-center py-3 px-3 text-green-600 font-medium">{s.wins}</td>
-                            <td className="text-center py-3 px-3 text-red-500 font-medium">{s.losses}</td>
-                            <td className="text-center py-3 px-3 text-gray-700">
-                              {s.totalGames > 0 ? Math.round((s.wins / s.totalGames) * 100) : 0}%
-                            </td>
-                            <td className="text-center py-3 px-3 text-gray-500">{s.totalGames}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-
-                    <div className="grid grid-cols-3 gap-4 mt-6">
-                      {[
-                        { label: 'Matches', value: (selectedTournament.matches || []).filter(m => m.winnerId).length },
-                        { label: 'Games', value: getTournamentGames(selectedTournament).length },
-                        { label: 'Players', value: selectedTournament.players.length },
-                      ].map(stat => (
-                        <div key={stat.label} className="bg-gray-50 rounded-lg p-4 text-center border border-gray-200">
-                          <div className="text-2xl font-bold text-gray-900">{stat.value}</div>
-                          <div className="text-sm text-gray-500">{stat.label}</div>
+                {/* Overview Tab: Bracket + Standings */}
+                {activeTab === 'overview' && (() => {
+                  const bracketMatches = (selectedTournament.matches || []).filter(m => m.round === 'bracket');
+                  return (
+                    <div className="space-y-8">
+                      {bracketMatches.length > 0 ? (
+                        <div>
+                          <BracketView
+                            bracketMatches={bracketMatches}
+                            getPlayerName={getPlayerName}
+                            onAddGame={async () => {}}
+                            onSaveGameEdit={async () => {}}
+                            readOnly
+                          />
                         </div>
-                      ))}
+                      ) : (
+                        <p className="text-gray-400 text-sm text-center py-4">No bracket matches recorded.</p>
+                      )}
+
+                      <div>
+                        <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Standings</h4>
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b-2 border-gray-200 text-gray-600">
+                              <th className="text-left py-2 pr-4 font-semibold w-10">Rank</th>
+                              <th className="text-left py-2 pr-4 font-semibold">Player</th>
+                              <th className="text-center py-2 px-3 font-semibold">Wins</th>
+                              <th className="text-center py-2 px-3 font-semibold">Losses</th>
+                              <th className="text-center py-2 px-3 font-semibold">Win %</th>
+                              <th className="text-center py-2 px-3 font-semibold">Matches</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {getPlayerStandings(selectedTournament).map((s, i) => (
+                              <tr
+                                key={s.playerId}
+                                className={`border-b border-gray-100 ${
+                                  i === 0 ? 'bg-yellow-50 font-semibold' : i === 1 ? 'bg-gray-50' : ''
+                                }`}
+                              >
+                                <td className="py-3 pr-4 text-lg">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}`}</td>
+                                <td className="py-3 pr-4 font-medium text-gray-900">{getPlayerName(s.playerId)}</td>
+                                <td className="text-center py-3 px-3 text-green-600 font-medium">{s.wins}</td>
+                                <td className="text-center py-3 px-3 text-red-500 font-medium">{s.losses}</td>
+                                <td className="text-center py-3 px-3 text-gray-700">
+                                  {s.totalGames > 0 ? Math.round((s.wins / s.totalGames) * 100) : 0}%
+                                </td>
+                                <td className="text-center py-3 px-3 text-gray-500">{s.totalGames}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+
+                        <div className="grid grid-cols-3 gap-4 mt-6">
+                          {[
+                            { label: 'Matches', value: (selectedTournament.matches || []).filter(m => m.winnerId).length },
+                            { label: 'Games', value: getTournamentGames(selectedTournament).length },
+                            { label: 'Players', value: selectedTournament.players.length },
+                          ].map(stat => (
+                            <div key={stat.label} className="bg-gray-50 rounded-lg p-4 text-center border border-gray-200">
+                              <div className="text-2xl font-bold text-gray-900">{stat.value}</div>
+                              <div className="text-sm text-gray-500">{stat.label}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* Matches Tab */}
                 {activeTab === 'matches' && (() => {
@@ -395,53 +419,6 @@ export default function TournamentHistoryPage() {
                   );
                 })()}
 
-                {/* Games Tab */}
-                {activeTab === 'games' && (() => {
-                  const tournamentGames = getTournamentGames(selectedTournament)
-                    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-                  const matchMap = new Map((selectedTournament.matches || []).map(m => [m.id, m]));
-
-                  if (tournamentGames.length === 0) {
-                    return <p className="text-gray-500 text-center py-8">No games recorded.</p>;
-                  }
-
-                  return (
-                    <div>
-                      <div className="text-xs text-gray-400 mb-3">{tournamentGames.length} games total, ordered chronologically</div>
-                      <div className="space-y-2">
-                        {tournamentGames.map((game, idx) => {
-                          const match = game.matchId ? matchMap.get(game.matchId) : undefined;
-                          const p1Won = game.score1 > game.score2;
-                          const roundLabel = match
-                            ? match.round === 'roundRobin'
-                              ? 'Round Robin'
-                              : `Bracket R${match.bracketRound}`
-                            : '';
-
-                          return (
-                            <div key={game.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-3 border border-gray-100">
-                              <div className="flex items-center gap-3">
-                                <span className="text-gray-400 text-sm w-6 text-right">{idx + 1}</span>
-                                <div>
-                                  <div className="text-sm font-medium text-gray-900">
-                                    <span className={p1Won ? 'text-green-700 font-semibold' : ''}>{getPlayerName(game.player1Id)}</span>
-                                    <span className="text-gray-400 mx-2">vs</span>
-                                    <span className={!p1Won ? 'text-green-700 font-semibold' : ''}>{getPlayerName(game.player2Id)}</span>
-                                  </div>
-                                  <div className="text-xs text-gray-400 mt-0.5">{roundLabel} • {new Date(game.date).toLocaleDateString()}</div>
-                                </div>
-                              </div>
-                              <div className="text-right">
-                                <div className="font-bold text-gray-900 tabular-nums">{game.score1} – {game.score2}</div>
-                                <div className="text-xs text-green-600 font-medium">{getPlayerName(p1Won ? game.player1Id : game.player2Id)} won</div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })()}
               </div>
             </div>
           </div>
