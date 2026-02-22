@@ -8,7 +8,8 @@ function makeTournament(overrides: Partial<Tournament> = {}): Tournament {
     startDate: new Date().toISOString(),
     status: 'roundRobin',
     roundRobinRounds: 2,
-    bracketRounds: [{ round: 1, bestOf: 3 }],
+    rrBestOf: 1,
+    bracketRounds: [{ matchCount: 1, bestOf: 3 }, { matchCount: 2, bestOf: 3 }],
     players: ['p1', 'p2', 'p3', 'p4'],
     matches: [],
     ...overrides,
@@ -130,8 +131,10 @@ describe('createBracketMatches', () => {
     createBracketMatches(tournament);
     // Player ranking should be set on the tournament object
     expect(tournament.playerRanking).toBeDefined();
-    expect(tournament.playerRanking![0]).toBe('p1');
-    expect(tournament.playerRanking![1]).toBe('p4');
+    // p1 and p4 both have 1 win; they should both appear before p2 and p3 (0 wins)
+    const top2 = tournament.playerRanking!.slice(0, 2);
+    expect(top2).toContain('p1');
+    expect(top2).toContain('p4');
   });
 
   it('adds bye matches for player counts that are not a power of 2', () => {
@@ -168,7 +171,7 @@ describe('advanceBracketRound', () => {
 
   it('creates next-round matches when current round is complete (4 → 2 players)', () => {
     const tournament = makeTournament({
-      bracketRounds: [{ round: 1, bestOf: 3 }, { round: 2, bestOf: 5 }],
+      bracketRounds: [{ matchCount: 2, bestOf: 3 }, { matchCount: 1, bestOf: 5 }],
       matches: [
         makeMatch('m1', { bracketRound: 1, player1Id: 'p1', player2Id: 'p2', winnerId: 'p1' }),
         makeMatch('m2', { bracketRound: 1, player1Id: 'p3', player2Id: 'p4', winnerId: 'p4' }),
@@ -185,7 +188,7 @@ describe('advanceBracketRound', () => {
 
   it('marks tournament as completed when only one winner remains', () => {
     const tournament = makeTournament({
-      bracketRounds: [{ round: 1, bestOf: 3 }],
+      bracketRounds: [{ matchCount: 1, bestOf: 3 }],
       matches: [
         makeMatch('m1', { bracketRound: 1, player1Id: 'p1', player2Id: 'p2', winnerId: 'p1' }),
       ],
@@ -195,9 +198,9 @@ describe('advanceBracketRound', () => {
     expect(tournament.status).toBe('completed');
   });
 
-  it('uses bestOf from the last configured bracket round when no config for next round', () => {
+  it('uses the configured bestOf for the specific match count (final = matchCount 1)', () => {
     const tournament = makeTournament({
-      bracketRounds: [{ round: 1, bestOf: 7 }], // only one config entry
+      bracketRounds: [{ matchCount: 1, bestOf: 7 }], // final configured as Bo7
       matches: [
         makeMatch('m1', { bracketRound: 1, player1Id: 'p1', player2Id: 'p2', winnerId: 'p1' }),
         makeMatch('m2', { bracketRound: 1, player1Id: 'p3', player2Id: 'p4', winnerId: 'p3' }),
@@ -209,7 +212,7 @@ describe('advanceBracketRound', () => {
 
   it('excludes play-in matches (bracketRound === 0) from advancement logic', () => {
     const tournament = makeTournament({
-      bracketRounds: [{ round: 1, bestOf: 3 }],
+      bracketRounds: [{ matchCount: 1, bestOf: 3 }, { matchCount: 2, bestOf: 3 }],
       matches: [
         // play-in — should be ignored
         makeMatch('m0', { bracketRound: 0, player1Id: 'p4', player2Id: 'p5', winnerId: 'p4' }),
@@ -224,5 +227,107 @@ describe('advanceBracketRound', () => {
     const players = [newMatches[0].player1Id, newMatches[0].player2Id];
     expect(players).toContain('p1');
     expect(players).toContain('p3');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// activePlayers
+// ─────────────────────────────────────────────────────────────────────────────
+describe('activePlayers', () => {
+  describe('advanceRoundRobinRound', () => {
+    it('only pairs activePlayers when the field is set', () => {
+      // p4 has been deactivated — should not appear in next round
+      const tournament = makeTournament({
+        players: ['p1', 'p2', 'p3', 'p4'],
+        activePlayers: ['p1', 'p2', 'p3'],
+        roundRobinRounds: 3,
+        matches: [
+          makeMatch('m1', { round: 'roundRobin', bracketRound: 1, player1Id: 'p1', player2Id: 'p2' }),
+          makeMatch('m2', { round: 'roundRobin', bracketRound: 1, player1Id: 'p3', player2Id: 'p4' }),
+        ],
+      });
+      const newMatches = advanceRoundRobinRound(tournament);
+      expect(newMatches.length).toBeGreaterThan(0);
+      const allPlayerIds = newMatches.flatMap(m => [m.player1Id, m.player2Id]);
+      expect(allPlayerIds).not.toContain('p4');
+    });
+
+    it('uses all tournament.players when activePlayers is not set', () => {
+      const tournament = makeTournament({
+        players: ['p1', 'p2', 'p3', 'p4'],
+        roundRobinRounds: 3,
+        matches: [
+          makeMatch('m1', { round: 'roundRobin', bracketRound: 1, player1Id: 'p1', player2Id: 'p2' }),
+          makeMatch('m2', { round: 'roundRobin', bracketRound: 1, player1Id: 'p3', player2Id: 'p4' }),
+        ],
+      });
+      const newMatches = advanceRoundRobinRound(tournament);
+      const allPlayerIds = new Set(newMatches.flatMap(m => [m.player1Id, m.player2Id]).filter(id => id !== 'BYE'));
+      expect(allPlayerIds.size).toBe(4);
+    });
+  });
+
+  describe('createBracketMatches', () => {
+    it('only seeds activePlayers into the bracket when the field is set', () => {
+      // p4 is inactive — bracket should only contain p1, p2, p3
+      const tournament = makeTournament({
+        players: ['p1', 'p2', 'p3', 'p4'],
+        activePlayers: ['p1', 'p2', 'p3'],
+        matches: [],
+      });
+      const matches = createBracketMatches(tournament);
+      const allPlayerIds = matches.flatMap(m => [m.player1Id, m.player2Id]).filter(id => id !== 'BYE');
+      expect(allPlayerIds).not.toContain('p4');
+      // Should be a play-in since 3 is odd
+      const playIn = matches.filter(m => m.bracketRound === 0);
+      expect(playIn).toHaveLength(1);
+    });
+
+    it('still counts wins from inactive players when computing bracket seating', () => {
+      // p4 is inactive but won a round-robin match — p4's win should not affect active player ranks
+      // p3 has 1 win; p4 (inactive) also has 1 win; only p1/p2/p3 are in the bracket
+      const tournament = makeTournament({
+        players: ['p1', 'p2', 'p3', 'p4'],
+        activePlayers: ['p1', 'p2', 'p3'],
+        matches: [
+          makeMatch('m1', { round: 'roundRobin', bracketRound: 1, player1Id: 'p3', player2Id: 'p1', winnerId: 'p3' }),
+          makeMatch('m2', { round: 'roundRobin', bracketRound: 1, player1Id: 'p4', player2Id: 'p2', winnerId: 'p4' }),
+        ],
+      });
+      createBracketMatches(tournament);
+      // p3 has 1 win and is active — should appear in the ranking above p1 and p2 (0 wins)
+      expect(tournament.playerRanking).toBeDefined();
+      expect(tournament.playerRanking!).toContain('p1');
+      expect(tournament.playerRanking!).toContain('p2');
+      expect(tournament.playerRanking!).toContain('p3');
+      // p4 must not be in the bracket ranking at all
+      expect(tournament.playerRanking!).not.toContain('p4');
+      expect(tournament.playerRanking![0]).toBe('p3'); // top seed
+    });
+
+    it('uses all tournament.players when activePlayers is not set', () => {
+      const tournament = makeTournament({
+        players: ['p1', 'p2', 'p3', 'p4'],
+        matches: [],
+      });
+      const matches = createBracketMatches(tournament);
+      const allPlayerIds = new Set(
+        matches.flatMap(m => [m.player1Id, m.player2Id]).filter(id => id !== 'BYE')
+      );
+      // All 4 players should appear since no activePlayers restriction
+      expect(allPlayerIds.size).toBe(4);
+    });
+
+    it('playerRanking only contains activePlayers', () => {
+      const tournament = makeTournament({
+        players: ['p1', 'p2', 'p3', 'p4'],
+        activePlayers: ['p1', 'p2'],
+        matches: [],
+      });
+      createBracketMatches(tournament);
+      expect(tournament.playerRanking).toHaveLength(2);
+      expect(tournament.playerRanking).not.toContain('p3');
+      expect(tournament.playerRanking).not.toContain('p4');
+    });
   });
 });

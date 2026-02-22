@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Match } from '../../../../types/pingpong';
-import { getMatch, updateMatchInTournament, removeMatchFromTournament } from '../../../../data/data';
+import { getMatch, getTournamentIdForMatch, getTournament, setTournament, updateMatchInTournament, removeMatchFromTournament, saveData } from '../../../../data/data';
+import { cascadeRoundRobinPlayerSwap } from '../../../../lib/tournament';
 
 export async function PUT(
   request: NextRequest,
@@ -15,6 +16,42 @@ export async function PUT(
       return NextResponse.json({ error: 'Match not found' }, { status: 404 });
     }
 
+    // Player reassignment — cascade changes to other matches in the same round
+    if (updates.player1Id !== undefined || updates.player2Id !== undefined) {
+      if (currentMatch.round !== 'roundRobin') {
+        return NextResponse.json({ error: 'Players can only be changed in round robin matches' }, { status: 400 });
+      }
+      if (currentMatch.games.length > 0) {
+        return NextResponse.json({ error: 'Cannot change players after games have been played' }, { status: 400 });
+      }
+
+      const newP1 = updates.player1Id ?? currentMatch.player1Id;
+      const newP2 = updates.player2Id ?? currentMatch.player2Id;
+
+      if (newP1 === newP2) {
+        return NextResponse.json({ error: 'Player 1 and Player 2 must be different' }, { status: 400 });
+      }
+
+      // Load the tournament and cascade all changes in memory, then save once
+      const tournamentId = await getTournamentIdForMatch(matchId);
+      if (!tournamentId) {
+        return NextResponse.json({ error: 'Tournament not found for match' }, { status: 404 });
+      }
+      const tournament = await getTournament(tournamentId);
+      if (!tournament?.matches) {
+        return NextResponse.json({ error: 'Tournament not found' }, { status: 404 });
+      }
+
+      tournament.matches = cascadeRoundRobinPlayerSwap(tournament.matches, matchId, newP1, newP2);
+
+      await setTournament(tournament);
+      await saveData();
+
+      const updatedMatch = tournament.matches.find(m => m.id === matchId)!;
+      return NextResponse.json(updatedMatch);
+    }
+
+    // Non-player update (scores, winnerId, etc.) — standard path
     const updatedMatch: Match = { ...currentMatch, ...updates };
     const tournament = await updateMatchInTournament(updatedMatch);
     if (!tournament) {

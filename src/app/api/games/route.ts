@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Game, Match } from '../../../types/pingpong';
 import { getAllGames, addGameToMatch, setTournament, registerMatchesIndex } from '../../../data/data';
 import { validateScore } from '../../../lib/scoring';
+import { generateBracketSeeding } from '../../../lib/tournament';
 
 export async function GET() {
   try {
@@ -45,32 +46,45 @@ export async function POST(request: NextRequest) {
 
       // Handle play-in match completion (bracketRound === 0 is the play-in round)
       const { match, tournament } = result;
-      if (match.winnerId && match.bracketRound === 0 && tournament.players.length % 2 === 1) {
-        const rankedPlayers = tournament.playerRanking || tournament.players;
+      const bracketPool = tournament.activePlayers ?? tournament.players;
+      if (match.winnerId && match.bracketRound === 0 && bracketPool.length % 2 === 1) {
+        const rankedPlayers = tournament.playerRanking || bracketPool;
         if (rankedPlayers.length >= 3) {
-          const mainBracketPlayers = [
-            rankedPlayers[0], // 1st place (round robin)
-            rankedPlayers[1], // 2nd place
-            rankedPlayers[2], // 3rd place
-            match.winnerId,   // Play-in winner
+          // Top (n-2) seeds + actual play-in winner, seeded properly
+          const mainBracketPlayers: string[] = [
+            ...rankedPlayers.slice(0, rankedPlayers.length - 2),
+            match.winnerId,
           ];
-          const bracketRound = tournament.bracketRounds[0];
+          const n = mainBracketPlayers.length;
+          const nextPowerOf2 = Math.pow(2, Math.ceil(Math.log2(Math.max(n, 2))));
+          const firstRoundMatchCount = nextPowerOf2 / 2;
+          const bracketConfig = tournament.bracketRounds.find(b => b.matchCount === firstRoundMatchCount);
+          const mainBestOf = bracketConfig?.bestOf ?? 1;
+          const seeding = generateBracketSeeding(nextPowerOf2);
           const newMatches: Match[] = [];
-          for (let i = 0; i < mainBracketPlayers.length; i += 2) {
+
+          for (let i = 0; i < seeding.length; i += 2) {
+            const p1 = seeding[i]     <= n ? mainBracketPlayers[seeding[i] - 1]     : 'BYE';
+            const p2 = seeding[i + 1] <= n ? mainBracketPlayers[seeding[i + 1] - 1] : 'BYE';
+            const isBye = p1 === 'BYE' || p2 === 'BYE';
             newMatches.push({
               id: Date.now().toString() + Math.random(),
               tournamentId: tournament.id,
-              player1Id: mainBracketPlayers[i],
-              player2Id: mainBracketPlayers[i + 1],
+              player1Id: p1,
+              player2Id: p2,
               round: 'bracket',
-              bracketRound: bracketRound.round,
-              bestOf: bracketRound.bestOf,
+              bracketRound: 1,
+              bestOf: isBye ? 1 : mainBestOf,
               games: [],
+              ...(isBye ? { winnerId: p1 === 'BYE' ? p2 : p1 } : {}),
             });
           }
+          // Reverse the bottom half so seed 2 appears at the bottom
+          const half = newMatches.length / 2;
+          const orderedMatches = [...newMatches.slice(0, half), ...newMatches.slice(half).reverse()];
           if (!tournament.matches) tournament.matches = [];
-          tournament.matches.push(...newMatches);
-          await registerMatchesIndex(newMatches);
+          tournament.matches.push(...orderedMatches);
+          await registerMatchesIndex(orderedMatches);
           await setTournament(tournament);
         }
       }

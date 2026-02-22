@@ -11,6 +11,9 @@ export default function NewTournamentPage() {
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [name, setName] = useState('');
   const [roundRobinRounds, setRoundRobinRounds] = useState(3);
+  const [rrBestOf, setRrBestOf] = useState(1);
+  const [semiBestOf, setSemiBestOf] = useState(3);
+  const [finalBestOf, setFinalBestOf] = useState(3);
   const [selectedPlayers, setSelectedPlayers] = useState<string[]>([]);
 
   useEffect(() => {
@@ -32,6 +35,13 @@ export default function NewTournamentPage() {
 
   const activeTournaments = tournaments.filter(t => t.status !== 'completed');
 
+  // Redirect immediately once we know there's an active tournament
+  useEffect(() => {
+    if (activeTournaments.length > 0) {
+      router.replace('/tournaments/active');
+    }
+  }, [activeTournaments.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const createTournament = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || [...new Set(selectedPlayers)].length < 2) {
@@ -45,7 +55,10 @@ export default function NewTournamentPage() {
       return;
     }
 
-    const bracketRounds = [{ round: 1, bestOf: 3 }, { round: 2, bestOf: 5 }];
+    const bracketRounds = [
+      { matchCount: 1, bestOf: finalBestOf },
+      { matchCount: 2, bestOf: semiBestOf },
+    ];
     
     const res = await fetch('/api/tournaments', {
       method: 'POST',
@@ -54,6 +67,7 @@ export default function NewTournamentPage() {
         name,
         roundRobinRounds,
         bracketRounds,
+        rrBestOf,
         players: [...new Set(selectedPlayers)],
       }),
     });
@@ -77,11 +91,8 @@ export default function NewTournamentPage() {
             <p className="text-gray-600 text-lg">Create a new ping pong tournament</p>
           </div>
           <div className="flex space-x-4">
-            <Link href="/tournaments" className="bg-white hover:bg-gray-100 text-gray-800 px-6 py-3 rounded-lg shadow border-2 border-gray-300 transition-colors font-medium">
-              ← Back to Tournaments
-            </Link>
-            <Link href="/tournaments/active" className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg shadow font-medium transition-colors border-2 border-blue-700">
-              View Active Tournaments
+            <Link href="/" className="bg-white hover:bg-gray-100 text-gray-800 px-6 py-3 rounded-lg shadow border-2 border-gray-300 transition-colors font-medium">
+              ← Back
             </Link>
           </div>
         </div>
@@ -138,6 +149,40 @@ export default function NewTournamentPage() {
                   <option value={3}>3 Rounds</option>
                   <option value={4}>4 Rounds</option>
                 </select>
+              </div>
+            </div>
+
+            {/* Best-of Format Settings */}
+            <div>
+              <label className="block text-lg font-semibold text-gray-800 mb-4">Format Settings</label>
+              <div className="space-y-4 bg-gray-50 rounded-lg p-5 border-2 border-gray-200">
+                {(
+                  [
+                    { label: 'Round Robin', value: rrBestOf, setter: setRrBestOf },
+                    { label: 'Semifinals', value: semiBestOf, setter: setSemiBestOf },
+                    { label: 'Finals', value: finalBestOf, setter: setFinalBestOf },
+                  ] as { label: string; value: number; setter: (v: number) => void }[]
+                ).map(({ label, value, setter }) => (
+                  <div key={label} className="flex items-center justify-between">
+                    <span className="text-base font-medium text-gray-700 w-36">{label}</span>
+                    <div className="flex space-x-2">
+                      {[1, 3, 5].map(bo => (
+                        <button
+                          key={bo}
+                          type="button"
+                          onClick={() => setter(bo)}
+                          className={`px-4 py-2 rounded-lg font-semibold text-sm border-2 transition-colors ${
+                            value === bo
+                              ? 'bg-blue-600 text-white border-blue-700'
+                              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'
+                          }`}
+                        >
+                          Bo{bo}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 
