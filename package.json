@@ -13,15 +13,20 @@
     "build-run": "npm run build && npm start",
     "lint": "eslint",
     "test": "jest",
+    "db:start": "docker compose up -d redis mongodb",
+    "db:stop": "docker compose down",
+    "redis:start": "docker compose up -d redis",
+    "redis:stop": "docker compose stop redis",
     "mongodb:start": "docker compose up -d mongodb",
-    "mongodb:stop": "docker compose down"
+    "mongodb:stop": "docker compose stop mongodb"
   },
   "dependencies": {
     "mongodb": "^7.1.0",
     "next": "15.5.9",
     "react": "19.1.0",
     "react-dom": "19.1.0",
-    "recharts": "^3.7.0"
+    "recharts": "^3.7.0",
+    "redis": "^5.11.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

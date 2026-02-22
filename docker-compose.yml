@@ -1,6 +1,16 @@
 version: '3.8'
 
 services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-mypassword}
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-mypassword}
+
   mongodb:
     image: mongo:7
     ports:
@@ -12,4 +22,5 @@ services:
       - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD:-mypassword}
 
 volumes:
+  redis_data:
   mongodb_data:

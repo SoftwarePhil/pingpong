@@ -1,40 +1,61 @@
+import { createClient, RedisClientType } from 'redis';
 import { MongoClient, Db, Collection } from 'mongodb';
 import { Player, Tournament, Match, Game } from '../types/pingpong';
 
-// MongoDB client and db
+// ─────────────────────────────────────────────────────────────────────────────
+// Environment isolation
+// ─────────────────────────────────────────────────────────────────────────────
+if (!process.env.NODE_ENV) {
+  console.warn('NODE_ENV is not set; defaulting to "development". Set NODE_ENV explicitly to ensure correct data isolation.');
+}
+export const ENV_PREFIX = process.env.NODE_ENV || 'development';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Redis — tournament state (real-time: active tournaments, matches, match index)
+// ─────────────────────────────────────────────────────────────────────────────
+let redisClient: RedisClientType;
+
+const ACTIVE_TOURNAMENTS_KEY = `${ENV_PREFIX}:pingpong:active_tournaments`;
+const COMPLETED_TOURNAMENTS_KEY = `${ENV_PREFIX}:pingpong:completed_tournaments`;
+const MATCH_INDEX_KEY = `${ENV_PREFIX}:pingpong:match_index`;
+
+function tournamentKey(id: string): string {
+  return `${ENV_PREFIX}:pingpong:tournament:${id}`;
+}
+
+async function initRedis() {
+  try {
+    redisClient = createClient({ url: process.env.REDIS_URL || 'redis://localhost:6379' });
+    redisClient.on('error', (err) => console.error('Redis Client Error:', err));
+    redisClient.on('connect', () => console.log('Connected to Redis'));
+    await redisClient.connect();
+  } catch (error) {
+    console.error('Failed to connect to Redis:', error);
+    throw error;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MongoDB — players and game history (durable, long-term)
+// ─────────────────────────────────────────────────────────────────────────────
 let mongoClient: MongoClient;
 let db: Db;
 
-// Environment prefix for MongoDB database name — prevents test/dev data from leaking into production
-if (!process.env.NODE_ENV) {
-  console.warn('NODE_ENV is not set; MongoDB will use the "development" database. Set NODE_ENV explicitly to ensure correct data isolation.');
-}
-export const ENV_PREFIX = process.env.NODE_ENV || 'development';
+const PLAYERS_COLLECTION = 'players';
+const GAMES_COLLECTION = 'games';
+
+type PlayerDoc = Omit<Player, 'id'> & { _id: string };
+type GameDoc = Omit<Game, 'id'> & { _id: string };
 
 // Database name is environment-scoped (e.g. pingpong_test, pingpong_development, pingpong_production)
 export function dbName(): string {
   return `pingpong_${ENV_PREFIX}`;
 }
 
-// Collection names
-const PLAYERS_COLLECTION = 'players';
-const TOURNAMENTS_COLLECTION = 'tournaments';
-const MATCH_INDEX_COLLECTION = 'match_index';
-
-// MongoDB document types — use _id in place of the entity's id field
-type PlayerDoc = Omit<Player, 'id'> & { _id: string };
-type TournamentDoc = Omit<Tournament, 'id'> & { _id: string };
-type MatchIndexDoc = { _id: string; tournamentId: string };
-
-// Initialize MongoDB client
 async function initMongo() {
   try {
     mongoClient = new MongoClient(process.env.MONGODB_URL || 'mongodb://localhost:27017');
-
-    mongoClient.on('error', (err) => {
-      console.error('MongoDB Client Error:', err);
-    });
-
+    mongoClient.on('error', (err) => console.error('MongoDB Client Error:', err));
     await mongoClient.connect();
     db = mongoClient.db(dbName());
     console.log('Connected to MongoDB');
@@ -44,75 +65,64 @@ async function initMongo() {
   }
 }
 
-function getDb(): Db {
-  return db;
-}
-
 function playersCol(): Collection<PlayerDoc> {
-  return getDb().collection<PlayerDoc>(PLAYERS_COLLECTION);
+  return db.collection<PlayerDoc>(PLAYERS_COLLECTION);
 }
 
-function tournamentsCol(): Collection<TournamentDoc> {
-  return getDb().collection<TournamentDoc>(TOURNAMENTS_COLLECTION);
+function gamesCol(): Collection<GameDoc> {
+  return db.collection<GameDoc>(GAMES_COLLECTION);
 }
 
-function matchIndexCol(): Collection<MatchIndexDoc> {
-  return getDb().collection<MatchIndexDoc>(MATCH_INDEX_COLLECTION);
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// Initialization
+// ─────────────────────────────────────────────────────────────────────────────
 
-// Rebuild the match index from all tournament documents (runs on startup to self-heal)
+// Rebuild the Redis match index from all tournament documents (runs on startup to self-heal)
 async function migrateMatchIndex() {
   try {
     const tournaments = await getTournaments();
     if (tournaments.length === 0) return;
-    const ops = tournaments.flatMap(tournament =>
-      (tournament.matches ?? []).map(match => ({
-        replaceOne: {
-          filter: { _id: match.id },
-          replacement: { tournamentId: tournament.id },
-          upsert: true,
-        },
-      }))
-    );
-    if (ops.length > 0) {
-      await matchIndexCol().bulkWrite(ops);
+    const entries: Record<string, string> = {};
+    for (const tournament of tournaments) {
+      for (const match of tournament.matches ?? []) {
+        entries[match.id] = tournament.id;
+      }
     }
-    console.log(`Match index rebuilt: ${ops.length} entries`);
+    if (Object.keys(entries).length > 0) {
+      await redisClient.hSet(MATCH_INDEX_KEY, entries);
+    }
+    console.log(`Match index rebuilt: ${Object.keys(entries).length} entries`);
   } catch (error) {
     console.warn('Could not rebuild match index:', error);
   }
 }
 
-// Load data from MongoDB
 export async function loadData() {
   try {
-    if (!db) {
-      await initMongo();
-    }
-    // Rebuild match index from existing embedded tournament data
+    if (!redisClient) await initRedis();
+    if (!db) await initMongo();
     await migrateMatchIndex();
-    console.log('MongoDB data layer initialized');
+    console.log('Hybrid data layer initialized (Redis + MongoDB)');
   } catch (error) {
-    console.error('Error initializing MongoDB:', error);
+    console.error('Error initializing data layer:', error);
     throw error;
   }
 }
 
-// Save data to MongoDB (no-op since we save immediately on changes)
+// Save data (no-op since both stores save immediately on changes)
 export async function saveData() {
-  // MongoDB saves immediately, so this is a no-op
-  console.log('Data saved to MongoDB');
+  console.log('Data saved (Redis + MongoDB)');
 }
 
-// Tournament document functions
+// ─────────────────────────────────────────────────────────────────────────────
+// Tournament functions — Redis (real-time state)
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function getTournament(id: string): Promise<Tournament | null> {
   try {
-    if (!db) await initMongo();
-    const doc = await tournamentsCol().findOne({ _id: id });
-    if (!doc) return null;
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { _id, ...rest } = doc;
-    return { id: _id, ...rest } as Tournament;
+    if (!redisClient) await initRedis();
+    const data = await redisClient.get(tournamentKey(id));
+    return data ? JSON.parse(data) : null;
   } catch (error) {
     console.error('Error getting tournament:', error);
     return null;
@@ -121,16 +131,28 @@ export async function getTournament(id: string): Promise<Tournament | null> {
 
 export async function setTournament(tournament: Tournament): Promise<void> {
   try {
-    if (!db) await initMongo();
-    const { id, ...doc } = tournament;
-    await tournamentsCol().replaceOne({ _id: id }, doc, { upsert: true });
+    if (!redisClient) await initRedis();
+    await redisClient.set(tournamentKey(tournament.id), JSON.stringify(tournament));
+    if (tournament.status === 'completed') {
+      await redisClient.zAdd(COMPLETED_TOURNAMENTS_KEY, {
+        score: new Date(tournament.startDate).getTime(),
+        value: tournament.id,
+      });
+      await redisClient.zRem(ACTIVE_TOURNAMENTS_KEY, tournament.id);
+    } else {
+      await redisClient.zAdd(ACTIVE_TOURNAMENTS_KEY, {
+        score: new Date(tournament.startDate).getTime(),
+        value: tournament.id,
+      });
+      await redisClient.zRem(COMPLETED_TOURNAMENTS_KEY, tournament.id);
+    }
   } catch (error) {
     console.error('Error setting tournament:', error);
     throw error;
   }
 }
 
-// Update player → tournament ID references.
+// Update player → tournament ID references in MongoDB.
 // Call this only when tournament.players changes (creation, player add/remove).
 export async function syncTournamentPlayers(tournament: Tournament): Promise<void> {
   try {
@@ -156,16 +178,16 @@ export async function syncTournamentPlayers(tournament: Tournament): Promise<voi
 
 export async function deleteTournament(id: string): Promise<void> {
   try {
-    if (!db) await initMongo();
+    if (!redisClient) await initRedis();
     const tournament = await getTournament(id);
     if (tournament) {
-      // Remove all match index entries for this tournament
+      await redisClient.zRem(ACTIVE_TOURNAMENTS_KEY, id);
+      await redisClient.zRem(COMPLETED_TOURNAMENTS_KEY, id);
       const matchIds = (tournament.matches ?? []).map(m => m.id);
       if (matchIds.length > 0) {
-        await matchIndexCol().deleteMany({ _id: { $in: matchIds } });
+        await redisClient.hDel(MATCH_INDEX_KEY, matchIds);
       }
-
-      // Remove tournament ID from player objects
+      // Update player tournamentIds in MongoDB
       const players = await getPlayers();
       const updatedPlayers = players.map(player => {
         if (tournament.players.includes(player.id)) {
@@ -178,7 +200,7 @@ export async function deleteTournament(id: string): Promise<void> {
       });
       await setPlayers(updatedPlayers);
     }
-    await tournamentsCol().deleteOne({ _id: id });
+    await redisClient.del(tournamentKey(id));
   } catch (error) {
     console.error('Error deleting tournament:', error);
     throw error;
@@ -187,12 +209,8 @@ export async function deleteTournament(id: string): Promise<void> {
 
 export async function getActiveTournamentIds(): Promise<string[]> {
   try {
-    if (!db) await initMongo();
-    const docs = await tournamentsCol()
-      .find({ status: { $ne: 'completed' } }, { projection: { _id: 1 } })
-      .sort({ startDate: 1 })
-      .toArray();
-    return docs.map(d => d._id);
+    if (!redisClient) await initRedis();
+    return await redisClient.zRange(ACTIVE_TOURNAMENTS_KEY, 0, -1);
   } catch (error) {
     console.error('Error getting active tournament IDs:', error);
     return [];
@@ -201,12 +219,8 @@ export async function getActiveTournamentIds(): Promise<string[]> {
 
 export async function getCompletedTournamentIds(): Promise<string[]> {
   try {
-    if (!db) await initMongo();
-    const docs = await tournamentsCol()
-      .find({ status: 'completed' }, { projection: { _id: 1 } })
-      .sort({ startDate: 1 })
-      .toArray();
-    return docs.map(d => d._id);
+    if (!redisClient) await initRedis();
+    return await redisClient.zRange(COMPLETED_TOURNAMENTS_KEY, 0, -1);
   } catch (error) {
     console.error('Error getting completed tournament IDs:', error);
     return [];
@@ -214,6 +228,85 @@ export async function getCompletedTournamentIds(): Promise<string[]> {
 }
 
 // Getters
+export async function getTournaments(): Promise<Tournament[]> {
+  try {
+    if (!redisClient) await initRedis();
+    const [activeIds, completedIds] = await Promise.all([
+      getActiveTournamentIds(),
+      getCompletedTournamentIds(),
+    ]);
+    const allIds = [...activeIds, ...completedIds];
+    const tournaments = await Promise.all(allIds.map(id => getTournament(id)));
+    return tournaments.filter((t): t is Tournament => t !== null);
+  } catch (error) {
+    console.error('Error getting tournaments:', error);
+    return [];
+  }
+}
+
+export async function setTournaments(data: Tournament[]): Promise<void> {
+  try {
+    await Promise.all(data.map(t => setTournament(t)));
+  } catch (error) {
+    console.error('Error setting tournaments:', error);
+    throw error;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Match index — Redis hash (fast O(1) matchId → tournamentId lookup)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function getTournamentIdForMatch(matchId: string): Promise<string | null> {
+  try {
+    if (!redisClient) await initRedis();
+    return (await redisClient.hGet(MATCH_INDEX_KEY, matchId)) ?? null;
+  } catch (error) {
+    console.error('Error getting tournament ID for match:', error);
+    return null;
+  }
+}
+
+export async function registerMatchIndex(matchId: string, tournamentId: string): Promise<void> {
+  try {
+    if (!redisClient) await initRedis();
+    await redisClient.hSet(MATCH_INDEX_KEY, matchId, tournamentId);
+  } catch (error) {
+    console.error('Error registering match index:', error);
+    throw error;
+  }
+}
+
+export async function unregisterMatchIndex(matchId: string): Promise<void> {
+  try {
+    if (!redisClient) await initRedis();
+    await redisClient.hDel(MATCH_INDEX_KEY, matchId);
+  } catch (error) {
+    console.error('Error unregistering match index:', error);
+    throw error;
+  }
+}
+
+// Bulk-register multiple matches in the index (used when creating many matches at once)
+export async function registerMatchesIndex(matches: Match[]): Promise<void> {
+  if (matches.length === 0) return;
+  try {
+    if (!redisClient) await initRedis();
+    const entries: Record<string, string> = {};
+    for (const m of matches) {
+      entries[m.id] = m.tournamentId;
+    }
+    await redisClient.hSet(MATCH_INDEX_KEY, entries);
+  } catch (error) {
+    console.error('Error bulk-registering match index:', error);
+    throw error;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Player functions — MongoDB (durable, long-term)
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function getPlayers(): Promise<Player[]> {
   try {
     if (!db) await initMongo();
@@ -225,17 +318,6 @@ export async function getPlayers(): Promise<Player[]> {
     }));
   } catch (error) {
     console.error('Error getting players:', error);
-    return [];
-  }
-}
-
-export async function getTournaments(): Promise<Tournament[]> {
-  try {
-    if (!db) await initMongo();
-    const docs = await tournamentsCol().find({}).sort({ startDate: 1 }).toArray();
-    return docs.map(({ _id, ...rest }) => ({ id: _id, ...rest } as Tournament));
-  } catch (error) {
-    console.error('Error getting tournaments:', error);
     return [];
   }
 }
@@ -261,75 +343,8 @@ export async function setPlayers(data: Player[]): Promise<void> {
   }
 }
 
-export async function setTournaments(data: Tournament[]): Promise<void> {
-  try {
-    await Promise.all(data.map(t => setTournament(t)));
-  } catch (error) {
-    console.error('Error setting tournaments:', error);
-    throw error;
-  }
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
-// Match index — fast O(1) matchId → tournamentId lookup
-// ─────────────────────────────────────────────────────────────────────────────
-
-export async function getTournamentIdForMatch(matchId: string): Promise<string | null> {
-  try {
-    if (!db) await initMongo();
-    const doc = await matchIndexCol().findOne({ _id: matchId });
-    return doc?.tournamentId ?? null;
-  } catch (error) {
-    console.error('Error getting tournament ID for match:', error);
-    return null;
-  }
-}
-
-export async function registerMatchIndex(matchId: string, tournamentId: string): Promise<void> {
-  try {
-    if (!db) await initMongo();
-    await matchIndexCol().replaceOne(
-      { _id: matchId },
-      { tournamentId },
-      { upsert: true }
-    );
-  } catch (error) {
-    console.error('Error registering match index:', error);
-    throw error;
-  }
-}
-
-export async function unregisterMatchIndex(matchId: string): Promise<void> {
-  try {
-    if (!db) await initMongo();
-    await matchIndexCol().deleteOne({ _id: matchId });
-  } catch (error) {
-    console.error('Error unregistering match index:', error);
-    throw error;
-  }
-}
-
-// Bulk-register multiple matches in the index (used when creating many matches at once)
-export async function registerMatchesIndex(matches: Match[]): Promise<void> {
-  if (matches.length === 0) return;
-  try {
-    if (!db) await initMongo();
-    const ops = matches.map(m => ({
-      replaceOne: {
-        filter: { _id: m.id },
-        replacement: { tournamentId: m.tournamentId },
-        upsert: true,
-      },
-    }));
-    await matchIndexCol().bulkWrite(ops);
-  } catch (error) {
-    console.error('Error bulk-registering match index:', error);
-    throw error;
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Match functions — stored inside tournament documents (single source of truth)
+// Match functions — stored inside tournament documents in Redis
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function getAllMatches(): Promise<Match[]> {
@@ -411,7 +426,7 @@ export async function removeMatchFromTournament(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Game functions — stored inside match.games inside tournament documents
+// Game functions — Redis (live state in tournament) + MongoDB (historical record)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function recalculateMatchWinner(match: Match): Match {
@@ -423,10 +438,33 @@ export function recalculateMatchWinner(match: Match): Match {
   return { ...match, winnerId: undefined };
 }
 
+// Persist a game to MongoDB for long-term history (non-fatal if it fails)
+async function persistGameHistory(game: Game): Promise<void> {
+  try {
+    if (!db) await initMongo();
+    const { id, ...doc } = game;
+    await gamesCol().replaceOne({ _id: id }, doc, { upsert: true });
+  } catch (error) {
+    console.warn(`Failed to persist game ${game.id} to MongoDB history:`, error);
+  }
+}
+
+// Remove a game from MongoDB history (non-fatal if it fails)
+async function removeGameHistory(gameId: string): Promise<void> {
+  try {
+    if (!db) await initMongo();
+    await gamesCol().deleteOne({ _id: gameId });
+  } catch (error) {
+    console.warn(`Failed to remove game ${gameId} from MongoDB history:`, error);
+  }
+}
+
+// getAllGames reads from the MongoDB games collection (durable history)
 export async function getAllGames(): Promise<Game[]> {
   try {
-    const tournaments = await getTournaments();
-    return tournaments.flatMap(t => (t.matches ?? []).flatMap(m => m.games ?? []));
+    if (!db) await initMongo();
+    const docs = await gamesCol().find({}).toArray();
+    return docs.map(({ _id, ...game }) => ({ id: _id, ...game } as Game));
   } catch (error) {
     console.error('Error getting all games:', error);
     return [];
@@ -449,6 +487,8 @@ export async function addGameToMatch(
       games: [...tournament.matches[matchIdx].games, game],
     });
     await setTournament(tournament);
+    // Persist game to MongoDB history
+    await persistGameHistory(game);
     return { match: tournament.matches[matchIdx], tournament };
   } catch (error) {
     console.error('Error adding game to match:', error);
@@ -476,6 +516,8 @@ export async function updateGameInMatch(
       games,
     });
     await setTournament(tournament);
+    // Keep MongoDB history in sync
+    await persistGameHistory(updatedGame);
     return { match: tournament.matches[matchIdx], tournament };
   } catch (error) {
     console.error('Error updating game in match:', error);
@@ -502,6 +544,8 @@ export async function removeGameFromMatch(
       games: oldGames.filter(g => g.id !== gameId),
     });
     await setTournament(tournament);
+    // Remove from MongoDB history
+    await removeGameHistory(gameId);
     return { game, match: tournament.matches[matchIdx] };
   } catch (error) {
     console.error('Error removing game from match:', error);

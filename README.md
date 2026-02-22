@@ -1,6 +1,6 @@
 # 🏓 Ping Pong Tracker
 
-Match, player, tournament, and stats tracker for office ping pong. Built with Next.js and MongoDB.
+Match, player, tournament, and stats tracker for office ping pong. Built with Next.js, Redis, and MongoDB.
 
 ## Features
 
@@ -13,36 +13,30 @@ Match, player, tournament, and stats tracker for office ping pong. Built with Ne
 
 ### Prerequisites
 
-MongoDB is required for data storage. Start it with Docker Compose:
+Both Redis and MongoDB are required. Start them with Docker Compose:
 
 ```bash
-npm run mongodb:start  # Start MongoDB (via docker compose)
-npm run mongodb:stop   # Stop MongoDB
+npm run db:start    # Start both Redis and MongoDB
+npm run db:stop     # Stop both
+
+# Or individually:
+npm run redis:start
+npm run mongodb:start
 ```
 
-Or bring up the full stack directly:
+### Configuration
+
+Copy `.env.example` to `.env.local` and set your connection URLs:
 
 ```bash
-docker compose up -d mongodb
-docker compose down
+# Redis (tournament state)
+REDIS_URL=redis://:YOUR_REDIS_PASSWORD@localhost:6379
+
+# MongoDB (players + game history)
+MONGODB_URL=mongodb://YOUR_MONGO_USER:YOUR_MONGO_PASSWORD@localhost:27017
 ```
 
-### MongoDB Configuration
-
-Copy `.env.example` to `.env.local` and set your MongoDB URL:
-
-```bash
-# Local (no authentication)
-MONGODB_URL=mongodb://localhost:27017
-
-# Local with authentication
-MONGODB_URL=mongodb://admin:mypassword@localhost:27017
-
-# Remote
-MONGODB_URL=mongodb://username:password@mongo.example.com:27017
-```
-
-The Docker Compose setup uses `MONGO_USERNAME` / `MONGO_PASSWORD` (defaults to `admin` / `mypassword`). Make sure `MONGODB_URL` in `.env.local` matches.
+The Docker Compose setup uses `REDIS_PASSWORD` (default `mypassword`) and `MONGO_USERNAME` / `MONGO_PASSWORD` (defaults `admin` / `mypassword`). Make sure the URLs in `.env.local` match.
 
 ### Running the Development Server
 
@@ -52,49 +46,29 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-## Data Model
+## Data Architecture — Hybrid Redis + MongoDB
 
-Games are stored **inside matches**, which are stored **inside tournament documents** — the tournament is the single source of truth. A `match_index` MongoDB collection provides O(1) match → tournament lookups.
+The application uses **two stores in parallel**, each optimised for its access pattern:
 
-See [docs/mongodb-schema.md](docs/mongodb-schema.md) for full schema details.
-
-## MongoDB vs Redis — Pros and Cons
-
-### Why switch to MongoDB?
-
-| | MongoDB | Redis |
+| Store | Holds | Why |
 |---|---|---|
-| **Data model** | Rich documents, nested arrays, flexible schema | Flat key/value, strings, hashes, sorted sets |
-| **Queries** | Native query language, filters, projections, aggregations | Manual key construction; no ad-hoc queries |
-| **Persistence** | Durable by default (journal + data files) | Optional (AOF / RDB snapshots), primarily in-memory |
-| **Memory** | Disk-backed; scales to large datasets | All data lives in RAM; cost grows with data size |
-| **Transactions** | Multi-document ACID transactions | Single-key atomicity only (Lua scripts for multi-key) |
-| **Tooling** | MongoDB Compass, Atlas UI, `mongosh` | `redis-cli`, RedisInsight |
-| **Hosting** | MongoDB Atlas free tier | Redis Cloud free tier |
-| **Schema validation** | Optional JSON Schema validation | None |
+| **Redis** | Active tournaments (with embedded matches/games), match index | Sub-millisecond reads/writes for live tournament state |
+| **MongoDB** | Player profiles, complete game history | Durable, disk-backed; survives Redis restarts; powers historical stats |
 
-### Pros of MongoDB for this app
+### How it works
 
-- **Natural document fit** — Tournament → Matches → Games is a nested document hierarchy that maps directly to MongoDB's BSON document model, removing the need to manually serialize/deserialize JSON.
-- **Richer queries** — Finding active tournaments, filtering by player, or computing stats can be done with MongoDB query operators instead of loading all data client-side.
-- **Built-in indexing** — Create indexes on `status`, `startDate`, or `players` without extra data structures.
-- **Durability** — Data is written to disk by default; no risk of data loss on restart.
-- **Horizontal scaling** — Sharding and replica sets are built into MongoDB for future growth.
-- **Aggregation pipeline** — Stats (win rates, points per game) could be pushed to the database layer.
+- **Tournaments** live entirely in Redis. Every bracket mutation — recording a game, advancing a round — is a single atomic `SET` on the tournament JSON document.
+- **Players** are stored in MongoDB. Their `tournamentIds` list is updated whenever they join a new tournament, but doesn't need Redis speed.
+- **Games** are written to both: embedded inside the tournament document in Redis (for live match state) and as individual documents in MongoDB's `games` collection (for permanent history). `getAllGames()` and the stats API read from MongoDB.
+- **Match index** lives in Redis as a hash (`matchId → tournamentId`), rebuilt automatically on startup, giving O(1) match lookups without scanning all tournaments.
 
-### Cons of MongoDB vs Redis
-
-- **Higher latency for simple lookups** — Redis is an in-memory store and is faster for simple key/value operations like `GET`/`SET`.
-- **Heavier resource footprint** — MongoDB uses more disk and CPU than Redis for equivalent small datasets.
-- **More complex setup** — MongoDB requires a running `mongod` process; Redis is a single binary with no config needed.
-- **No pub/sub or streams** — If real-time push notifications (e.g. live score updates) are added later, Redis has built-in pub/sub; MongoDB requires change streams.
-- **Connection overhead** — MongoDB connections are heavier than Redis connections.
+See [docs/hybrid-storage-architecture.md](docs/hybrid-storage-architecture.md) for full schema details.
 
 ## Docs
 
 | File | Description |
 |------|-------------|
-| [docs/mongodb-schema.md](docs/mongodb-schema.md) | MongoDB schema design and rationale |
+| [docs/hybrid-storage-architecture.md](docs/hybrid-storage-architecture.md) | Hybrid Redis + MongoDB architecture and data flow |
 | [docs/hybrid-schema-clarification.md](docs/hybrid-schema-clarification.md) | Embedded vs. separate match storage trade-offs |
 | [docs/bracket-requirements.md](docs/bracket-requirements.md) | Bracket tournament rules and format |
 | [docs/player-stats-clarification.md](docs/player-stats-clarification.md) | How player stats are calculated |
