@@ -17,6 +17,8 @@ export default function ActiveTournamentsPage() {
   const [editingTournament, setEditingTournament] = useState<Tournament | null>(null);
   const [selectedPlayers, setSelectedPlayers]     = useState<string[]>([]);
 
+  const [showRRHistory, setShowRRHistory] = useState(false);
+
   const fetchTournaments = async () => {
     const res  = await fetch('/api/tournaments');
     const data: Tournament[] = await res.json();
@@ -276,17 +278,80 @@ export default function ActiveTournamentsPage() {
                     />
                   )}
 
-                  {t.status === 'bracket' && (
-                    <div>
-                      <h3 className="text-lg font-bold text-gray-800 mb-6">Bracket</h3>
-                      <BracketView
-                        bracketMatches={bracketMatches}
-                        getPlayerName={getPlayerName}
-                        onAddGame={addGameToMatch}
-                        onSaveGameEdit={saveGameEdit}
-                      />
-                    </div>
-                  )}
+                  {t.status === 'bracket' && (() => {
+                    const rrMatches = tm.filter(m => m.round === 'roundRobin')
+                      .sort((a, b) => (a.bracketRound || 0) - (b.bracketRound || 0));
+                    const rrRounds = Array.from(new Set(rrMatches.map(m => m.bracketRound || 1))).sort((a, b) => a - b);
+
+                    return (
+                      <div>
+                        <h3 className="text-lg font-bold text-gray-800 mb-6">Bracket</h3>
+                        <BracketView
+                          bracketMatches={bracketMatches}
+                          getPlayerName={getPlayerName}
+                          onAddGame={addGameToMatch}
+                          onSaveGameEdit={saveGameEdit}
+                        />
+
+                        {rrMatches.length > 0 && (
+                          <div className="mt-8 border-t border-gray-200 pt-6">
+                            <button
+                              onClick={() => setShowRRHistory(v => !v)}
+                              className="flex items-center gap-2 text-sm font-semibold text-gray-600 hover:text-gray-900 transition-colors mb-4"
+                            >
+                              <span className={`transition-transform ${showRRHistory ? 'rotate-90' : ''}`}>▶</span>
+                              Round Robin History ({rrMatches.filter(m => m.winnerId && m.player2Id !== 'BYE').length} matches)
+                            </button>
+
+                            {showRRHistory && (
+                              <div className="space-y-5">
+                                {rrRounds.map(round => {
+                                  const roundMatches = rrMatches.filter(m => (m.bracketRound || 1) === round);
+                                  return (
+                                    <div key={round}>
+                                      <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Round {round}</div>
+                                      <div className="space-y-1.5">
+                                        {roundMatches.filter(m => m.player2Id !== 'BYE').map(match => {
+                                          const p1Won = match.winnerId === match.player1Id;
+                                          const p2Won = match.winnerId === match.player2Id;
+                                          return (
+                                            <div key={match.id} className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
+                                              <div className="flex items-center px-4 py-2 text-sm gap-3">
+                                                <span className={`font-semibold flex-1 ${p1Won ? 'text-green-700' : 'text-gray-600'}`}>
+                                                  {getPlayerName(match.player1Id)}
+                                                </span>
+                                                <div className="flex items-center gap-1.5 flex-shrink-0">
+                                                  {match.games.map((g, gi) => {
+                                                    const g1w = g.score1 > g.score2;
+                                                    return (
+                                                      <span key={g.id} className="text-xs tabular-nums text-gray-500">
+                                                        {gi > 0 && <span className="mx-1 text-gray-300">·</span>}
+                                                        <span className={g1w ? 'font-bold text-gray-800' : ''}>{g.score1}</span>
+                                                        <span className="text-gray-400">–</span>
+                                                        <span className={!g1w ? 'font-bold text-gray-800' : ''}>{g.score2}</span>
+                                                      </span>
+                                                    );
+                                                  })}
+                                                  {match.games.length === 0 && <span className="text-xs text-gray-400 italic">no games</span>}
+                                                </div>
+                                                <span className={`font-semibold flex-1 text-right ${p2Won ? 'text-green-700' : 'text-gray-600'}`}>
+                                                  {getPlayerName(match.player2Id)}
+                                                </span>
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   <div className="grid grid-cols-3 gap-4 pt-4 border-t border-gray-100">
                     <div className="text-center">
