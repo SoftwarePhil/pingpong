@@ -1,7 +1,7 @@
 import { recalculateMatchWinner } from '../data/data';
 import { Match, Game } from '../types/pingpong';
 
-// Mock the Redis module so data.ts doesn't attempt to connect on import
+// Mock both Redis and MongoDB so data.ts doesn't attempt to connect on import
 jest.mock('redis', () => ({
   createClient: jest.fn(() => ({
     on: jest.fn(),
@@ -15,6 +15,26 @@ jest.mock('redis', () => ({
     hSet: jest.fn().mockResolvedValue(1),
     hDel: jest.fn().mockResolvedValue(1),
     del: jest.fn().mockResolvedValue(1),
+  })),
+}));
+
+jest.mock('mongodb', () => ({
+  MongoClient: jest.fn(() => ({
+    on: jest.fn(),
+    connect: jest.fn().mockResolvedValue(undefined),
+    db: jest.fn().mockReturnValue({
+      collection: jest.fn().mockReturnValue({
+        find: jest.fn().mockReturnValue({
+          sort: jest.fn().mockReturnThis(),
+          toArray: jest.fn().mockResolvedValue([]),
+        }),
+        findOne: jest.fn().mockResolvedValue(null),
+        replaceOne: jest.fn().mockResolvedValue({ upsertedCount: 1 }),
+        deleteOne: jest.fn().mockResolvedValue({ deletedCount: 1 }),
+        deleteMany: jest.fn().mockResolvedValue({ deletedCount: 0 }),
+        bulkWrite: jest.fn().mockResolvedValue({}),
+      }),
+    }),
   })),
 }));
 

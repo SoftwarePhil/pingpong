@@ -11,5 +11,16 @@ services:
     environment:
       - REDIS_PASSWORD=${REDIS_PASSWORD:-mypassword}
 
+  mongodb:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_USERNAME:-admin}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD:-mypassword}
+
 volumes:
   redis_data:
+  mongodb_data:
