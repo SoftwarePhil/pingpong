@@ -55,7 +55,9 @@ export function dbName(): string {
 
 async function initMongo() {
   try {
-    mongoClient = new MongoClient(process.env.MONGODB_URL || 'mongodb://localhost:27017');
+    const mongoUrl = process.env.MONGODB_URL || 'mongodb://localhost:27017';
+    const isAtlas = mongoUrl.includes('mongodb+srv') || mongoUrl.includes('mongodb.net');
+    mongoClient = new MongoClient(mongoUrl, isAtlas ? { tls: true, tlsAllowInvalidCertificates: false } : {});
     mongoClient.on('error', (err) => console.error('MongoDB Client Error:', err));
     await mongoClient.connect();
     db = mongoClient.db(dbName());
