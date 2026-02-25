@@ -24,6 +24,18 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      {/*
+        Inline script runs synchronously before first paint so there is
+        no flash of wrong theme. It reads localStorage and sets data-theme
+        on <html> before React hydrates.
+      */}
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');}catch(e){}})();`,
+          }}
+        />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

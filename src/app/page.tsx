@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from "next/link";
 import { Tournament } from "../types/pingpong";
+import ThemeToggle from "./ThemeToggle";
 
 export default function Home() {
   const [activeTournament, setActiveTournament] = useState<Tournament | null | undefined>(undefined);
@@ -19,6 +20,11 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-page">
       <div className="container mx-auto px-4 py-16 max-w-4xl">
+
+        {/* Theme toggle — top right */}
+        <div className="flex justify-end mb-6">
+          <ThemeToggle />
+        </div>
 
         {/* Header */}
         <div className="text-center mb-14">

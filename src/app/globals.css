@@ -95,9 +95,52 @@
   --color-gold-bd:  var(--gold-bd);
 }
 
+/* ─── Light theme overrides ──────────────────────────────────────────────────
+   Applied when <html data-theme="light"> is set (see layout.tsx script).
+   Only the values that differ from the dark defaults are listed here.
+   ──────────────────────────────────────────────────────────────────────────── */
+html[data-theme="light"] {
+  /* Backgrounds */
+  --bg-page:    #ffffff;
+  --bg-surface: #f4f4f5; /* zinc-100 */
+  --bg-overlay: #e4e4e7; /* zinc-200 */
+  --bg-raised:  #d4d4d8; /* zinc-300 */
+
+  /* Borders */
+  --bd:         #d4d4d8; /* zinc-300 */
+  --bd-dim:     #e4e4e7; /* zinc-200 */
+  --bd-hi:      #a1a1aa; /* zinc-400 */
+
+  /* Text */
+  --fg:         #09090b; /* zinc-950 */
+  --fg-dim:     #27272a; /* zinc-800 */
+  --fg-muted:   #52525b; /* zinc-600 */
+  --fg-faint:   #71717a; /* zinc-500 */
+
+  /* Brand — darken text/dim for readability on white */
+  --brand-text: #065f46; /* emerald-800 — readable on green button */
+  --brand-dim:  #d1fae5; /* emerald-100 */
+  --brand-bd:   #6ee7b7; /* emerald-300 */
+
+  /* Warning */
+  --warn-dim:   #fef3c7; /* amber-100  */
+  --warn-bd:    #fde68a; /* amber-200  */
+  --warn-text:  #78350f; /* amber-900  */
+
+  /* Status */
+  --win:        #059669; /* emerald-600 — darker for light bg contrast */
+  --loss:       #dc2626; /* red-600 */
+  --loss-dim:   #fee2e2; /* red-100  */
+  --loss-bd:    #fca5a5; /* red-300  */
+  --gold:       #d97706; /* amber-600 — darker for light bg */
+  --gold-dim:   #fef3c7; /* amber-100 */
+  --gold-bd:    #fde68a; /* amber-200 */
+}
+
 body {
   background: var(--bg-page);
   color: var(--fg);
   font-family: Arial, Helvetica, sans-serif;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
