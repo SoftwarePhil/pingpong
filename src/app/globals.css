@@ -97,44 +97,60 @@
 
 /* ─── Light theme overrides ──────────────────────────────────────────────────
    Applied when <html data-theme="light"> is set (see layout.tsx script).
-   Only the values that differ from the dark defaults are listed here.
+   Colors match the original pre-restyle look (blue/indigo, white cards).
    ──────────────────────────────────────────────────────────────────────────── */
 html[data-theme="light"] {
   /* Backgrounds */
-  --bg-page:    #ffffff;
-  --bg-surface: #f4f4f5; /* zinc-100 */
-  --bg-overlay: #e4e4e7; /* zinc-200 */
-  --bg-raised:  #d4d4d8; /* zinc-300 */
+  --bg-page:    #eff6ff; /* blue-50  (gradient start of the original bg) */
+  --bg-surface: #ffffff; /* white cards */
+  --bg-overlay: #f9fafb; /* gray-50  — nested panels */
+  --bg-raised:  #f3f4f6; /* gray-100 — items on overlay */
 
   /* Borders */
-  --bd:         #d4d4d8; /* zinc-300 */
-  --bd-dim:     #e4e4e7; /* zinc-200 */
-  --bd-hi:      #a1a1aa; /* zinc-400 */
+  --bd:         #e5e7eb; /* gray-200 — original border-gray-200 */
+  --bd-dim:     #f3f4f6; /* gray-100 */
+  --bd-hi:      #a5b4fc; /* indigo-300 — original hover:border-indigo-300 */
 
   /* Text */
-  --fg:         #09090b; /* zinc-950 */
-  --fg-dim:     #27272a; /* zinc-800 */
-  --fg-muted:   #52525b; /* zinc-600 */
-  --fg-faint:   #71717a; /* zinc-500 */
+  --fg:         #111827; /* gray-900 — original text-gray-900 */
+  --fg-dim:     #374151; /* gray-700 */
+  --fg-muted:   #6b7280; /* gray-500 — original text-gray-500/600 */
+  --fg-faint:   #9ca3af; /* gray-400 */
 
-  /* Brand — darken text/dim for readability on white */
-  --brand-text: #065f46; /* emerald-800 — readable on green button */
-  --brand-dim:  #d1fae5; /* emerald-100 */
-  --brand-bd:   #6ee7b7; /* emerald-300 */
+  /* Brand — original blue CTAs */
+  --brand:      #2563eb; /* blue-600  — original bg-blue-600 */
+  --brand-hi:   #1d4ed8; /* blue-700  — original hover:bg-blue-700 */
+  --brand-text: #dbeafe; /* blue-100  — original text inside blue button */
+  --brand-dim:  #dbeafe; /* blue-100  — subtle brand bg (badges etc.) */
+  --brand-bd:   #bfdbfe; /* blue-200  — brand-dim border */
 
   /* Warning */
-  --warn-dim:   #fef3c7; /* amber-100  */
-  --warn-bd:    #fde68a; /* amber-200  */
-  --warn-text:  #78350f; /* amber-900  */
+  --warn-dim:   #fef3c7; /* amber-100 */
+  --warn-bd:    #fde68a; /* amber-200 */
+  --warn-text:  #78350f; /* amber-900 */
 
-  /* Status */
-  --win:        #059669; /* emerald-600 — darker for light bg contrast */
-  --loss:       #dc2626; /* red-600 */
-  --loss-dim:   #fee2e2; /* red-100  */
-  --loss-bd:    #fca5a5; /* red-300  */
-  --gold:       #d97706; /* amber-600 — darker for light bg */
-  --gold-dim:   #fef3c7; /* amber-100 */
+  /* Status — darker shades for legibility on white */
+  --win:        #16a34a; /* green-600 — original text-green-600/700 */
+  --loss:       #ef4444; /* red-500   — original text-red-500 */
+  --loss-dim:   #fef2f2; /* red-50 */
+  --loss-bd:    #fecaca; /* red-200 */
+  --gold:       #d97706; /* amber-600 — original */
+  --gold-dim:   #fffbeb; /* amber-50 */
   --gold-bd:    #fde68a; /* amber-200 */
+}
+
+/* Restore the original blue→indigo gradient on the page background.
+   The .bg-page utility sets background-color; this rule layers a gradient
+   on top for any element that carries that class (the outer min-h-screen div). */
+html[data-theme="light"] .bg-page {
+  background: linear-gradient(135deg, #eff6ff 0%, #e0e7ff 100%);
+}
+
+/* Inside a brand-colored button, primary text should always be white.
+   CSS custom properties are inherited, so overriding --fg here makes all
+   text-ink descendants white without touching any component files. */
+html[data-theme="light"] .bg-brand {
+  --fg: #ffffff;
 }
 
 body {
