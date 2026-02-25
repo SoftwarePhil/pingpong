@@ -213,10 +213,10 @@ export default function MatchCard({
                 {editingGame?.id === game.id ? (
                   <div className="flex items-center gap-1.5 flex-1 min-w-0">
                     <input type="number" value={editScore1} onChange={e => setEditScore1(e.target.value)}
-                      className="w-14 border rounded px-1.5 py-0.5 text-sm text-center" />
+                      className="w-14 border rounded px-1.5 py-0.5 text-sm text-center text-gray-900 bg-white" />
                     <span className="text-gray-400 text-xs">—</span>
                     <input type="number" value={editScore2} onChange={e => setEditScore2(e.target.value)}
-                      className="w-14 border rounded px-1.5 py-0.5 text-sm text-center" />
+                      className="w-14 border rounded px-1.5 py-0.5 text-sm text-center text-gray-900 bg-white" />
                     <button onClick={handleSaveGameEdit}
                       className="text-xs text-green-700 font-semibold hover:underline ml-1">Save</button>
                     <button onClick={cancelEditingGame}

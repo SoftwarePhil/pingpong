@@ -17,6 +17,7 @@ export default function PlayersPage() {
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [name, setName] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
+  const [addPlayerError, setAddPlayerError] = useState<string | null>(null);
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
   const [showPlayerReport, setShowPlayerReport] = useState(false);
   const [activePlayerTab, setActivePlayerTab] = useState<PlayerTab>('overview');
@@ -62,8 +63,12 @@ export default function PlayersPage() {
     });
     if (res.ok) {
       setName('');
+      setAddPlayerError(null);
       setShowAddForm(false);
       fetchPlayers();
+    } else {
+      const data = await res.json();
+      setAddPlayerError(data.error || 'Failed to add player');
     }
   };
 
@@ -280,17 +285,20 @@ export default function PlayersPage() {
                 <input
                   type="text"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => { setName(e.target.value); setAddPlayerError(null); }}
                   placeholder="Player name"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  className={`w-full border rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-400 bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 ${addPlayerError ? 'border-red-400' : 'border-gray-300'}`}
                   autoFocus
                   required
                 />
+                {addPlayerError && (
+                  <p className="text-red-600 text-xs mt-1">{addPlayerError}</p>
+                )}
                 <div className="flex gap-2">
                   <button type="submit" className="flex-1 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors">
                     Add
                   </button>
-                  <button type="button" onClick={() => { setShowAddForm(false); setName(''); }} className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors">
+                  <button type="button" onClick={() => { setShowAddForm(false); setName(''); setAddPlayerError(null); }} className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors">
                     Cancel
                   </button>
                 </div>
@@ -428,7 +436,7 @@ export default function PlayersPage() {
             onClick={closePlayerReport}
           >
             <div
-              className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col"
+              className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col text-gray-900"
               onClick={e => e.stopPropagation()}
             >
               {/* Sticky header + tabs */}

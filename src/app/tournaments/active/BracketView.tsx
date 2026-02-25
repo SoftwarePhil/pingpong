@@ -280,10 +280,10 @@ export default function BracketView({ bracketMatches, getPlayerName, onAddGame, 
                       <div key={g.id} className="flex items-center gap-1.5 bg-gray-50 rounded-xl px-3 py-1.5 border-2 border-blue-200">
                         <span className="text-xs text-gray-500 font-semibold">G{i + 1}:</span>
                         <input type="number" value={editG1} onChange={e => setEditG1(e.target.value)}
-                          className="w-12 border border-gray-300 rounded-lg px-1.5 py-1 text-sm text-center font-bold focus:border-blue-400 focus:outline-none" />
+                          className="w-12 border border-gray-300 rounded-lg px-1.5 py-1 text-sm text-center font-bold text-gray-900 bg-white focus:border-blue-400 focus:outline-none" />
                         <span className="text-gray-400 text-xs">–</span>
                         <input type="number" value={editG2} onChange={e => setEditG2(e.target.value)}
-                          className="w-12 border border-gray-300 rounded-lg px-1.5 py-1 text-sm text-center font-bold focus:border-blue-400 focus:outline-none" />
+                          className="w-12 border border-gray-300 rounded-lg px-1.5 py-1 text-sm text-center font-bold text-gray-900 bg-white focus:border-blue-400 focus:outline-none" />
                         <button onClick={async () => {
                           const s1 = parseInt(editG1); const s2 = parseInt(editG2);
                           if (isNaN(s1) || isNaN(s2)) { alert('Enter valid scores'); return; }

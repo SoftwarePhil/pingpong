@@ -20,6 +20,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Name is required' }, { status: 400 });
     }
     const players = await getPlayers();
+    const duplicate = players.find(p => p.name.trim().toLowerCase() === name.trim().toLowerCase());
+    if (duplicate) {
+      return NextResponse.json({ error: `A player named "${duplicate.name}" already exists` }, { status: 409 });
+    }
     const newPlayer: Player = {
       id: Date.now().toString(),
       name,

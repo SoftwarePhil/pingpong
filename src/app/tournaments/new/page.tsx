@@ -216,7 +216,7 @@ export default function NewTournamentPage() {
 
             <div className="flex justify-end space-x-4 pt-6 border-t-2 border-gray-200">
               <Link
-                href="/tournaments"
+                href="/"
                 className="px-8 py-3 border-2 border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors font-medium text-lg"
               >
                 Cancel

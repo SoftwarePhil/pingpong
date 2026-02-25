@@ -120,7 +120,7 @@ export default function GamesPage() {
                   <select 
                     value={player1Id} 
                     onChange={(e) => setPlayer1Id(e.target.value)} 
-                    className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    className="w-full border border-gray-300 rounded-lg px-4 py-3 text-gray-900 bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                     required
                   >
                     <option value="">Select Player 1</option>
@@ -132,7 +132,7 @@ export default function GamesPage() {
                   <select 
                     value={player2Id} 
                     onChange={(e) => setPlayer2Id(e.target.value)} 
-                    className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    className="w-full border border-gray-300 rounded-lg px-4 py-3 text-gray-900 bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                     required
                   >
                     <option value="">Select Player 2</option>
@@ -151,7 +151,7 @@ export default function GamesPage() {
                     value={score1}
                     onChange={(e) => setScore1(e.target.value)}
                     placeholder="Score"
-                    className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    className="w-full border border-gray-300 rounded-lg px-4 py-3 text-gray-900 bg-white placeholder-gray-400 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                     required
                     min="0"
                     max="12"
@@ -166,7 +166,7 @@ export default function GamesPage() {
                     value={score2}
                     onChange={(e) => setScore2(e.target.value)}
                     placeholder="Score"
-                    className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    className="w-full border border-gray-300 rounded-lg px-4 py-3 text-gray-900 bg-white placeholder-gray-400 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                     required
                     min="0"
                     max="12"
