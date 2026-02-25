@@ -61,22 +61,22 @@ export default function MatchCard({
   const canSwap = match.round === 'roundRobin' && match.games.length === 0 && !match.winnerId;
 
   return (
-    <div className="bg-zinc-900 border border-zinc-700 rounded-xl overflow-hidden">
+    <div className="bg-surface border border-edge rounded-xl overflow-hidden">
       {/* Card header */}
-      <div className="flex justify-between items-center px-4 py-2 bg-zinc-800 border-b border-zinc-700">
-        <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">
+      <div className="flex justify-between items-center px-4 py-2 bg-overlay border-b border-edge">
+        <span className="text-xs font-semibold text-ink-muted uppercase tracking-wide">
           {match.round === 'bracket'
             ? match.bracketRound === 0 ? 'Play-in' : `Round ${match.bracketRound}`
             : `RR Round ${match.bracketRound ?? 1}`}
         </span>
         <div className="flex items-center gap-1">
-          <span className="text-xs bg-zinc-700 text-zinc-300 px-2 py-0.5 rounded-full">
+          <span className="text-xs bg-raised text-ink-dim px-2 py-0.5 rounded-full">
             Bo{match.bestOf}
           </span>
           {canSwap && (
             <button
               onClick={() => { setSwapping(!swapping); setSwapP1(match.player1Id); setSwapP2(match.player2Id); }}
-              className="text-zinc-400 hover:text-zinc-200 px-1.5 py-0.5 rounded hover:bg-zinc-700 text-xs transition-colors"
+              className="text-ink-muted hover:text-ink-dim px-1.5 py-0.5 rounded hover:bg-raised text-xs transition-colors"
               title="Change players"
             >
               ↔
@@ -84,7 +84,7 @@ export default function MatchCard({
           )}
           <button
             onClick={() => onDeleteMatch(match.id)}
-            className="text-red-500 hover:text-red-400 px-1.5 py-0.5 rounded hover:bg-zinc-700 text-xs transition-colors"
+            className="text-loss hover:text-loss px-1.5 py-0.5 rounded hover:bg-raised text-xs transition-colors"
             title="Delete match"
           >
             ✕
@@ -94,29 +94,29 @@ export default function MatchCard({
 
       {/* Player swap panel */}
       {swapping && (
-        <div className="px-4 py-3 bg-zinc-800 border-b border-zinc-700">
-          <p className="text-xs font-semibold text-zinc-300 mb-2">Change Players</p>
+        <div className="px-4 py-3 bg-overlay border-b border-edge">
+          <p className="text-xs font-semibold text-ink-dim mb-2">Change Players</p>
           <div className="space-y-1.5">
             <select value={swapP1} onChange={e => setSwapP1(e.target.value)}
-              className="w-full border border-zinc-600 rounded px-2 py-1 text-sm text-white bg-zinc-700">
+              className="w-full border border-edge rounded px-2 py-1 text-sm text-ink bg-raised">
               {tournamentPlayers.map(pid => (
                 <option key={pid} value={pid}>{getPlayerName(pid)}</option>
               ))}
             </select>
-            <div className="text-center text-xs text-zinc-500 font-bold">vs</div>
+            <div className="text-center text-xs text-ink-faint font-bold">vs</div>
             <select value={swapP2} onChange={e => setSwapP2(e.target.value)}
-              className="w-full border border-zinc-600 rounded px-2 py-1 text-sm text-white bg-zinc-700">
+              className="w-full border border-edge rounded px-2 py-1 text-sm text-ink bg-raised">
               {tournamentPlayers.map(pid => (
                 <option key={pid} value={pid}>{getPlayerName(pid)}</option>
               ))}
             </select>
             <div className="flex gap-2 pt-1">
               <button onClick={handleSwapSave}
-                className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-2 py-1.5 rounded font-medium transition-colors">
+                className="flex-1 bg-brand hover:bg-brand-hi text-ink text-xs px-2 py-1.5 rounded font-medium transition-colors">
                 Save
               </button>
               <button onClick={() => setSwapping(false)}
-                className="flex-1 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 text-xs px-2 py-1.5 rounded font-medium transition-colors">
+                className="flex-1 bg-raised hover:bg-raised text-ink-dim text-xs px-2 py-1.5 rounded font-medium transition-colors">
                 Cancel
               </button>
             </div>
@@ -128,8 +128,8 @@ export default function MatchCard({
       <div className="px-4 py-3 space-y-2">
         <div className={`flex justify-between items-center px-3 py-2 rounded-lg border ${
           match.winnerId === match.player1Id
-            ? 'bg-emerald-950 border-emerald-700 text-emerald-300'
-            : 'bg-zinc-800 border-zinc-700 text-zinc-200'
+            ? 'bg-brand-dim border-brand-bd text-win'
+            : 'bg-overlay border-edge text-ink-dim'
         }`}>
           <span className="font-medium truncate mr-2 text-sm" title={getPlayerName(match.player1Id)}>
             {getPlayerName(match.player1Id)}
@@ -139,15 +139,15 @@ export default function MatchCard({
           </span>
         </div>
 
-        <div className="text-center text-xs text-zinc-500 font-semibold">
+        <div className="text-center text-xs text-ink-faint font-semibold">
           {match.player2Id === 'BYE' ? 'BYE' : 'VS'}
         </div>
 
         {match.player2Id !== 'BYE' && (
           <div className={`flex justify-between items-center px-3 py-2 rounded-lg border ${
             match.winnerId === match.player2Id
-              ? 'bg-emerald-950 border-emerald-700 text-emerald-300'
-              : 'bg-zinc-800 border-zinc-700 text-zinc-200'
+              ? 'bg-brand-dim border-brand-bd text-win'
+              : 'bg-overlay border-edge text-ink-dim'
           }`}>
             <span className="font-medium truncate mr-2 text-sm" title={getPlayerName(match.player2Id)}>
               {getPlayerName(match.player2Id)}
@@ -162,7 +162,7 @@ export default function MatchCard({
       {/* Winner badge */}
       {match.winnerId && (
         <div className="px-4 pb-3 text-center">
-          <span className="inline-block bg-amber-950 text-amber-400 border border-amber-700 px-3 py-1 rounded-full text-xs font-bold">
+          <span className="inline-block bg-gold-dim text-gold border border-gold-bd px-3 py-1 rounded-full text-xs font-bold">
             🏆 {getPlayerName(match.winnerId)}
           </span>
         </div>
@@ -186,18 +186,18 @@ export default function MatchCard({
             onAddGame(match, score1, score2);
             (e.target as HTMLFormElement).reset();
           }}
-          className="px-4 pb-4 pt-2 border-t border-zinc-700 space-y-2"
+          className="px-4 pb-4 pt-2 border-t border-edge space-y-2"
         >
           <div className="flex gap-2">
             <input name="score1" type="number" min="0" max="50" required placeholder={getPlayerName(match.player1Id).substring(0, 10)}
-              className="flex-1 min-w-0 border border-zinc-600 rounded-lg px-2 py-1.5 text-sm text-white bg-zinc-800 placeholder-zinc-500 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
-            <span className="flex items-center text-zinc-500 font-bold text-sm">—</span>
+              className="flex-1 min-w-0 border border-edge rounded-lg px-2 py-1.5 text-sm text-ink bg-overlay placeholder-zinc-500 focus:border-brand-hi focus:outline-none focus:ring-1 focus:ring-brand" />
+            <span className="flex items-center text-ink-faint font-bold text-sm">—</span>
             <input name="score2" type="number" min="0" max="50" required placeholder={getPlayerName(match.player2Id).substring(0, 10)}
-              className="flex-1 min-w-0 border border-zinc-600 rounded-lg px-2 py-1.5 text-sm text-white bg-zinc-800 placeholder-zinc-500 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+              className="flex-1 min-w-0 border border-edge rounded-lg px-2 py-1.5 text-sm text-ink bg-overlay placeholder-zinc-500 focus:border-brand-hi focus:outline-none focus:ring-1 focus:ring-brand" />
           </div>
-          <p className="text-xs text-zinc-500 text-center">First to 11, win by 2</p>
+          <p className="text-xs text-ink-faint text-center">First to 11, win by 2</p>
           <button type="submit"
-            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-sm py-2 rounded-lg font-semibold transition-colors">
+            className="w-full bg-brand hover:bg-brand-hi text-ink text-sm py-2 rounded-lg font-semibold transition-colors">
             Record Game
           </button>
         </form>
@@ -205,33 +205,33 @@ export default function MatchCard({
 
       {/* Games history */}
       {match.games.length > 0 && (
-        <div className="px-4 pb-4 pt-2 border-t border-zinc-700">
-          <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2">Games</p>
+        <div className="px-4 pb-4 pt-2 border-t border-edge">
+          <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2">Games</p>
           <div className="space-y-1.5">
             {match.games.map(game => (
-              <div key={game.id} className="flex items-center justify-between bg-zinc-800 rounded-lg px-2 py-1.5 border border-zinc-700">
+              <div key={game.id} className="flex items-center justify-between bg-overlay rounded-lg px-2 py-1.5 border border-edge">
                 {editingGame?.id === game.id ? (
                   <div className="flex items-center gap-1.5 flex-1 min-w-0">
                     <input type="number" value={editScore1} onChange={e => setEditScore1(e.target.value)}
-                      className="w-14 border border-zinc-600 rounded px-1.5 py-0.5 text-sm text-center text-white bg-zinc-700" />
-                    <span className="text-zinc-500 text-xs">—</span>
+                      className="w-14 border border-edge rounded px-1.5 py-0.5 text-sm text-center text-ink bg-raised" />
+                    <span className="text-ink-faint text-xs">—</span>
                     <input type="number" value={editScore2} onChange={e => setEditScore2(e.target.value)}
-                      className="w-14 border border-zinc-600 rounded px-1.5 py-0.5 text-sm text-center text-white bg-zinc-700" />
+                      className="w-14 border border-edge rounded px-1.5 py-0.5 text-sm text-center text-ink bg-raised" />
                     <button onClick={handleSaveGameEdit}
-                      className="text-xs text-emerald-400 font-semibold hover:underline ml-1">Save</button>
+                      className="text-xs text-win font-semibold hover:underline ml-1">Save</button>
                     <button onClick={cancelEditingGame}
-                      className="text-xs text-zinc-500 hover:underline">Cancel</button>
+                      className="text-xs text-ink-faint hover:underline">Cancel</button>
                   </div>
                 ) : (
                   <>
-                    <span className={`text-sm font-semibold tabular-nums ${game.score1 > game.score2 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    <span className={`text-sm font-semibold tabular-nums ${game.score1 > game.score2 ? 'text-win' : 'text-loss'}`}>
                       {game.score1}–{game.score2}
                     </span>
                     <div className="flex gap-1">
                       <button onClick={() => startEditingGame(game)}
-                        className="text-zinc-500 hover:text-zinc-300 text-xs px-1 py-0.5 rounded hover:bg-zinc-700">✏️</button>
+                        className="text-ink-faint hover:text-ink-dim text-xs px-1 py-0.5 rounded hover:bg-raised">✏️</button>
                       <button onClick={() => onDeleteGame(game.id)}
-                        className="text-red-500 hover:text-red-400 text-xs px-1 py-0.5 rounded hover:bg-zinc-700">🗑️</button>
+                        className="text-loss hover:text-loss text-xs px-1 py-0.5 rounded hover:bg-raised">🗑️</button>
                     </div>
                   </>
                 )}

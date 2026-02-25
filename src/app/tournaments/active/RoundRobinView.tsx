@@ -64,10 +64,10 @@ export default function RoundRobinView({
       {/* Round header */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-xl font-bold text-white">Round Robin</h3>
-          <p className="text-sm text-zinc-400 mt-0.5">
-            Round <span className="font-semibold text-zinc-200">{currentRound}</span> of{' '}
-            <span className="font-semibold text-zinc-200">{tournament.roundRobinRounds}</span>
+          <h3 className="text-xl font-bold text-ink">Round Robin</h3>
+          <p className="text-sm text-ink-muted mt-0.5">
+            Round <span className="font-semibold text-ink-dim">{currentRound}</span> of{' '}
+            <span className="font-semibold text-ink-dim">{tournament.roundRobinRounds}</span>
           </p>
         </div>
 
@@ -81,7 +81,7 @@ export default function RoundRobinView({
             return (
               <div key={roundNum}
                 className={`w-2.5 h-2.5 rounded-full transition-colors ${
-                  complete ? 'bg-emerald-500' : active ? 'bg-zinc-300' : 'bg-zinc-700'
+                  complete ? 'bg-brand-hi' : active ? 'bg-ink-dim' : 'bg-raised'
                 }`}
                 title={`Round ${roundNum}${complete ? ' ✓' : ''}`}
               />
@@ -91,18 +91,18 @@ export default function RoundRobinView({
       </div>
 
       {/* Standings table */}
-      <div className="bg-zinc-900 border border-zinc-700 rounded-xl overflow-hidden">
-        <div className="px-4 py-3 border-b border-zinc-700 bg-zinc-800">
-          <h4 className="text-sm font-bold text-zinc-300 uppercase tracking-wide">Standings</h4>
+      <div className="bg-surface border border-edge rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-edge bg-overlay">
+          <h4 className="text-sm font-bold text-ink-dim uppercase tracking-wide">Standings</h4>
         </div>
         <table className="min-w-full text-sm">
           <thead>
-            <tr className="border-b border-zinc-700 bg-zinc-900">
-              <th className="text-left px-4 py-2 font-semibold text-zinc-400 text-xs uppercase tracking-wide">#</th>
-              <th className="text-left px-4 py-2 font-semibold text-zinc-400 text-xs uppercase tracking-wide">Player</th>
-              <th className="text-center px-3 py-2 font-semibold text-zinc-400 text-xs uppercase tracking-wide">W</th>
-              <th className="text-center px-3 py-2 font-semibold text-zinc-400 text-xs uppercase tracking-wide">L</th>
-              <th className="text-center px-3 py-2 font-semibold text-zinc-400 text-xs uppercase tracking-wide">Win%</th>
+            <tr className="border-b border-edge bg-surface">
+              <th className="text-left px-4 py-2 font-semibold text-ink-muted text-xs uppercase tracking-wide">#</th>
+              <th className="text-left px-4 py-2 font-semibold text-ink-muted text-xs uppercase tracking-wide">Player</th>
+              <th className="text-center px-3 py-2 font-semibold text-ink-muted text-xs uppercase tracking-wide">W</th>
+              <th className="text-center px-3 py-2 font-semibold text-ink-muted text-xs uppercase tracking-wide">L</th>
+              <th className="text-center px-3 py-2 font-semibold text-ink-muted text-xs uppercase tracking-wide">Win%</th>
             </tr>
           </thead>
           <tbody>
@@ -110,15 +110,15 @@ export default function RoundRobinView({
               const pct = s.played > 0 ? Math.round((s.wins / s.played) * 100) : 0;
               const isLeader = idx < 2; // top 2 highlighted
               return (
-                <tr key={s.id} className={`border-b border-zinc-800 last:border-0 ${isLeader ? 'bg-amber-950/30' : 'bg-zinc-900'}`}>
-                  <td className="px-4 py-2.5 text-zinc-500 font-medium text-xs">{idx + 1}</td>
-                  <td className="px-4 py-2.5 font-semibold text-white">
-                    {isLeader && <span className="mr-1.5 text-amber-500">★</span>}
+                <tr key={s.id} className={`border-b border-edge-dim last:border-0 ${isLeader ? 'bg-gold-dim/30' : 'bg-surface'}`}>
+                  <td className="px-4 py-2.5 text-ink-faint font-medium text-xs">{idx + 1}</td>
+                  <td className="px-4 py-2.5 font-semibold text-ink">
+                    {isLeader && <span className="mr-1.5 text-gold">★</span>}
                     {getPlayerName(s.id)}
                   </td>
-                  <td className="text-center px-3 py-2.5 font-bold text-emerald-400">{s.wins}</td>
-                  <td className="text-center px-3 py-2.5 font-bold text-red-400">{s.losses}</td>
-                  <td className="text-center px-3 py-2.5 text-zinc-400 text-xs font-medium">{pct}%</td>
+                  <td className="text-center px-3 py-2.5 font-bold text-win">{s.wins}</td>
+                  <td className="text-center px-3 py-2.5 font-bold text-loss">{s.losses}</td>
+                  <td className="text-center px-3 py-2.5 text-ink-muted text-xs font-medium">{pct}%</td>
                 </tr>
               );
             })}
@@ -128,7 +128,7 @@ export default function RoundRobinView({
 
       {/* Current round matches */}
       <div>
-        <h4 className="text-sm font-bold text-zinc-400 uppercase tracking-wide mb-4">Current Matches</h4>
+        <h4 className="text-sm font-bold text-ink-muted uppercase tracking-wide mb-4">Current Matches</h4>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {currentRoundMatches.map(match => (
             <MatchCard
@@ -152,14 +152,14 @@ export default function RoundRobinView({
           {!isLastRound ? (
             <button
               onClick={() => onAdvanceRound(tournament)}
-              className="inline-flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 active:bg-zinc-600 text-white px-8 py-3.5 rounded-xl font-bold text-base transition-colors border border-zinc-600"
+              className="inline-flex items-center gap-2 bg-overlay hover:bg-raised active:bg-raised text-ink px-8 py-3.5 rounded-xl font-bold text-base transition-colors border border-edge"
             >
               ⏭ Next Round
             </button>
           ) : (
             <button
               onClick={() => onStartBracket(tournament)}
-              className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white px-8 py-3.5 rounded-xl font-bold text-base transition-colors border border-emerald-500"
+              className="inline-flex items-center gap-2 bg-brand hover:bg-brand-hi active:bg-brand text-ink px-8 py-3.5 rounded-xl font-bold text-base transition-colors border border-brand-hi"
             >
               🏆 Start Bracket
             </button>

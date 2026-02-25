@@ -1,19 +1,103 @@
 @import "tailwindcss";
 
+/* ─── Design tokens ──────────────────────────────────────────────────────────
+   Change colors here ONLY. Every component uses the semantic names below.
+   ──────────────────────────────────────────────────────────────────────────── */
 :root {
-  --background: #09090b;
-  --foreground: #fafafa;
+  /* Backgrounds (darkest → lightest) */
+  --bg-page:    #09090b; /* outermost page background   (zinc-950) */
+  --bg-surface: #18181b; /* card / panel background      (zinc-900) */
+  --bg-overlay: #27272a; /* nested panel, inputs         (zinc-800) */
+  --bg-raised:  #3f3f46; /* items sitting on overlay     (zinc-700) */
+
+  /* Borders */
+  --bd:         #3f3f46; /* default border               (zinc-700) */
+  --bd-dim:     #27272a; /* subtle / inner border        (zinc-800) */
+  --bd-hi:      #71717a; /* highlighted border on hover  (zinc-500) */
+
+  /* Text */
+  --fg:         #fafafa; /* primary text                 (zinc-50)  */
+  --fg-dim:     #d4d4d8; /* secondary text               (zinc-300) */
+  --fg-muted:   #a1a1aa; /* muted text                   (zinc-400) */
+  --fg-faint:   #71717a; /* very faint text              (zinc-500) */
+
+  /* Brand / CTA */
+  --brand:      #059669; /* primary action bg            (emerald-600) */
+  --brand-hi:   #10b981; /* hover / lighter accent       (emerald-500) */
+  --brand-text: #d1fae5; /* light text on brand bg       (emerald-100) */
+  --brand-dim:  #022c22; /* subtle accent background     (emerald-950) */
+  --brand-bd:   #065f46; /* accent border                (emerald-800) */
+
+  /* Warning (amber) */
+  --warn:       #d97706; /* warning CTA                  (amber-600)   */
+  --warn-hi:    #f59e0b; /* warning hover                (amber-500)   */
+  --warn-dim:   #451a03; /* warning subtle bg            (amber-950)   */
+  --warn-bd:    #92400e; /* warning border               (amber-800)   */
+  --warn-text:  #fef3c7; /* light text on warn bg        (amber-100)   */
+
+  /* Status colours */
+  --win:        #34d399; /* win state / accent text      (emerald-400) */
+  --loss:       #f87171; /* loss state                   (red-400)     */
+  --loss-dim:   #450a0a; /* loss subtle background       (red-950)     */
+  --loss-bd:    #991b1b; /* loss border                  (red-800)     */
+  --gold:       #fbbf24; /* gold / champion              (amber-400)   */
+  --gold-dim:   #451a03; /* gold subtle background       (amber-950)   */
+  --gold-bd:    #92400e; /* gold border                  (amber-800)   */
 }
 
+/* ─── Tailwind theme mapping ─────────────────────────────────────────────────
+   Each --color-* entry creates bg-*, text-*, and border-* utilities.
+   ──────────────────────────────────────────────────────────────────────────── */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-background: var(--bg-page);
+  --color-foreground: var(--fg);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* Backgrounds */
+  --color-page:    var(--bg-page);
+  --color-surface: var(--bg-surface);
+  --color-overlay: var(--bg-overlay);
+  --color-raised:  var(--bg-raised);
+
+  /* Borders */
+  --color-edge:     var(--bd);
+  --color-edge-dim: var(--bd-dim);
+  --color-edge-hi:  var(--bd-hi);
+
+  /* Text */
+  --color-ink:       var(--fg);
+  --color-ink-dim:   var(--fg-dim);
+  --color-ink-muted: var(--fg-muted);
+  --color-ink-faint: var(--fg-faint);
+
+  /* Brand */
+  --color-brand:      var(--brand);
+  --color-brand-hi:   var(--brand-hi);
+  --color-brand-text: var(--brand-text);
+  --color-brand-dim:  var(--brand-dim);
+  --color-brand-bd:   var(--brand-bd);
+
+  /* Warning */
+  --color-warn:      var(--warn);
+  --color-warn-hi:   var(--warn-hi);
+  --color-warn-dim:  var(--warn-dim);
+  --color-warn-bd:   var(--warn-bd);
+  --color-warn-text: var(--warn-text);
+
+  /* Status */
+  --color-win:      var(--win);
+  --color-loss:     var(--loss);
+  --color-loss-dim: var(--loss-dim);
+  --color-loss-bd:  var(--loss-bd);
+  --color-gold:     var(--gold);
+  --color-gold-dim: var(--gold-dim);
+  --color-gold-bd:  var(--gold-bd);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--bg-page);
+  color: var(--fg);
   font-family: Arial, Helvetica, sans-serif;
 }
+

@@ -82,16 +82,16 @@ export default function NewTournamentPage() {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-950">
+    <div className="min-h-screen bg-page">
       <div className="container mx-auto px-4 py-8 max-w-4xl">
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
           <div>
-            <h1 className="text-4xl font-bold text-white mb-2">➕ New Tournament</h1>
-            <p className="text-zinc-400 text-lg">Create a new ping pong tournament</p>
+            <h1 className="text-4xl font-bold text-ink mb-2">➕ New Tournament</h1>
+            <p className="text-ink-muted text-lg">Create a new ping pong tournament</p>
           </div>
           <div className="flex space-x-4">
-            <Link href="/" className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-6 py-3 rounded-lg border border-zinc-700 transition-colors font-medium">
+            <Link href="/" className="bg-overlay hover:bg-raised text-ink-dim px-6 py-3 rounded-lg border border-edge transition-colors font-medium">
               ← Back
             </Link>
           </div>
@@ -99,21 +99,21 @@ export default function NewTournamentPage() {
 
         {/* Active Tournament Warning */}
         {activeTournaments.length > 0 && (
-          <div className="bg-amber-950 border border-amber-700 rounded-lg p-6 mb-8">
+          <div className="bg-gold-dim border border-gold-bd rounded-lg p-6 mb-8">
             <div className="flex items-center space-x-3">
               <div className="text-3xl">⚠️</div>
               <div>
-                <h3 className="text-lg font-semibold text-amber-300 mb-2">Active Tournament in Progress</h3>
-                <p className="text-amber-400 mb-3">
+                <h3 className="text-lg font-semibold text-gold mb-2">Active Tournament in Progress</h3>
+                <p className="text-gold mb-3">
                   There is currently an active tournament: <strong>&quot;{activeTournaments[0].name}&quot;</strong>
                 </p>
-                <p className="text-amber-500 text-sm">
+                <p className="text-gold text-sm">
                   You can only have one active tournament at a time. Please complete or end the current tournament before creating a new one.
                 </p>
                 <div className="mt-4">
                   <Link
                     href="/tournaments/active"
-                    className="bg-amber-600 hover:bg-amber-500 text-white px-4 py-2 rounded-lg font-medium transition-colors border border-amber-500"
+                    className="bg-warn hover:bg-warn-hi text-ink px-4 py-2 rounded-lg font-medium transition-colors border border-warn-hi"
                   >
                     View Active Tournament →
                   </Link>
@@ -124,27 +124,27 @@ export default function NewTournamentPage() {
         )}
 
         {/* Create Tournament Form */}
-        <div className={`bg-zinc-900 rounded-xl p-8 border border-zinc-700 ${activeTournaments.length > 0 ? 'opacity-50 pointer-events-none' : ''}`}>
-          <h2 className="text-3xl font-bold text-white mb-8">Create New Tournament</h2>
+        <div className={`bg-surface rounded-xl p-8 border border-edge ${activeTournaments.length > 0 ? 'opacity-50 pointer-events-none' : ''}`}>
+          <h2 className="text-3xl font-bold text-ink mb-8">Create New Tournament</h2>
           <form onSubmit={createTournament} className="space-y-8">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div>
-                <label className="block text-lg font-semibold text-zinc-300 mb-3">Tournament Name</label>
+                <label className="block text-lg font-semibold text-ink-dim mb-3">Tournament Name</label>
                 <input
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="e.g., Week 1 Championship"
-                  className="w-full border border-zinc-600 rounded-lg px-4 py-3 text-white bg-zinc-800 placeholder-zinc-500 focus:border-emerald-500 focus:outline-none text-lg"
+                  className="w-full border border-edge rounded-lg px-4 py-3 text-ink bg-overlay placeholder-zinc-500 focus:border-brand-hi focus:outline-none text-lg"
                   required
                 />
               </div>
               <div>
-                <label className="block text-lg font-semibold text-zinc-300 mb-3">Round Robin Rounds</label>
+                <label className="block text-lg font-semibold text-ink-dim mb-3">Round Robin Rounds</label>
                 <select
                   value={roundRobinRounds}
                   onChange={(e) => setRoundRobinRounds(parseInt(e.target.value))}
-                  className="w-full border border-zinc-600 rounded-lg px-4 py-3 text-white bg-zinc-800 focus:border-emerald-500 focus:outline-none text-lg"
+                  className="w-full border border-edge rounded-lg px-4 py-3 text-ink bg-overlay focus:border-brand-hi focus:outline-none text-lg"
                 >
                   <option value={3}>3 Rounds</option>
                   <option value={4}>4 Rounds</option>
@@ -154,8 +154,8 @@ export default function NewTournamentPage() {
 
             {/* Best-of Format Settings */}
             <div>
-              <label className="block text-lg font-semibold text-zinc-300 mb-4">Format Settings</label>
-              <div className="space-y-4 bg-zinc-800 rounded-lg p-5 border border-zinc-700">
+              <label className="block text-lg font-semibold text-ink-dim mb-4">Format Settings</label>
+              <div className="space-y-4 bg-overlay rounded-lg p-5 border border-edge">
                 {(
                   [
                     { label: 'Round Robin', value: rrBestOf, setter: setRrBestOf },
@@ -164,7 +164,7 @@ export default function NewTournamentPage() {
                   ] as { label: string; value: number; setter: (v: number) => void }[]
                 ).map(({ label, value, setter }) => (
                   <div key={label} className="flex items-center justify-between">
-                    <span className="text-base font-medium text-zinc-300 w-36">{label}</span>
+                    <span className="text-base font-medium text-ink-dim w-36">{label}</span>
                     <div className="flex space-x-2">
                       {[1, 3, 5].map(bo => (
                         <button
@@ -173,8 +173,8 @@ export default function NewTournamentPage() {
                           onClick={() => setter(bo)}
                           className={`px-4 py-2 rounded-lg font-semibold text-sm border transition-colors ${
                             value === bo
-                              ? 'bg-emerald-600 text-white border-emerald-500'
-                              : 'bg-zinc-700 text-zinc-300 border-zinc-600 hover:bg-zinc-600'
+                              ? 'bg-brand text-ink border-brand-hi'
+                              : 'bg-raised text-ink-dim border-edge hover:bg-raised'
                           }`}
                         >
                           Bo{bo}
@@ -187,10 +187,10 @@ export default function NewTournamentPage() {
             </div>
 
             <div>
-              <label className="block text-lg font-semibold text-zinc-300 mb-4">Select Players</label>
+              <label className="block text-lg font-semibold text-ink-dim mb-4">Select Players</label>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                 {players.map(p => (
-                  <label key={p.id} className="flex items-center space-x-3 p-4 bg-zinc-800 rounded-lg hover:bg-zinc-700 cursor-pointer transition-colors border border-zinc-700">
+                  <label key={p.id} className="flex items-center space-x-3 p-4 bg-overlay rounded-lg hover:bg-raised cursor-pointer transition-colors border border-edge">
                     <input
                       type="checkbox"
                       checked={selectedPlayers.includes(p.id)}
@@ -203,27 +203,27 @@ export default function NewTournamentPage() {
                           setSelectedPlayers(selectedPlayers.filter(id => id !== p.id));
                         }
                       }}
-                      className="w-5 h-5 text-emerald-600 rounded border-zinc-600 focus:ring-emerald-500 bg-zinc-700"
+                      className="w-5 h-5 text-brand rounded border-edge focus:ring-brand bg-raised"
                     />
-                    <span className="font-medium text-white text-lg">{p.name}</span>
+                    <span className="font-medium text-ink text-lg">{p.name}</span>
                   </label>
                 ))}
               </div>
               {players.length === 0 && (
-                <p className="text-zinc-500 text-center py-8">No players available. Add some players first!</p>
+                <p className="text-ink-faint text-center py-8">No players available. Add some players first!</p>
               )}
             </div>
 
-            <div className="flex justify-end space-x-4 pt-6 border-t border-zinc-700">
+            <div className="flex justify-end space-x-4 pt-6 border-t border-edge">
               <Link
                 href="/"
-                className="px-8 py-3 border border-zinc-600 rounded-lg text-zinc-300 hover:bg-zinc-800 transition-colors font-medium text-lg"
+                className="px-8 py-3 border border-edge rounded-lg text-ink-dim hover:bg-overlay transition-colors font-medium text-lg"
               >
                 Cancel
               </Link>
               <button
                 type="submit"
-                className="px-8 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors font-medium text-lg border border-emerald-500"
+                className="px-8 py-3 bg-brand hover:bg-brand-hi text-ink rounded-lg transition-colors font-medium text-lg border border-brand-hi"
               >
                 Create Tournament
               </button>
@@ -232,11 +232,11 @@ export default function NewTournamentPage() {
         </div>
 
         {players.length === 0 && (
-          <div className="mt-8 text-center py-16 bg-zinc-900 rounded-xl border border-zinc-700">
+          <div className="mt-8 text-center py-16 bg-surface rounded-xl border border-edge">
             <div className="text-8xl mb-6">👥</div>
-            <h3 className="text-2xl font-semibold text-white mb-4">No players available</h3>
-            <p className="text-zinc-400 mb-8 text-lg">You need to add players before creating a tournament!</p>
-            <Link href="/" className="bg-emerald-600 hover:bg-emerald-500 text-white px-10 py-4 rounded-lg font-bold text-xl transition-colors border border-emerald-500 inline-block">
+            <h3 className="text-2xl font-semibold text-ink mb-4">No players available</h3>
+            <p className="text-ink-muted mb-8 text-lg">You need to add players before creating a tournament!</p>
+            <Link href="/" className="bg-brand hover:bg-brand-hi text-ink px-10 py-4 rounded-lg font-bold text-xl transition-colors border border-brand-hi inline-block">
               Go to Home
             </Link>
           </div>
