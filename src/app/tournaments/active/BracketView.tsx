@@ -41,7 +41,7 @@ export default function BracketView({ bracketMatches, getPlayerName, onAddGame, 
   const hasPlayIn     = playInMatches.length > 0;
 
   if (mainRounds.length === 0 && !hasPlayIn) {
-    return <div className="text-center py-16 text-gray-400 text-sm">No bracket matches yet.</div>;
+    return <div className="text-center py-16 text-zinc-500 text-sm">No bracket matches yet.</div>;
   }
 
   const r1Matches = mainMatches.filter(m => m.bracketRound === mainRounds[0]);
@@ -133,11 +133,11 @@ export default function BracketView({ bracketMatches, getPlayerName, onAddGame, 
         const finalMatch = finalRoundMatches.find(m => m.winnerId);
         if (!finalMatch) return null;
         return (
-          <div className="flex items-center justify-center gap-3 bg-amber-50 border-2 border-amber-200 rounded-2xl py-5">
+          <div className="flex items-center justify-center gap-3 bg-amber-950 border border-amber-700 rounded-xl py-5">
             <span className="text-4xl">🏆</span>
             <div>
-              <p className="text-xs font-bold text-amber-600 uppercase tracking-widest">Tournament Champion</p>
-              <p className="text-2xl font-black text-amber-900">{getPlayerName(finalMatch.winnerId!)}</p>
+              <p className="text-xs font-bold text-amber-500 uppercase tracking-widest">Tournament Champion</p>
+              <p className="text-2xl font-black text-amber-300">{getPlayerName(finalMatch.winnerId!)}</p>
             </div>
           </div>
         );
@@ -152,7 +152,7 @@ export default function BracketView({ bracketMatches, getPlayerName, onAddGame, 
         )}
         {mainRounds.map(rNum => (
           <div key={rNum} style={{ width: CARD_W + COL_GAP, flexShrink: 0 }}>
-            <p className={`text-center text-xs font-bold uppercase tracking-widest ${mainMatches.filter(m => m.bracketRound === rNum).length === 1 ? 'text-amber-600' : 'text-gray-400'}`}>
+            <p className={`text-center text-xs font-bold uppercase tracking-widest ${mainMatches.filter(m => m.bracketRound === rNum).length === 1 ? 'text-amber-500' : 'text-zinc-500'}`}>
               {getRoundLabel(rNum)}
             </p>
           </div>
@@ -169,7 +169,7 @@ export default function BracketView({ bracketMatches, getPlayerName, onAddGame, 
             aria-hidden
           >
             {connectors.map(({ d, key }) => (
-              <path key={key} d={d} fill="none" stroke="#CBD5E1" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+              <path key={key} d={d} fill="none" stroke="#3f3f46" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
             ))}
           </svg>
 
@@ -215,45 +215,45 @@ export default function BracketView({ bracketMatches, getPlayerName, onAddGame, 
 
       {/* Score entry panel — appears below the bracket when a match is selected */}
       {activeMatch && !readOnly && !activeMatch.winnerId && activeMatch.player2Id !== 'BYE' && (
-        <div className="bg-white border-2 border-blue-100 rounded-2xl p-5 shadow-sm">
+        <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-5">
           <div className="flex justify-between items-center mb-4">
             <div>
-              <p className="text-xs font-semibold text-blue-500 uppercase tracking-widest mb-0.5">Recording game</p>
-              <h4 className="font-bold text-gray-900 text-base">
+              <p className="text-xs font-semibold text-emerald-500 uppercase tracking-widest mb-0.5">Recording game</p>
+              <h4 className="font-bold text-white text-base">
                 {getPlayerName(activeMatch.player1Id)}
-                <span className="text-gray-300 mx-2">vs</span>
+                <span className="text-zinc-600 mx-2">vs</span>
                 {getPlayerName(activeMatch.player2Id)}
               </h4>
             </div>
             <button onClick={() => { setActiveMatchId(null); setScore1(''); setScore2(''); }}
-              className="text-gray-300 hover:text-gray-500 text-xl font-bold leading-none">✕</button>
+              className="text-zinc-600 hover:text-zinc-300 text-xl font-bold leading-none">✕</button>
           </div>
 
           <div className="flex items-end gap-3">
             <div className="flex-1">
-              <label className="block text-xs text-gray-500 font-medium mb-1.5">
+              <label className="block text-xs text-zinc-400 font-medium mb-1.5">
                 {getPlayerName(activeMatch.player1Id)}
               </label>
               <input
                 type="number" min="0" max="50" value={score1}
                 onChange={e => setScore1(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleRecord()}
-                className="w-full border-2 border-gray-200 rounded-xl px-3 py-3 text-2xl font-bold text-center text-gray-900 focus:border-blue-400 focus:outline-none transition-colors"
+                className="w-full border border-zinc-600 rounded-xl px-3 py-3 text-2xl font-bold text-center text-white bg-zinc-800 focus:border-emerald-500 focus:outline-none transition-colors"
                 placeholder="0"
               />
             </div>
 
-            <div className="pb-3 text-2xl text-gray-200 font-bold select-none">—</div>
+            <div className="pb-3 text-2xl text-zinc-700 font-bold select-none">—</div>
 
             <div className="flex-1">
-              <label className="block text-xs text-gray-500 font-medium mb-1.5">
+              <label className="block text-xs text-zinc-400 font-medium mb-1.5">
                 {getPlayerName(activeMatch.player2Id)}
               </label>
               <input
                 type="number" min="0" max="50" value={score2}
                 onChange={e => setScore2(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleRecord()}
-                className="w-full border-2 border-gray-200 rounded-xl px-3 py-3 text-2xl font-bold text-center text-gray-900 focus:border-blue-400 focus:outline-none transition-colors"
+                className="w-full border border-zinc-600 rounded-xl px-3 py-3 text-2xl font-bold text-center text-white bg-zinc-800 focus:border-emerald-500 focus:outline-none transition-colors"
                 placeholder="0"
               />
             </div>
@@ -270,28 +270,28 @@ export default function BracketView({ bracketMatches, getPlayerName, onAddGame, 
           </div>
 
           {activeMatch.games.length > 0 && (
-            <div className="mt-4 pt-3 border-t border-gray-100">
-              <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide mb-2">Series so far (Bo{activeMatch.bestOf})</p>
+            <div className="mt-4 pt-3 border-t border-zinc-700">
+              <p className="text-xs text-zinc-400 font-semibold uppercase tracking-wide mb-2">Series so far (Bo{activeMatch.bestOf})</p>
               <div className="flex flex-wrap gap-2 items-center">
                 {activeMatch.games.map((g, i) => {
                   const p1Won = g.score1 > g.score2;
                   if (editingGameId === g.id) {
                     return (
-                      <div key={g.id} className="flex items-center gap-1.5 bg-gray-50 rounded-xl px-3 py-1.5 border-2 border-blue-200">
-                        <span className="text-xs text-gray-500 font-semibold">G{i + 1}:</span>
+                      <div key={g.id} className="flex items-center gap-1.5 bg-zinc-800 rounded-xl px-3 py-1.5 border border-zinc-600">
+                        <span className="text-xs text-zinc-400 font-semibold">G{i + 1}:</span>
                         <input type="number" value={editG1} onChange={e => setEditG1(e.target.value)}
-                          className="w-12 border border-gray-300 rounded-lg px-1.5 py-1 text-sm text-center font-bold text-gray-900 bg-white focus:border-blue-400 focus:outline-none" />
-                        <span className="text-gray-400 text-xs">–</span>
+                          className="w-12 border border-zinc-600 rounded-lg px-1.5 py-1 text-sm text-center font-bold text-white bg-zinc-700 focus:border-emerald-500 focus:outline-none" />
+                        <span className="text-zinc-500 text-xs">–</span>
                         <input type="number" value={editG2} onChange={e => setEditG2(e.target.value)}
-                          className="w-12 border border-gray-300 rounded-lg px-1.5 py-1 text-sm text-center font-bold text-gray-900 bg-white focus:border-blue-400 focus:outline-none" />
+                          className="w-12 border border-zinc-600 rounded-lg px-1.5 py-1 text-sm text-center font-bold text-white bg-zinc-700 focus:border-emerald-500 focus:outline-none" />
                         <button onClick={async () => {
                           const s1 = parseInt(editG1); const s2 = parseInt(editG2);
                           if (isNaN(s1) || isNaN(s2)) { alert('Enter valid scores'); return; }
                           await onSaveGameEdit(g.id, s1, s2);
                           setEditingGameId(null);
-                        }} className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded-lg font-bold transition-colors">✓</button>
+                        }} className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white px-2.5 py-1 rounded-lg font-bold transition-colors">✓</button>
                         <button onClick={() => setEditingGameId(null)}
-                          className="text-xs text-gray-400 hover:text-gray-600 px-1 font-bold">✕</button>
+                          className="text-xs text-zinc-500 hover:text-zinc-300 px-1 font-bold">✕</button>
                       </div>
                     );
                   }
@@ -299,59 +299,59 @@ export default function BracketView({ bracketMatches, getPlayerName, onAddGame, 
                     <button key={g.id}
                       onClick={() => { setEditingGameId(g.id); setEditG1(g.score1.toString()); setEditG2(g.score2.toString()); }}
                       className={`text-xs font-bold px-2.5 py-1 rounded-full border transition-opacity hover:opacity-70 ${
-                        p1Won ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'
+                        p1Won ? 'bg-emerald-950 border-emerald-700 text-emerald-400' : 'bg-red-950 border-red-800 text-red-400'
                       }`}>
                       G{i + 1}: {g.score1}–{g.score2}
                     </button>
                   );
                 })}
-                <span className="text-xs text-gray-400">
+                <span className="text-xs text-zinc-500">
                   {activeMatch.games.filter(g => g.score1 > g.score2).length}–{activeMatch.games.filter(g => g.score2 > g.score1).length} in series
                 </span>
               </div>
             </div>
           )}
 
-          <p className="mt-2 text-xs text-gray-400 text-center">First to 11 · win by 2</p>
+          <p className="mt-2 text-xs text-zinc-500 text-center">First to 11 · win by 2</p>
         </div>
       )}
 
       {/* Game scores panel — completed matches in both active and history mode */}
       {activeMatch && (readOnly || !!activeMatch.winnerId) && activeMatch.games.length > 0 && (
-        <div className="bg-white border-2 border-gray-100 rounded-2xl p-5 shadow-sm">
+        <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-5">
           <div className="flex justify-between items-center mb-3">
             <div>
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-0.5">Match result</p>
-              <h4 className="font-bold text-gray-900 text-base">
-                <span className={activeMatch.winnerId === activeMatch.player1Id ? 'text-green-700' : 'text-gray-500'}>
+              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-widest mb-0.5">Match result</p>
+              <h4 className="font-bold text-white text-base">
+                <span className={activeMatch.winnerId === activeMatch.player1Id ? 'text-emerald-400' : 'text-zinc-500'}>
                   {getPlayerName(activeMatch.player1Id)}
                 </span>
-                <span className="text-gray-300 mx-2">vs</span>
-                <span className={activeMatch.winnerId === activeMatch.player2Id ? 'text-green-700' : 'text-gray-500'}>
+                <span className="text-zinc-700 mx-2">vs</span>
+                <span className={activeMatch.winnerId === activeMatch.player2Id ? 'text-emerald-400' : 'text-zinc-500'}>
                   {getPlayerName(activeMatch.player2Id)}
                 </span>
               </h4>
             </div>
             <button onClick={() => setActiveMatchId(null)}
-              className="text-gray-300 hover:text-gray-500 text-xl font-bold leading-none">✕</button>
+              className="text-zinc-600 hover:text-zinc-300 text-xl font-bold leading-none">✕</button>
           </div>
           <div className="space-y-2">
             {activeMatch.games.map((g, i) => {
               const p1Won = g.score1 > g.score2;
               return (
-                <div key={g.id} className="flex items-center justify-between bg-gray-50 rounded-xl px-4 py-2.5">
-                  <span className="text-xs font-semibold text-gray-400 w-10">G{i + 1}</span>
+                <div key={g.id} className="flex items-center justify-between bg-zinc-800 rounded-xl px-4 py-2.5">
+                  <span className="text-xs font-semibold text-zinc-500 w-10">G{i + 1}</span>
                   <div className="flex items-center gap-3 flex-1 justify-center">
-                    <span className={`text-sm font-semibold w-24 text-right ${p1Won ? 'text-green-700' : 'text-gray-400'}`}>
+                    <span className={`text-sm font-semibold w-24 text-right ${p1Won ? 'text-emerald-400' : 'text-zinc-500'}`}>
                       {getPlayerName(activeMatch.player1Id)}
                     </span>
-                    <span className="font-black text-gray-900 tabular-nums text-base">{g.score1} – {g.score2}</span>
-                    <span className={`text-sm font-semibold w-24 text-left ${!p1Won ? 'text-green-700' : 'text-gray-400'}`}>
+                    <span className="font-black text-white tabular-nums text-base">{g.score1} – {g.score2}</span>
+                    <span className={`text-sm font-semibold w-24 text-left ${!p1Won ? 'text-emerald-400' : 'text-zinc-500'}`}>
                       {getPlayerName(activeMatch.player2Id)}
                     </span>
                   </div>
                   <span className={`text-xs font-bold px-2.5 py-1 rounded-full border w-20 text-center ${
-                    p1Won ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'
+                    p1Won ? 'bg-emerald-950 border-emerald-700 text-emerald-400' : 'bg-red-950 border-red-800 text-red-400'
                   }`}>
                     {p1Won ? getPlayerName(activeMatch.player1Id).split(' ')[0] : getPlayerName(activeMatch.player2Id).split(' ')[0]}
                   </span>
@@ -359,7 +359,7 @@ export default function BracketView({ bracketMatches, getPlayerName, onAddGame, 
               );
             })}
           </div>
-          <p className="mt-3 text-xs text-gray-400 text-center">
+          <p className="mt-3 text-xs text-zinc-500 text-center">
             {activeMatch.games.filter(g => g.score1 > g.score2).length}–{activeMatch.games.filter(g => g.score2 > g.score1).length} series · {getPlayerName(activeMatch.winnerId!)} wins
           </p>
         </div>
@@ -389,50 +389,50 @@ function BracketCard({ match, getPlayerName, isActive, onSelect, isFinal, readOn
       && match.player1Id !== 'PLAY_IN_WINNER' && match.player2Id !== 'PLAY_IN_WINNER';
 
   const ring = isFinal && match.winnerId
-    ? 'border-amber-400 shadow-lg shadow-amber-100'
+    ? 'border-amber-600 shadow-lg shadow-amber-950'
     : isActive
-    ? 'border-blue-400 shadow-md shadow-blue-100'
-    : 'border-gray-200 hover:border-gray-300';
+    ? 'border-emerald-500 shadow-md shadow-emerald-950'
+    : 'border-zinc-700 hover:border-zinc-500';
 
   return (
     <div
       style={{ height: CARD_H }}
-      className={`relative bg-white border-2 rounded-xl shadow-sm overflow-hidden flex flex-col transition-all select-none ${ring} ${canInteract ? 'cursor-pointer' : ''}`}
+      className={`relative bg-zinc-900 border rounded-xl overflow-hidden flex flex-col transition-all select-none ${ring} ${canInteract ? 'cursor-pointer' : ''}`}
       onClick={canInteract ? onSelect : undefined}
     >
       {/* Player 1 row */}
-      <div className={`flex-1 flex items-center pl-3 pr-4 border-b border-gray-100 ${match.winnerId === match.player1Id ? 'bg-green-50' : ''}`}>
+      <div className={`flex-1 flex items-center pl-3 pr-4 border-b border-zinc-800 ${match.winnerId === match.player1Id ? 'bg-emerald-950' : ''}`}>
         <span className={`truncate text-sm font-semibold flex-1 ${
-          match.winnerId === match.player1Id ? 'text-green-800'
-          : match.winnerId ? 'text-gray-400' : 'text-gray-800'
+          match.winnerId === match.player1Id ? 'text-emerald-400'
+          : match.winnerId ? 'text-zinc-600' : 'text-zinc-200'
         }`}>
-          {match.player1Id === 'PLAY_IN_WINNER' ? <em className="text-gray-400 not-italic text-xs">Play-in winner</em> : getPlayerName(match.player1Id)}
+          {match.player1Id === 'PLAY_IN_WINNER' ? <em className="text-zinc-500 not-italic text-xs">Play-in winner</em> : getPlayerName(match.player1Id)}
         </span>
         <div className="flex items-center gap-1 flex-shrink-0">
           {match.winnerId === match.player1Id && <span className="text-amber-500 text-xs leading-none">🏆</span>}
           {match.games.length > 0 && (
-            <span className={`text-xs font-black tabular-nums w-4 text-center ${match.winnerId === match.player1Id ? 'text-green-700' : 'text-gray-400'}`}>{p1Wins}</span>
+            <span className={`text-xs font-black tabular-nums w-4 text-center ${match.winnerId === match.player1Id ? 'text-emerald-400' : 'text-zinc-600'}`}>{p1Wins}</span>
           )}
         </div>
       </div>
 
       {/* Player 2 row */}
-      <div className={`flex-1 flex items-center pl-3 pr-4 ${match.winnerId === match.player2Id ? 'bg-green-50' : ''}`}>
+      <div className={`flex-1 flex items-center pl-3 pr-4 ${match.winnerId === match.player2Id ? 'bg-emerald-950' : ''}`}>
         <span className={`truncate text-sm font-semibold flex-1 ${
-          match.winnerId === match.player2Id ? 'text-green-800'
-          : match.winnerId ? 'text-gray-400'
-          : match.player2Id === 'BYE' || match.player2Id === 'PLAY_IN_WINNER' ? 'text-gray-400 italic text-xs'
-          : 'text-gray-800'
+          match.winnerId === match.player2Id ? 'text-emerald-400'
+          : match.winnerId ? 'text-zinc-600'
+          : match.player2Id === 'BYE' || match.player2Id === 'PLAY_IN_WINNER' ? 'text-zinc-600 italic text-xs'
+          : 'text-zinc-200'
         }`}>
           {match.player2Id === 'BYE' ? 'BYE'
            : match.player2Id === 'PLAY_IN_WINNER' ? <em className="not-italic text-xs">Play-in winner</em>
            : getPlayerName(match.player2Id)}
         </span>
         <div className="flex items-center gap-1 flex-shrink-0">
-          {isActive && !match.winnerId && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />}
+          {isActive && !match.winnerId && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />}
           {match.winnerId === match.player2Id && <span className="text-amber-500 text-xs leading-none">🏆</span>}
           {match.games.length > 0 && (
-            <span className={`text-xs font-black tabular-nums w-4 text-center ${match.winnerId === match.player2Id ? 'text-green-700' : 'text-gray-400'}`}>{p2Wins}</span>
+            <span className={`text-xs font-black tabular-nums w-4 text-center ${match.winnerId === match.player2Id ? 'text-emerald-400' : 'text-zinc-600'}`}>{p2Wins}</span>
           )}
         </div>
       </div>
