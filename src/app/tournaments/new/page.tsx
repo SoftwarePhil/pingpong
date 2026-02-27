@@ -14,6 +14,7 @@ export default function NewTournamentPage() {
   const [rrBestOf, setRrBestOf] = useState(1);
   const [semiBestOf, setSemiBestOf] = useState(3);
   const [finalBestOf, setFinalBestOf] = useState(3);
+  const [rrPairingStrategy, setRrPairingStrategy] = useState<'random' | 'top-vs-top'>('random');
   const [selectedPlayers, setSelectedPlayers] = useState<string[]>([]);
 
   useEffect(() => {
@@ -68,6 +69,7 @@ export default function NewTournamentPage() {
         roundRobinRounds,
         bracketRounds,
         rrBestOf,
+        rrPairingStrategy,
         players: [...new Set(selectedPlayers)],
       }),
     });
@@ -182,6 +184,31 @@ export default function NewTournamentPage() {
                       ))}
                     </div>
                   </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Round Robin Pairing Strategy */}
+            <div>
+              <label className="block text-lg font-semibold text-gray-800 mb-4">Round Robin Pairing Strategy</label>
+              <div className="flex gap-4">
+                {([
+                  { value: 'random', label: '🎲 Random', desc: 'Players are paired randomly each round' },
+                  { value: 'top-vs-top', label: '🏆 Top vs Top', desc: 'Top-ranked players face each other for competitive matches' },
+                ] as { value: 'random' | 'top-vs-top'; label: string; desc: string }[]).map(opt => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setRrPairingStrategy(opt.value)}
+                    className={`flex-1 p-4 rounded-lg border-2 text-left transition-colors ${
+                      rrPairingStrategy === opt.value
+                        ? 'bg-blue-50 border-blue-500'
+                        : 'bg-white border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className={`font-semibold text-base mb-1 ${rrPairingStrategy === opt.value ? 'text-blue-700' : 'text-gray-800'}`}>{opt.label}</div>
+                    <div className="text-sm text-gray-500">{opt.desc}</div>
+                  </button>
                 ))}
               </div>
             </div>

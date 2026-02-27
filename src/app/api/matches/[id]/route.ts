@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Match } from '../../../../types/pingpong';
 import { getMatch, getTournamentIdForMatch, getTournament, setTournament, updateMatchInTournament, removeMatchFromTournament, saveData } from '../../../../data/data';
-import { cascadeRoundRobinPlayerSwap } from '../../../../lib/tournament';
+import { cascadeRoundRobinPlayerSwap, cascadeBracketR1PlayerSwap } from '../../../../lib/tournament';
 
 export async function PUT(
   request: NextRequest,
@@ -18,8 +18,11 @@ export async function PUT(
 
     // Player reassignment — cascade changes to other matches in the same round
     if (updates.player1Id !== undefined || updates.player2Id !== undefined) {
-      if (currentMatch.round !== 'roundRobin') {
-        return NextResponse.json({ error: 'Players can only be changed in round robin matches' }, { status: 400 });
+      const isRR = currentMatch.round === 'roundRobin';
+      const isBracketR1 = currentMatch.round === 'bracket' && currentMatch.bracketRound === 1;
+
+      if (!isRR && !isBracketR1) {
+        return NextResponse.json({ error: 'Players can only be changed in round robin or bracket round 1 matches' }, { status: 400 });
       }
       if (currentMatch.games.length > 0) {
         return NextResponse.json({ error: 'Cannot change players after games have been played' }, { status: 400 });
@@ -42,7 +45,11 @@ export async function PUT(
         return NextResponse.json({ error: 'Tournament not found' }, { status: 404 });
       }
 
-      tournament.matches = cascadeRoundRobinPlayerSwap(tournament.matches, matchId, newP1, newP2);
+      if (isRR) {
+        tournament.matches = cascadeRoundRobinPlayerSwap(tournament.matches, matchId, newP1, newP2);
+      } else {
+        tournament.matches = cascadeBracketR1PlayerSwap(tournament.matches, matchId, newP1, newP2);
+      }
 
       await setTournament(tournament);
       await saveData();

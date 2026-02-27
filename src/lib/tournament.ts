@@ -59,6 +59,59 @@ export function cascadeRoundRobinPlayerSwap(
   });
 }
 
+/**
+ * Applies a player swap to a bracket round-1 match and cascades the displaced
+ * player(s) into any other unplayed bracket round-1 match, so each player
+ * appears at most once.
+ *
+ * Returns a new array of matches with all changes applied (does not mutate).
+ * Throws if the target match is not a bracket round-1 match, has already been
+ * played, or the two new players are the same.
+ */
+export function cascadeBracketR1PlayerSwap(
+  matches: Match[],
+  matchId: string,
+  newPlayer1Id: string,
+  newPlayer2Id: string,
+): Match[] {
+  const target = matches.find(m => m.id === matchId);
+  if (!target) throw new Error(`Match ${matchId} not found`);
+  if (target.round !== 'bracket' || target.bracketRound !== 1)
+    throw new Error('Players can only be changed in bracket round 1 matches');
+  if (target.games.length > 0) throw new Error('Cannot change players after games have been played');
+  if (newPlayer1Id === newPlayer2Id) throw new Error('Player 1 and Player 2 must be different');
+
+  const oldPlayers = [target.player1Id, target.player2Id].filter(p => p !== 'BYE' && p !== 'PLAY_IN_WINNER');
+  const newPlayers = [newPlayer1Id, newPlayer2Id].filter(p => p !== 'BYE' && p !== 'PLAY_IN_WINNER');
+  const displaced = oldPlayers.filter(p => !newPlayers.includes(p));
+  const incoming  = newPlayers.filter(p => !oldPlayers.includes(p));
+
+  // Map: incoming player → the displaced player that should take their old slot
+  const swapMap = new Map<string, string>();
+  incoming.forEach((p, i) => { if (displaced[i]) swapMap.set(p, displaced[i]); });
+
+  return matches.map(m => {
+    if (m.id === matchId) {
+      return { ...m, player1Id: newPlayer1Id, player2Id: newPlayer2Id };
+    }
+    // Only cascade to other unplayed bracket round-1 matches
+    if (
+      m.round !== 'bracket' ||
+      m.bracketRound !== 1 ||
+      m.games.length > 0 ||
+      m.winnerId
+    ) {
+      return m;
+    }
+    let p1 = m.player1Id;
+    let p2 = m.player2Id;
+    if (swapMap.has(p1)) p1 = swapMap.get(p1)!;
+    if (swapMap.has(p2)) p2 = swapMap.get(p2)!;
+    if (p1 === m.player1Id && p2 === m.player2Id) return m;
+    return { ...m, player1Id: p1, player2Id: p2 };
+  });
+}
+
 // Helper function to create a single round of round robin pairings
 export function createRoundRobinPairings(players: string[], tournamentId: string, bracketRound: number = 1, bestOf: number = 1): Match[] {
   const newMatches: Match[] = [];
@@ -271,15 +324,23 @@ export function createBracketMatches(tournament: Tournament, createMainBracket =
   // Get round robin matches to determine rankings
   const roundRobinMatches = (tournament.matches ?? []).filter(m => m.round === 'roundRobin');
 
-  // Count wins for each player (all players, including inactive, for historical accuracy)
+  // Count wins and point differentials for each player (all players, including inactive, for historical accuracy)
   const playerWins: { [key: string]: number } = {};
+  const playerPointDiff: { [key: string]: number } = {};
   tournament.players.forEach(playerId => {
     playerWins[playerId] = 0;
+    playerPointDiff[playerId] = 0;
   });
 
   roundRobinMatches.forEach(match => {
     if (match.winnerId) {
       playerWins[match.winnerId] = (playerWins[match.winnerId] || 0) + 1;
+    }
+    if (match.player2Id !== 'BYE') {
+      match.games.forEach(g => {
+        playerPointDiff[match.player1Id] = (playerPointDiff[match.player1Id] || 0) + g.score1 - g.score2;
+        playerPointDiff[match.player2Id] = (playerPointDiff[match.player2Id] || 0) + g.score2 - g.score1;
+      });
     }
   });
 
@@ -289,6 +350,10 @@ export function createBracketMatches(tournament: Tournament, createMainBracket =
     const winsA = playerWins[a] || 0;
     const winsB = playerWins[b] || 0;
     if (winsA !== winsB) return winsB - winsA;
+    // Tiebreaker: point differential (more positive = ranked higher)
+    const diffA = playerPointDiff[a] || 0;
+    const diffB = playerPointDiff[b] || 0;
+    if (diffA !== diffB) return diffB - diffA;
     return Math.random() - 0.5;
   });
 
@@ -341,8 +406,37 @@ export function advanceRoundRobinRound(tournament: Tournament): Match[] {
     return []; // No more round robin rounds
   }
 
-  // Sort players by performance for pairing (optional, can be random)
   const activePlayers = tournament.activePlayers ?? tournament.players;
+  const strategy = tournament.rrPairingStrategy ?? 'random';
+
+  if (strategy === 'top-vs-top') {
+    // Sort players by current standings: wins then point differential
+    const playerWins: Record<string, number> = {};
+    const playerPointDiff: Record<string, number> = {};
+    activePlayers.forEach(p => { playerWins[p] = 0; playerPointDiff[p] = 0; });
+    tournamentMatches.forEach(m => {
+      if (m.winnerId && activePlayers.includes(m.winnerId)) {
+        playerWins[m.winnerId] = (playerWins[m.winnerId] || 0) + 1;
+      }
+      if (m.player2Id !== 'BYE') {
+        m.games.forEach(g => {
+          if (activePlayers.includes(m.player1Id)) {
+            playerPointDiff[m.player1Id] = (playerPointDiff[m.player1Id] || 0) + g.score1 - g.score2;
+          }
+          if (activePlayers.includes(m.player2Id)) {
+            playerPointDiff[m.player2Id] = (playerPointDiff[m.player2Id] || 0) + g.score2 - g.score1;
+          }
+        });
+      }
+    });
+    const sortedPlayers = [...activePlayers].sort((a, b) => {
+      if (playerWins[b] !== playerWins[a]) return playerWins[b] - playerWins[a];
+      return (playerPointDiff[b] || 0) - (playerPointDiff[a] || 0);
+    });
+    return createRoundRobinPairings(sortedPlayers, tournament.id, nextRound, tournament.rrBestOf ?? 1);
+  }
+
+  // Random strategy (default)
   const shuffledPlayers = [...activePlayers].sort(() => Math.random() - 0.5);
   return createRoundRobinPairings(shuffledPlayers, tournament.id, nextRound, tournament.rrBestOf ?? 1);
 }

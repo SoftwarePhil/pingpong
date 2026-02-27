@@ -24,6 +24,7 @@ export interface Tournament {
   bracketRounds: { matchCount: number; bestOf: number }[];
   players: string[];
   activePlayers?: string[]; // Subset of players currently active (affects current/future RR rounds and bracket; undefined = all players)
+  rrPairingStrategy?: 'random' | 'top-vs-top'; // Strategy for determining RR pairings (default: 'random')
   playerRanking?: string[];
   matches?: Match[]; // Embedded matches for hybrid schema
 }

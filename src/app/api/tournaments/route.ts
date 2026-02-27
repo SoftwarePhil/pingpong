@@ -16,7 +16,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, roundRobinRounds, bracketRounds, players, rrBestOf }: { name: string; roundRobinRounds: number; bracketRounds: { matchCount: number; bestOf: number }[]; players: string[]; rrBestOf: number } = body;
+    const { name, roundRobinRounds, bracketRounds, players, rrBestOf, rrPairingStrategy }: { name: string; roundRobinRounds: number; bracketRounds: { matchCount: number; bestOf: number }[]; players: string[]; rrBestOf: number; rrPairingStrategy?: 'random' | 'top-vs-top' } = body;
     const uniquePlayers = [...new Set(players)];
     if (!name || !roundRobinRounds || !bracketRounds || !uniquePlayers || uniquePlayers.length < 2) {
       return NextResponse.json({ error: 'Invalid data' }, { status: 400 });
@@ -35,6 +35,7 @@ export async function POST(request: NextRequest) {
       status: 'roundRobin',
       roundRobinRounds,
       rrBestOf: rrBestOf ?? 1,
+      rrPairingStrategy: rrPairingStrategy ?? 'random',
       bracketRounds,
       players: uniquePlayers,
       matches: [], // Will be populated with embedded matches

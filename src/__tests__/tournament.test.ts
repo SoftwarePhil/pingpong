@@ -92,6 +92,47 @@ describe('advanceRoundRobinRound', () => {
     const newMatches = advanceRoundRobinRound(tournament);
     expect(newMatches).toHaveLength(0);
   });
+
+  it('top-vs-top strategy pairs top-ranked players together', () => {
+    // p1 has 2 wins, p3 has 1 win, p2/p4 have 0 wins
+    // Top-vs-top should pair p1 vs p3 (top two) in the next round
+    const tournament = makeTournament({
+      players: ['p1', 'p2', 'p3', 'p4'],
+      roundRobinRounds: 3,
+      rrPairingStrategy: 'top-vs-top',
+      matches: [
+        makeMatch('m1', { round: 'roundRobin', bracketRound: 1, player1Id: 'p1', player2Id: 'p2', winnerId: 'p1',
+          games: [{ id: 'g1', matchId: 'm1', player1Id: 'p1', player2Id: 'p2', score1: 11, score2: 5, date: '' }] }),
+        makeMatch('m2', { round: 'roundRobin', bracketRound: 1, player1Id: 'p3', player2Id: 'p4', winnerId: 'p3',
+          games: [{ id: 'g2', matchId: 'm2', player1Id: 'p3', player2Id: 'p4', score1: 11, score2: 9, date: '' }] }),
+        makeMatch('m3', { round: 'roundRobin', bracketRound: 2, player1Id: 'p1', player2Id: 'p3', winnerId: 'p1',
+          games: [{ id: 'g3', matchId: 'm3', player1Id: 'p1', player2Id: 'p3', score1: 11, score2: 7, date: '' }] }),
+        makeMatch('m4', { round: 'roundRobin', bracketRound: 2, player1Id: 'p2', player2Id: 'p4', winnerId: 'p2',
+          games: [{ id: 'g4', matchId: 'm4', player1Id: 'p2', player2Id: 'p4', score1: 11, score2: 8, date: '' }] }),
+      ],
+    });
+    const newMatches = advanceRoundRobinRound(tournament);
+    expect(newMatches.length).toBeGreaterThan(0);
+    // The first match should contain p1 (2 wins) and p3 (1 win, higher point diff than p2)
+    const firstMatch = newMatches.find(m => m.player2Id !== 'BYE');
+    expect(firstMatch).toBeDefined();
+    const matchPlayers = [firstMatch!.player1Id, firstMatch!.player2Id];
+    expect(matchPlayers).toContain('p1');
+    expect(matchPlayers).toContain('p3');
+  });
+
+  it('random strategy (default) produces valid pairings', () => {
+    const tournament = makeTournament({
+      roundRobinRounds: 3,
+      matches: [
+        makeMatch('m1', { round: 'roundRobin', bracketRound: 1, player1Id: 'p1', player2Id: 'p2', winnerId: 'p1' }),
+        makeMatch('m2', { round: 'roundRobin', bracketRound: 1, player1Id: 'p3', player2Id: 'p4', winnerId: 'p3' }),
+      ],
+    });
+    const newMatches = advanceRoundRobinRound(tournament);
+    expect(newMatches.every(m => m.round === 'roundRobin')).toBe(true);
+    expect(newMatches.every(m => m.bracketRound === 2)).toBe(true);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -135,6 +176,28 @@ describe('createBracketMatches', () => {
     const top2 = tournament.playerRanking!.slice(0, 2);
     expect(top2).toContain('p1');
     expect(top2).toContain('p4');
+  });
+
+  it('uses point differential as tiebreaker when wins are equal', () => {
+    // Both p1 and p2 have 1 win, but p1 wins 11-1 (+10 diff) and p2 wins 11-8 (+3 diff)
+    const tournament = makeTournament({
+      players: ['p1', 'p2', 'p3', 'p4'],
+      matches: [
+        makeMatch('m1', {
+          round: 'roundRobin', bracketRound: 1, player1Id: 'p1', player2Id: 'p3', winnerId: 'p1',
+          games: [{ id: 'g1', matchId: 'm1', player1Id: 'p1', player2Id: 'p3', score1: 11, score2: 1, date: '' }],
+        }),
+        makeMatch('m2', {
+          round: 'roundRobin', bracketRound: 1, player1Id: 'p2', player2Id: 'p4', winnerId: 'p2',
+          games: [{ id: 'g2', matchId: 'm2', player1Id: 'p2', player2Id: 'p4', score1: 11, score2: 8, date: '' }],
+        }),
+      ],
+    });
+    createBracketMatches(tournament);
+    expect(tournament.playerRanking).toBeDefined();
+    // p1 (+10 diff) should rank ahead of p2 (+3 diff), both having 1 win
+    expect(tournament.playerRanking![0]).toBe('p1');
+    expect(tournament.playerRanking![1]).toBe('p2');
   });
 
   it('adds bye matches for player counts that are not a power of 2', () => {
