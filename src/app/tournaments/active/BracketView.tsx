@@ -22,18 +22,23 @@ function getPos(rIdx: number, mIdx: number, r1Count: number, hasPlayIn: boolean)
 interface BracketViewProps {
   bracketMatches: Match[];
   getPlayerName: (id: string) => string;
+  tournamentPlayers?: string[];
   onAddGame: (match: Match, score1: number, score2: number) => Promise<void>;
   onSaveGameEdit: (gameId: string, score1: number, score2: number) => Promise<void>;
+  onSwapPlayers?: (matchId: string, p1: string, p2: string) => Promise<void>;
   readOnly?: boolean;
 }
 
-export default function BracketView({ bracketMatches, getPlayerName, onAddGame, onSaveGameEdit, readOnly = false }: BracketViewProps) {
+export default function BracketView({ bracketMatches, getPlayerName, tournamentPlayers = [], onAddGame, onSaveGameEdit, onSwapPlayers, readOnly = false }: BracketViewProps) {
   const [activeMatchId, setActiveMatchId] = useState<string | null>(null);
   const [score1, setScore1] = useState('');
   const [score2, setScore2] = useState('');
   const [editingGameId, setEditingGameId] = useState<string | null>(null);
   const [editG1, setEditG1] = useState('');
   const [editG2, setEditG2] = useState('');
+  const [swapMode, setSwapMode] = useState(false);
+  const [swapP1, setSwapP1] = useState('');
+  const [swapP2, setSwapP2] = useState('');
 
   const playInMatches = bracketMatches.filter(m => (m.bracketRound ?? 0) === 0);
   const mainMatches   = bracketMatches.filter(m => (m.bracketRound ?? 0) > 0);
@@ -97,6 +102,10 @@ export default function BracketView({ bracketMatches, getPlayerName, onAddGame, 
 
   // ── Active match score entry ───────────────────────────────────────────────
   const activeMatch = activeMatchId ? bracketMatches.find(m => m.id === activeMatchId) : null;
+  const canSwapActiveMatch = !readOnly && onSwapPlayers && activeMatch &&
+    activeMatch.round === 'bracket' && activeMatch.bracketRound === 1 &&
+    activeMatch.games.length === 0 && !activeMatch.winnerId &&
+    activeMatch.player1Id !== 'PLAY_IN_WINNER' && activeMatch.player2Id !== 'PLAY_IN_WINNER';
 
   const handleRecord = async () => {
     if (!activeMatch) return;
@@ -113,6 +122,14 @@ export default function BracketView({ bracketMatches, getPlayerName, onAddGame, 
     await onAddGame(activeMatch, s1, s2);
     setScore1('');
     setScore2('');
+  };
+
+  const handleSwapSave = async () => {
+    if (!activeMatch || !onSwapPlayers) return;
+    if (swapP1 === swapP2) { alert('Player 1 and Player 2 must be different'); return; }
+    await onSwapPlayers(activeMatch.id, swapP1, swapP2);
+    setSwapMode(false);
+    setActiveMatchId(null);
   };
 
   const getRoundLabel = (rNum: number) => {
@@ -183,7 +200,7 @@ export default function BracketView({ bracketMatches, getPlayerName, onAddGame, 
                   match={match}
                   getPlayerName={getPlayerName}
                   isActive={activeMatchId === match.id}
-                  onSelect={() => setActiveMatchId(prev => prev === match.id ? null : match.id)}
+                  onSelect={() => { setSwapMode(false); setActiveMatchId(prev => prev === match.id ? null : match.id); }}
                   readOnly={readOnly}
                 />
               </div>
@@ -202,7 +219,7 @@ export default function BracketView({ bracketMatches, getPlayerName, onAddGame, 
                     match={match}
                     getPlayerName={getPlayerName}
                     isActive={activeMatchId === match.id}
-                    onSelect={() => setActiveMatchId(prev => prev === match.id ? null : match.id)}
+                    onSelect={() => { setSwapMode(false); setActiveMatchId(prev => prev === match.id ? null : match.id); }}
                     isFinal={isFinalRound}
                     readOnly={readOnly}
                   />
@@ -218,101 +235,152 @@ export default function BracketView({ bracketMatches, getPlayerName, onAddGame, 
         <div className="bg-white border-2 border-blue-100 rounded-2xl p-5 shadow-sm">
           <div className="flex justify-between items-center mb-4">
             <div>
-              <p className="text-xs font-semibold text-blue-500 uppercase tracking-widest mb-0.5">Recording game</p>
+              <p className="text-xs font-semibold text-blue-500 uppercase tracking-widest mb-0.5">
+                {swapMode ? 'Change Players' : 'Recording game'}
+              </p>
               <h4 className="font-bold text-gray-900 text-base">
                 {getPlayerName(activeMatch.player1Id)}
                 <span className="text-gray-300 mx-2">vs</span>
                 {getPlayerName(activeMatch.player2Id)}
               </h4>
             </div>
-            <button onClick={() => { setActiveMatchId(null); setScore1(''); setScore2(''); }}
-              className="text-gray-300 hover:text-gray-500 text-xl font-bold leading-none">✕</button>
-          </div>
-
-          <div className="flex items-end gap-3">
-            <div className="flex-1">
-              <label className="block text-xs text-gray-500 font-medium mb-1.5">
-                {getPlayerName(activeMatch.player1Id)}
-              </label>
-              <input
-                type="number" min="0" max="50" value={score1}
-                onChange={e => setScore1(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleRecord()}
-                className="w-full border-2 border-gray-200 rounded-xl px-3 py-3 text-2xl font-bold text-center text-gray-900 focus:border-blue-400 focus:outline-none transition-colors"
-                placeholder="0"
-              />
-            </div>
-
-            <div className="pb-3 text-2xl text-gray-200 font-bold select-none">—</div>
-
-            <div className="flex-1">
-              <label className="block text-xs text-gray-500 font-medium mb-1.5">
-                {getPlayerName(activeMatch.player2Id)}
-              </label>
-              <input
-                type="number" min="0" max="50" value={score2}
-                onChange={e => setScore2(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleRecord()}
-                className="w-full border-2 border-gray-200 rounded-xl px-3 py-3 text-2xl font-bold text-center text-gray-900 focus:border-blue-400 focus:outline-none transition-colors"
-                placeholder="0"
-              />
-            </div>
-
-            <div className="flex-shrink-0">
-              <div className="h-[21px] mb-1.5" />
-              <button
-                onClick={handleRecord}
-                className="bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white px-6 py-3.5 rounded-xl font-bold text-sm transition-colors shadow-sm whitespace-nowrap"
-              >
-                ✓ Record
-              </button>
+            <div className="flex items-center gap-2">
+              {canSwapActiveMatch && (
+                <button
+                  onClick={() => {
+                    setSwapMode(v => !v);
+                    setSwapP1(activeMatch.player1Id);
+                    setSwapP2(activeMatch.player2Id);
+                  }}
+                  className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${swapMode ? 'bg-blue-600 text-white border-blue-700' : 'bg-white text-blue-600 border-blue-300 hover:bg-blue-50'}`}
+                  title="Change players in this match"
+                >
+                  ↔ Players
+                </button>
+              )}
+              <button onClick={() => { setActiveMatchId(null); setScore1(''); setScore2(''); setSwapMode(false); }}
+                className="text-gray-300 hover:text-gray-500 text-xl font-bold leading-none">✕</button>
             </div>
           </div>
 
-          {activeMatch.games.length > 0 && (
-            <div className="mt-4 pt-3 border-t border-gray-100">
-              <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide mb-2">Series so far (Bo{activeMatch.bestOf})</p>
-              <div className="flex flex-wrap gap-2 items-center">
-                {activeMatch.games.map((g, i) => {
-                  const p1Won = g.score1 > g.score2;
-                  if (editingGameId === g.id) {
-                    return (
-                      <div key={g.id} className="flex items-center gap-1.5 bg-gray-50 rounded-xl px-3 py-1.5 border-2 border-blue-200">
-                        <span className="text-xs text-gray-500 font-semibold">G{i + 1}:</span>
-                        <input type="number" value={editG1} onChange={e => setEditG1(e.target.value)}
-                          className="w-12 border border-gray-300 rounded-lg px-1.5 py-1 text-sm text-center font-bold text-gray-900 bg-white focus:border-blue-400 focus:outline-none" />
-                        <span className="text-gray-400 text-xs">–</span>
-                        <input type="number" value={editG2} onChange={e => setEditG2(e.target.value)}
-                          className="w-12 border border-gray-300 rounded-lg px-1.5 py-1 text-sm text-center font-bold text-gray-900 bg-white focus:border-blue-400 focus:outline-none" />
-                        <button onClick={async () => {
-                          const s1 = parseInt(editG1); const s2 = parseInt(editG2);
-                          if (isNaN(s1) || isNaN(s2)) { alert('Enter valid scores'); return; }
-                          await onSaveGameEdit(g.id, s1, s2);
-                          setEditingGameId(null);
-                        }} className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded-lg font-bold transition-colors">✓</button>
-                        <button onClick={() => setEditingGameId(null)}
-                          className="text-xs text-gray-400 hover:text-gray-600 px-1 font-bold">✕</button>
-                      </div>
-                    );
-                  }
-                  return (
-                    <button key={g.id}
-                      onClick={() => { setEditingGameId(g.id); setEditG1(g.score1.toString()); setEditG2(g.score2.toString()); }}
-                      className={`text-xs font-bold px-2.5 py-1 rounded-full border transition-opacity hover:opacity-70 ${
-                        p1Won ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'
-                      }`}>
-                      G{i + 1}: {g.score1}–{g.score2}
-                    </button>
-                  );
-                })}
-                <span className="text-xs text-gray-400">
-                  {activeMatch.games.filter(g => g.score1 > g.score2).length}–{activeMatch.games.filter(g => g.score2 > g.score1).length} in series
-                </span>
+          {swapMode ? (
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <label className="block text-xs text-gray-500 font-medium">Player 1</label>
+                <select value={swapP1} onChange={e => setSwapP1(e.target.value)}
+                  className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 bg-white focus:border-blue-400 focus:outline-none">
+                  {tournamentPlayers.map(pid => (
+                    <option key={pid} value={pid}>{getPlayerName(pid)}</option>
+                  ))}
+                </select>
+                <div className="text-center text-xs text-gray-400 font-bold py-1">vs</div>
+                <select value={swapP2} onChange={e => setSwapP2(e.target.value)}
+                  className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 bg-white focus:border-blue-400 focus:outline-none">
+                  {tournamentPlayers.map(pid => (
+                    <option key={pid} value={pid}>{getPlayerName(pid)}</option>
+                  ))}
+                </select>
               </div>
+              <div className="flex gap-2 pt-1">
+                <button onClick={handleSwapSave}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2.5 rounded-xl font-bold transition-colors">
+                  Save
+                </button>
+                <button onClick={() => setSwapMode(false)}
+                  className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm px-4 py-2.5 rounded-xl font-bold transition-colors">
+                  Cancel
+                </button>
+              </div>
+              <p className="text-xs text-gray-400 text-center">Displaced players are moved to other round 1 matches</p>
             </div>
-          )}
+          ) : (
+            <>
+              <div className="flex items-end gap-3">
+                <div className="flex-1">
+                  <label className="block text-xs text-gray-500 font-medium mb-1.5">
+                    {getPlayerName(activeMatch.player1Id)}
+                  </label>
+                  <input
+                    type="number" min="0" max="50" value={score1}
+                    onChange={e => setScore1(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleRecord()}
+                    className="w-full border-2 border-gray-200 rounded-xl px-3 py-3 text-2xl font-bold text-center text-gray-900 focus:border-blue-400 focus:outline-none transition-colors"
+                    placeholder="0"
+                  />
+                </div>
 
-          <p className="mt-2 text-xs text-gray-400 text-center">First to 11 · win by 2</p>
+                <div className="pb-3 text-2xl text-gray-200 font-bold select-none">—</div>
+
+                <div className="flex-1">
+                  <label className="block text-xs text-gray-500 font-medium mb-1.5">
+                    {getPlayerName(activeMatch.player2Id)}
+                  </label>
+                  <input
+                    type="number" min="0" max="50" value={score2}
+                    onChange={e => setScore2(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleRecord()}
+                    className="w-full border-2 border-gray-200 rounded-xl px-3 py-3 text-2xl font-bold text-center text-gray-900 focus:border-blue-400 focus:outline-none transition-colors"
+                    placeholder="0"
+                  />
+                </div>
+
+                <div className="flex-shrink-0">
+                  <div className="h-[21px] mb-1.5" />
+                  <button
+                    onClick={handleRecord}
+                    className="bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white px-6 py-3.5 rounded-xl font-bold text-sm transition-colors shadow-sm whitespace-nowrap"
+                  >
+                    ✓ Record
+                  </button>
+                </div>
+              </div>
+
+              {activeMatch.games.length > 0 && (
+                <div className="mt-4 pt-3 border-t border-gray-100">
+                  <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide mb-2">Series so far (Bo{activeMatch.bestOf})</p>
+                  <div className="flex flex-wrap gap-2 items-center">
+                    {activeMatch.games.map((g, i) => {
+                      const p1Won = g.score1 > g.score2;
+                      if (editingGameId === g.id) {
+                        return (
+                          <div key={g.id} className="flex items-center gap-1.5 bg-gray-50 rounded-xl px-3 py-1.5 border-2 border-blue-200">
+                            <span className="text-xs text-gray-500 font-semibold">G{i + 1}:</span>
+                            <input type="number" value={editG1} onChange={e => setEditG1(e.target.value)}
+                              className="w-12 border border-gray-300 rounded-lg px-1.5 py-1 text-sm text-center font-bold text-gray-900 bg-white focus:border-blue-400 focus:outline-none" />
+                            <span className="text-gray-400 text-xs">–</span>
+                            <input type="number" value={editG2} onChange={e => setEditG2(e.target.value)}
+                              className="w-12 border border-gray-300 rounded-lg px-1.5 py-1 text-sm text-center font-bold text-gray-900 bg-white focus:border-blue-400 focus:outline-none" />
+                            <button onClick={async () => {
+                              const s1 = parseInt(editG1); const s2 = parseInt(editG2);
+                              if (isNaN(s1) || isNaN(s2)) { alert('Enter valid scores'); return; }
+                              await onSaveGameEdit(g.id, s1, s2);
+                              setEditingGameId(null);
+                            }} className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded-lg font-bold transition-colors">✓</button>
+                            <button onClick={() => setEditingGameId(null)}
+                              className="text-xs text-gray-400 hover:text-gray-600 px-1 font-bold">✕</button>
+                          </div>
+                        );
+                      }
+                      return (
+                        <button key={g.id}
+                          onClick={() => { setEditingGameId(g.id); setEditG1(g.score1.toString()); setEditG2(g.score2.toString()); }}
+                          className={`text-xs font-bold px-2.5 py-1 rounded-full border transition-opacity hover:opacity-70 ${
+                            p1Won ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'
+                          }`}>
+                          G{i + 1}: {g.score1}–{g.score2}
+                        </button>
+                      );
+                    })}
+                    <span className="text-xs text-gray-400">
+                      {activeMatch.games.filter(g => g.score1 > g.score2).length}–{activeMatch.games.filter(g => g.score2 > g.score1).length} in series
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <p className="mt-2 text-xs text-gray-400 text-center">First to 11 · win by 2</p>
+            </>
+          )}
         </div>
       )}
 

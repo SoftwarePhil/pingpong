@@ -461,8 +461,10 @@ export default function ActiveTournamentsPage() {
                         <BracketView
                           bracketMatches={bracketMatches}
                           getPlayerName={getPlayerName}
+                          tournamentPlayers={t.players}
                           onAddGame={addGameToMatch}
                           onSaveGameEdit={saveGameEdit}
+                          onSwapPlayers={swapPlayers}
                         />
 
                         {/* Bracket Standings */}
