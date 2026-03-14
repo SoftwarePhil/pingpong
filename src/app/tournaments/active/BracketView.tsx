@@ -103,7 +103,7 @@ export default function BracketView({ bracketMatches, getPlayerName, tournamentP
   // ── Active match score entry ───────────────────────────────────────────────
   const activeMatch = activeMatchId ? bracketMatches.find(m => m.id === activeMatchId) : null;
   const canSwapActiveMatch = !readOnly && onSwapPlayers && activeMatch &&
-    activeMatch.round === 'bracket' && activeMatch.bracketRound === 1 &&
+    activeMatch.round === 'bracket' &&
     activeMatch.games.length === 0 && !activeMatch.winnerId &&
     activeMatch.player1Id !== 'PLAY_IN_WINNER' && activeMatch.player2Id !== 'PLAY_IN_WINNER';
 
@@ -291,7 +291,7 @@ export default function BracketView({ bracketMatches, getPlayerName, tournamentP
                   Cancel
                 </button>
               </div>
-              <p className="text-xs text-gray-400 text-center">Displaced players are moved to other round 1 matches</p>
+              <p className="text-xs text-gray-400 text-center">Displaced players are moved to other unplayed matches in the same round</p>
             </div>
           ) : (
             <>

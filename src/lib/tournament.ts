@@ -112,6 +112,60 @@ export function cascadeBracketR1PlayerSwap(
   });
 }
 
+/**
+ * Applies a player swap to any unplayed bracket match and cascades the displaced
+ * player(s) into any other unplayed bracket match in the same round, so each
+ * player appears at most once per round.
+ *
+ * Works for any bracket round (R1, R2, etc.).
+ * Returns a new array of matches with all changes applied (does not mutate).
+ * Throws if the target match is not a bracket match, has already been played,
+ * or the two new players are the same.
+ */
+export function cascadeBracketPlayerSwap(
+  matches: Match[],
+  matchId: string,
+  newPlayer1Id: string,
+  newPlayer2Id: string,
+): Match[] {
+  const target = matches.find(m => m.id === matchId);
+  if (!target) throw new Error(`Match ${matchId} not found`);
+  if (target.round !== 'bracket')
+    throw new Error('Players can only be changed in bracket matches');
+  if (target.games.length > 0) throw new Error('Cannot change players after games have been played');
+  if (newPlayer1Id === newPlayer2Id) throw new Error('Player 1 and Player 2 must be different');
+
+  const oldPlayers = [target.player1Id, target.player2Id].filter(p => p !== 'BYE' && p !== 'PLAY_IN_WINNER');
+  const newPlayers = [newPlayer1Id, newPlayer2Id].filter(p => p !== 'BYE' && p !== 'PLAY_IN_WINNER');
+  const displaced = oldPlayers.filter(p => !newPlayers.includes(p));
+  const incoming  = newPlayers.filter(p => !oldPlayers.includes(p));
+
+  // Map: incoming player → the displaced player that should take their old slot
+  const swapMap = new Map<string, string>();
+  incoming.forEach((p, i) => { if (displaced[i]) swapMap.set(p, displaced[i]); });
+
+  return matches.map(m => {
+    if (m.id === matchId) {
+      return { ...m, player1Id: newPlayer1Id, player2Id: newPlayer2Id };
+    }
+    // Only cascade to other unplayed bracket matches in the same round
+    if (
+      m.round !== 'bracket' ||
+      m.bracketRound !== target.bracketRound ||
+      m.games.length > 0 ||
+      m.winnerId
+    ) {
+      return m;
+    }
+    let p1 = m.player1Id;
+    let p2 = m.player2Id;
+    if (swapMap.has(p1)) p1 = swapMap.get(p1)!;
+    if (swapMap.has(p2)) p2 = swapMap.get(p2)!;
+    if (p1 === m.player1Id && p2 === m.player2Id) return m;
+    return { ...m, player1Id: p1, player2Id: p2 };
+  });
+}
+
 // Helper function to create a single round of round robin pairings
 export function createRoundRobinPairings(players: string[], tournamentId: string, bracketRound: number = 1, bestOf: number = 1): Match[] {
   const newMatches: Match[] = [];
