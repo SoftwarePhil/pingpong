@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, status, action, activePlayers, players }: { id: string; status?: 'roundRobin' | 'bracket' | 'completed'; action?: 'advanceRound'; activePlayers?: string[]; players?: string[] } = body;
+    const { id, status, action, activePlayers, players }: { id: string; status?: 'roundRobin' | 'bracket' | 'completed'; action?: 'advanceRound' | 'addRoundRobinRound'; activePlayers?: string[]; players?: string[] } = body;
 
     const tournament = await getTournament(id);
 
@@ -119,6 +119,28 @@ if (action === 'advanceRound') {
         await setTournament(tournament);
         await saveData();
       }
+    }
+
+    if (action === 'addRoundRobinRound') {
+      if (tournament.status !== 'roundRobin') {
+        return NextResponse.json({ error: 'Tournament is not in round robin stage' }, { status: 400 });
+      }
+
+      // Increment the planned round count first so that advanceRoundRobinRound's guard
+      // (nextRound > tournament.roundRobinRounds) allows the new round to be created.
+      tournament.roundRobinRounds += 1;
+      const newMatches = advanceRoundRobinRound(tournament);
+
+      if (newMatches.length === 0) {
+        return NextResponse.json({ error: 'Failed to create new round' }, { status: 400 });
+      }
+
+      if (!tournament.matches) tournament.matches = [];
+      tournament.matches.push(...newMatches);
+      await registerMatchesIndex(newMatches);
+      await setTournament(tournament);
+      await saveData();
+      return NextResponse.json(tournament);
     }
 
     if (activePlayers !== undefined) {

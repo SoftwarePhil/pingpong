@@ -107,6 +107,22 @@ export default function BracketView({ bracketMatches, getPlayerName, tournamentP
     activeMatch.games.length === 0 && !activeMatch.winnerId &&
     activeMatch.player1Id !== 'PLAY_IN_WINNER' && activeMatch.player2Id !== 'PLAY_IN_WINNER';
 
+  // Players eligible for swap: only those in unplayed same-round matches of the same bye status.
+  // Since the score panel is only shown for non-BYE matches, the active match is always a
+  // regular (non-bye) match, so we restrict to players in other non-bye matches in the same round.
+  const eligibleSwapPlayers = (() => {
+    if (!activeMatch) return tournamentPlayers;
+    const sameRoundUnplayed = bracketMatches.filter(m =>
+      m.bracketRound === activeMatch.bracketRound &&
+      !m.winnerId &&
+      m.games.length === 0 &&
+      m.player1Id !== 'BYE' && m.player2Id !== 'BYE'
+    );
+    return sameRoundUnplayed
+      .flatMap(m => [m.player1Id, m.player2Id])
+      .filter((pid, idx, arr) => arr.indexOf(pid) === idx && pid !== 'PLAY_IN_WINNER');
+  })();
+
   const handleRecord = async () => {
     if (!activeMatch) return;
     const s1 = parseInt(score1);
@@ -269,14 +285,14 @@ export default function BracketView({ bracketMatches, getPlayerName, tournamentP
                 <label className="block text-xs text-gray-500 font-medium">Player 1</label>
                 <select value={swapP1} onChange={e => setSwapP1(e.target.value)}
                   className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 bg-white focus:border-blue-400 focus:outline-none">
-                  {tournamentPlayers.map(pid => (
+                  {eligibleSwapPlayers.map(pid => (
                     <option key={pid} value={pid}>{getPlayerName(pid)}</option>
                   ))}
                 </select>
                 <div className="text-center text-xs text-gray-400 font-bold py-1">vs</div>
                 <select value={swapP2} onChange={e => setSwapP2(e.target.value)}
                   className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 bg-white focus:border-blue-400 focus:outline-none">
-                  {tournamentPlayers.map(pid => (
+                  {eligibleSwapPlayers.map(pid => (
                     <option key={pid} value={pid}>{getPlayerName(pid)}</option>
                   ))}
                 </select>
