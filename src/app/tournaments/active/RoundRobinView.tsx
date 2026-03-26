@@ -13,6 +13,7 @@ interface RoundRobinViewProps {
   onSwapPlayers: (matchId: string, p1: string, p2: string) => void;
   onAdvanceRound: (tournament: Tournament) => void;
   onStartBracket: (tournament: Tournament) => void;
+  onAddRound: (tournament: Tournament) => void;
 }
 
 export default function RoundRobinView({
@@ -25,6 +26,7 @@ export default function RoundRobinView({
   onSwapPlayers,
   onAdvanceRound,
   onStartBracket,
+  onAddRound,
 }: RoundRobinViewProps) {
   const allMatches = tournament.matches ?? [];
   const rrMatches  = allMatches.filter(m => m.round === 'roundRobin');
@@ -157,7 +159,7 @@ export default function RoundRobinView({
 
       {/* Advance round / start bracket CTA */}
       {allCurrentComplete && (
-        <div className="flex justify-center pt-2">
+        <div className="flex justify-center gap-3 pt-2">
           {!isLastRound ? (
             <button
               onClick={() => onAdvanceRound(tournament)}
@@ -166,12 +168,20 @@ export default function RoundRobinView({
               ⏭ Next Round
             </button>
           ) : (
-            <button
-              onClick={() => onStartBracket(tournament)}
-              className="inline-flex items-center gap-2 bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white px-8 py-3.5 rounded-xl font-bold text-base shadow-sm transition-colors border-2 border-purple-700"
-            >
-              🏆 Start Bracket
-            </button>
+            <>
+              <button
+                onClick={() => onAddRound(tournament)}
+                className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white px-8 py-3.5 rounded-xl font-bold text-base shadow-sm transition-colors border-2 border-blue-700"
+              >
+                ➕ Add Another Round
+              </button>
+              <button
+                onClick={() => onStartBracket(tournament)}
+                className="inline-flex items-center gap-2 bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white px-8 py-3.5 rounded-xl font-bold text-base shadow-sm transition-colors border-2 border-purple-700"
+              >
+                🏆 Start Bracket
+              </button>
+            </>
           )}
         </div>
       )}

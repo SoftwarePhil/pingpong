@@ -161,6 +161,16 @@ export default function ActiveTournamentsPage() {
     else alert('Failed to start bracket');
   };
 
+  const addRoundRobinRound = async (tournament: Tournament) => {
+    const res = await fetch('/api/tournaments', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: tournament.id, action: 'addRoundRobinRound' }),
+    });
+    if (res.ok) { await fetchTournaments(); }
+    else { const err = await res.json(); alert(err.error ?? 'Failed to add round'); }
+  };
+
   const updateTournamentPlayers = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingTournament || [...new Set(selectedPlayers)].length < 2) return;
@@ -371,6 +381,7 @@ export default function ActiveTournamentsPage() {
                           onSwapPlayers={swapPlayers}
                           onAdvanceRound={advanceRound}
                           onStartBracket={startBracket}
+                          onAddRound={addRoundRobinRound}
                         />
 
                         {pastRounds.length > 0 && (
