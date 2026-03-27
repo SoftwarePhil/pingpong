@@ -17,6 +17,10 @@ export default function ActiveTournamentsPage() {
   const [editingTournament, setEditingTournament] = useState<Tournament | null>(null);
   const [selectedPlayers, setSelectedPlayers]     = useState<string[]>([]);
 
+  const [showNewPlayerForm, setShowNewPlayerForm] = useState(false);
+  const [newPlayerName, setNewPlayerName]         = useState('');
+  const [newPlayerError, setNewPlayerError]       = useState<string | null>(null);
+
   const [showRRHistory, setShowRRHistory] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -181,8 +185,29 @@ export default function ActiveTournamentsPage() {
     });
     if (res.ok) {
       setShowEditForm(false); setEditingTournament(null); setSelectedPlayers([]);
+      setShowNewPlayerForm(false); setNewPlayerName(''); setNewPlayerError(null);
       fetchTournaments();
     } else { const err = await res.json(); alert(err.error ?? 'Failed to update tournament'); }
+  };
+
+  const createPlayerAndSelect = async () => {
+    if (!newPlayerName.trim()) return;
+    const res = await fetch('/api/players', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newPlayerName.trim() }),
+    });
+    if (res.ok) {
+      const created: Player = await res.json();
+      await fetchPlayers();
+      setSelectedPlayers(prev => [...prev, created.id]);
+      setNewPlayerName('');
+      setNewPlayerError(null);
+      setShowNewPlayerForm(false);
+    } else {
+      const err = await res.json();
+      setNewPlayerError(err.error ?? 'Failed to add player');
+    }
   };
 
   const endTournament = async (t: Tournament) => {
@@ -253,8 +278,42 @@ export default function ActiveTournamentsPage() {
                   </label>
                 ))}
               </div>
+
+              <div className="pt-2">
+                {!showNewPlayerForm ? (
+                  <button type="button" onClick={() => setShowNewPlayerForm(true)}
+                    className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 font-semibold transition-colors">
+                    <span className="text-lg leading-none">+</span> Create New Player
+                  </button>
+                ) : (
+                  <div className="bg-gray-50 rounded-xl p-4 border-2 border-gray-200">
+                    <p className="text-sm font-semibold text-gray-700 mb-3">New Player</p>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={newPlayerName}
+                        onChange={e => { setNewPlayerName(e.target.value); setNewPlayerError(null); }}
+                        onKeyDown={e => { if (e.key === 'Enter' && newPlayerName.trim()) { e.preventDefault(); createPlayerAndSelect(); } }}
+                        placeholder="Player name"
+                        autoFocus
+                        className="flex-1 px-3 py-2 border-2 border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-500"
+                      />
+                      <button type="button" onClick={createPlayerAndSelect}
+                        className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-semibold transition-colors">
+                        Add
+                      </button>
+                      <button type="button" onClick={() => { setShowNewPlayerForm(false); setNewPlayerName(''); setNewPlayerError(null); }}
+                        className="px-4 py-2 border-2 border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-100 font-semibold transition-colors">
+                        Cancel
+                      </button>
+                    </div>
+                    {newPlayerError && <p className="mt-2 text-sm text-red-600">{newPlayerError}</p>}
+                  </div>
+                )}
+              </div>
+
               <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
-                <button type="button" onClick={() => { setShowEditForm(false); setEditingTournament(null); setSelectedPlayers([]); }}
+                <button type="button" onClick={() => { setShowEditForm(false); setEditingTournament(null); setSelectedPlayers([]); setShowNewPlayerForm(false); setNewPlayerName(''); setNewPlayerError(null); }}
                   className="px-6 py-2.5 border-2 border-gray-200 rounded-xl text-gray-600 hover:bg-gray-50 font-semibold transition-colors">
                   Cancel
                 </button>
