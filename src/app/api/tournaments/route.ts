@@ -148,16 +148,21 @@ if (action === 'advanceRound') {
       const removedIds = new Set(
         tournament.players.filter(id => !activePlayers.includes(id))
       );
-      if (removedIds.size > 0) {
+      if (removedIds.size > 0 && tournament.status === 'roundRobin') {
         // Find the current (highest) RR round
         const rrMatches = (tournament.matches ?? []).filter(m => m.round === 'roundRobin');
-        const currentRound = rrMatches.length > 0 ? Math.max(...rrMatches.map(m => m.bracketRound ?? 1)) : 0;
-        // Drop unplayed matches in the current round involving removed players
+        const currentRound = rrMatches.length > 0 ? Math.max(...rrMatches.map(m => m.bracketRound ?? 1)) : 1;
+        // Drop all unplayed matches in the current round to re-pair remaining players
         tournament.matches = (tournament.matches ?? []).filter(m => {
           if (m.round !== 'roundRobin' || (m.bracketRound ?? 1) !== currentRound) return true;
           if (m.games.length > 0 || m.winnerId) return true; // already played — keep for stats
-          return !removedIds.has(m.player1Id) && !removedIds.has(m.player2Id);
+          return false; // drop unplayed matches to re-pair
         });
+        // Re-create pairings for the remaining active players
+        const newMatches = createRoundRobinPairings(activePlayers, tournament.id, currentRound, tournament.rrBestOf ?? 1);
+        if (!tournament.matches) tournament.matches = [];
+        tournament.matches.push(...newMatches);
+        await registerMatchesIndex(newMatches);
       }
       tournament.activePlayers = activePlayers;
     }
@@ -212,8 +217,21 @@ if (action === 'advanceRound') {
               player2Id: newPlayerId,
               winnerId: undefined,
             };
+          } else {
+            // No existing bye match, create a new bye match for the leftover player
+            const byeMatch = {
+              id: Date.now().toString() + Math.random(),
+              tournamentId: tournament.id,
+              player1Id: newPlayerId,
+              player2Id: 'BYE',
+              round: 'roundRobin' as const,
+              bracketRound: currentRound,
+              bestOf: tournament.rrBestOf ?? 1,
+              games: [],
+              winnerId: newPlayerId, // Automatic win
+            };
+            freshMatches.push(byeMatch);
           }
-          // If no bye exists the player is included in future round pairings
         }
 
         if (freshMatches.length > 0) {
