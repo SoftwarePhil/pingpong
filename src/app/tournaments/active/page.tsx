@@ -261,7 +261,14 @@ export default function ActiveTournamentsPage() {
 
         {showEditForm && editingTournament && (
           <div className="bg-white rounded-2xl shadow-lg p-8 mb-8 border-2 border-gray-200">
-            <h2 className="text-xl font-bold text-gray-900 mb-6">Edit Players — {editingTournament.name}</h2>
+            <h2 className="text-xl font-bold text-gray-900 mb-2">Edit Players — {editingTournament.name}</h2>
+            {editingTournament.status === 'bracket' && (
+              <div className="mb-6 p-4 bg-amber-50 border-2 border-amber-200 rounded-xl">
+                <p className="text-sm font-semibold text-amber-800">⚠️ Bracket stage — changing players will rebuild the first-round bracket.</p>
+                <p className="text-xs text-amber-700 mt-1">Only allowed before any bracket games have been played.</p>
+              </div>
+            )}
+            {editingTournament.status !== 'bracket' && <div className="mb-6" />}
             <form onSubmit={updateTournamentPlayers} className="space-y-6">
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                 {players.map(p => (
@@ -353,14 +360,12 @@ export default function ActiveTournamentsPage() {
                         </button>
                         {openMenuId === t.id && (
                           <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-xl shadow-xl border border-gray-200 py-1 z-50">
-                            {t.status !== 'bracket' && (
-                              <button
-                                onClick={() => { setOpenMenuId(null); setEditingTournament(t); setSelectedPlayers(t.activePlayers ?? t.players); setShowEditForm(true); }}
-                                className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                              >
-                                ✏️ Edit Players
-                              </button>
-                            )}
+                            <button
+                              onClick={() => { setOpenMenuId(null); setEditingTournament(t); setSelectedPlayers(t.activePlayers ?? t.players); setShowEditForm(true); }}
+                              className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                            >
+                              ✏️ Edit Players
+                            </button>
                             <button
                               onClick={() => { setOpenMenuId(null); endTournament(t); }}
                               className="w-full text-left px-4 py-2.5 text-sm text-orange-600 hover:bg-orange-50 flex items-center gap-2"

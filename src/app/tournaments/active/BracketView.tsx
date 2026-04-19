@@ -102,25 +102,28 @@ export default function BracketView({ bracketMatches, getPlayerName, tournamentP
 
   // ── Active match score entry ───────────────────────────────────────────────
   const activeMatch = activeMatchId ? bracketMatches.find(m => m.id === activeMatchId) : null;
+  const isByeActiveMatch = activeMatch?.player2Id === 'BYE';
   const canSwapActiveMatch = !readOnly && onSwapPlayers && activeMatch &&
     activeMatch.round === 'bracket' &&
-    activeMatch.games.length === 0 && !activeMatch.winnerId &&
+    activeMatch.games.length === 0 &&
+    // Allow swap on bye matches (they have winnerId set automatically but no real games)
+    (!activeMatch.winnerId || isByeActiveMatch) &&
     activeMatch.player1Id !== 'PLAY_IN_WINNER' && activeMatch.player2Id !== 'PLAY_IN_WINNER';
 
-  // Players eligible for swap: only those in unplayed same-round matches of the same bye status.
-  // Since the score panel is only shown for non-BYE matches, the active match is always a
-  // regular (non-bye) match, so we restrict to players in other non-bye matches in the same round.
+  // Players eligible for swap: all players in unplayed same-round matches (including bye matches).
+  // Bye players are now eligible so they can be swapped with regular-match players and vice versa.
+  // A "non-bye completed match" is one with real games played or a winnerId on a non-bye match.
+  const isNonByeCompleted = (m: Match) =>
+    m.games.length > 0 || (!!m.winnerId && m.player1Id !== 'BYE' && m.player2Id !== 'BYE');
+
   const eligibleSwapPlayers = (() => {
     if (!activeMatch) return tournamentPlayers;
     const sameRoundUnplayed = bracketMatches.filter(m =>
-      m.bracketRound === activeMatch.bracketRound &&
-      !m.winnerId &&
-      m.games.length === 0 &&
-      m.player1Id !== 'BYE' && m.player2Id !== 'BYE'
+      m.bracketRound === activeMatch.bracketRound && !isNonByeCompleted(m)
     );
     return sameRoundUnplayed
       .flatMap(m => [m.player1Id, m.player2Id])
-      .filter((pid, idx, arr) => arr.indexOf(pid) === idx && pid !== 'PLAY_IN_WINNER');
+      .filter((pid, idx, arr) => arr.indexOf(pid) === idx && pid !== 'PLAY_IN_WINNER' && pid !== 'BYE');
   })();
 
   const handleRecord = async () => {
@@ -142,8 +145,13 @@ export default function BracketView({ bracketMatches, getPlayerName, tournamentP
 
   const handleSwapSave = async () => {
     if (!activeMatch || !onSwapPlayers) return;
-    if (swapP1 === swapP2) { alert('Player 1 and Player 2 must be different'); return; }
-    await onSwapPlayers(activeMatch.id, swapP1, swapP2);
+    if (isByeActiveMatch) {
+      // Bye match: only P1 changes; P2 stays 'BYE'
+      await onSwapPlayers(activeMatch.id, swapP1, 'BYE');
+    } else {
+      if (swapP1 === swapP2) { alert('Player 1 and Player 2 must be different'); return; }
+      await onSwapPlayers(activeMatch.id, swapP1, swapP2);
+    }
     setSwapMode(false);
     setActiveMatchId(null);
   };
@@ -216,7 +224,12 @@ export default function BracketView({ bracketMatches, getPlayerName, tournamentP
                   match={match}
                   getPlayerName={getPlayerName}
                   isActive={activeMatchId === match.id}
-                  onSelect={() => { setSwapMode(false); setActiveMatchId(prev => prev === match.id ? null : match.id); }}
+                  onSelect={() => {
+                    const isBye = match.player2Id === 'BYE';
+                    setSwapMode(isBye);
+                    if (isBye) { setSwapP1(match.player1Id); setSwapP2('BYE'); }
+                    setActiveMatchId(prev => prev === match.id ? null : match.id);
+                  }}
                   readOnly={readOnly}
                 />
               </div>
@@ -235,7 +248,12 @@ export default function BracketView({ bracketMatches, getPlayerName, tournamentP
                     match={match}
                     getPlayerName={getPlayerName}
                     isActive={activeMatchId === match.id}
-                    onSelect={() => { setSwapMode(false); setActiveMatchId(prev => prev === match.id ? null : match.id); }}
+                    onSelect={() => {
+                      const isBye = match.player2Id === 'BYE';
+                      setSwapMode(isBye);
+                      if (isBye) { setSwapP1(match.player1Id); setSwapP2('BYE'); }
+                      setActiveMatchId(prev => prev === match.id ? null : match.id);
+                    }}
                     isFinal={isFinalRound}
                     readOnly={readOnly}
                   />
@@ -247,21 +265,26 @@ export default function BracketView({ bracketMatches, getPlayerName, tournamentP
       </div>
 
       {/* Score entry panel — appears below the bracket when a match is selected */}
-      {activeMatch && !readOnly && !activeMatch.winnerId && activeMatch.player2Id !== 'BYE' && (
+      {activeMatch && !readOnly && (!activeMatch.winnerId || isByeActiveMatch) && (
         <div className="bg-white border-2 border-blue-100 rounded-2xl p-5 shadow-sm">
           <div className="flex justify-between items-center mb-4">
             <div>
               <p className="text-xs font-semibold text-blue-500 uppercase tracking-widest mb-0.5">
-                {swapMode ? 'Change Players' : 'Recording game'}
+                {swapMode ? (isByeActiveMatch ? 'Change Bye' : 'Change Players') : 'Recording game'}
               </p>
               <h4 className="font-bold text-gray-900 text-base">
                 {getPlayerName(activeMatch.player1Id)}
-                <span className="text-gray-300 mx-2">vs</span>
-                {getPlayerName(activeMatch.player2Id)}
+                {!isByeActiveMatch && (
+                  <>
+                    <span className="text-gray-300 mx-2">vs</span>
+                    {getPlayerName(activeMatch.player2Id)}
+                  </>
+                )}
+                {isByeActiveMatch && <span className="text-gray-400 text-sm font-normal ml-2">(bye)</span>}
               </h4>
             </div>
             <div className="flex items-center gap-2">
-              {canSwapActiveMatch && (
+              {canSwapActiveMatch && !isByeActiveMatch && (
                 <button
                   onClick={() => {
                     setSwapMode(v => !v);
@@ -279,30 +302,44 @@ export default function BracketView({ bracketMatches, getPlayerName, tournamentP
             </div>
           </div>
 
-          {swapMode ? (
+          {(swapMode || isByeActiveMatch) ? (
             <div className="space-y-3">
               <div className="space-y-1.5">
-                <label className="block text-xs text-gray-500 font-medium">Player 1</label>
-                <select value={swapP1} onChange={e => setSwapP1(e.target.value)}
-                  className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 bg-white focus:border-blue-400 focus:outline-none">
-                  {eligibleSwapPlayers.map(pid => (
-                    <option key={pid} value={pid}>{getPlayerName(pid)}</option>
-                  ))}
-                </select>
-                <div className="text-center text-xs text-gray-400 font-bold py-1">vs</div>
-                <select value={swapP2} onChange={e => setSwapP2(e.target.value)}
-                  className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 bg-white focus:border-blue-400 focus:outline-none">
-                  {eligibleSwapPlayers.map(pid => (
-                    <option key={pid} value={pid}>{getPlayerName(pid)}</option>
-                  ))}
-                </select>
+                {isByeActiveMatch ? (
+                  <>
+                    <label className="block text-xs text-gray-500 font-medium">Who gets this bye?</label>
+                    <select value={swapP1} onChange={e => setSwapP1(e.target.value)}
+                      className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 bg-white focus:border-blue-400 focus:outline-none">
+                      {eligibleSwapPlayers.map(pid => (
+                        <option key={pid} value={pid}>{getPlayerName(pid)}</option>
+                      ))}
+                    </select>
+                  </>
+                ) : (
+                  <>
+                    <label className="block text-xs text-gray-500 font-medium">Player 1</label>
+                    <select value={swapP1} onChange={e => setSwapP1(e.target.value)}
+                      className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 bg-white focus:border-blue-400 focus:outline-none">
+                      {eligibleSwapPlayers.map(pid => (
+                        <option key={pid} value={pid}>{getPlayerName(pid)}</option>
+                      ))}
+                    </select>
+                    <div className="text-center text-xs text-gray-400 font-bold py-1">vs</div>
+                    <select value={swapP2} onChange={e => setSwapP2(e.target.value)}
+                      className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 bg-white focus:border-blue-400 focus:outline-none">
+                      {eligibleSwapPlayers.map(pid => (
+                        <option key={pid} value={pid}>{getPlayerName(pid)}</option>
+                      ))}
+                    </select>
+                  </>
+                )}
               </div>
               <div className="flex gap-2 pt-1">
                 <button onClick={handleSwapSave}
                   className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2.5 rounded-xl font-bold transition-colors">
                   Save
                 </button>
-                <button onClick={() => setSwapMode(false)}
+                <button onClick={() => { setSwapMode(false); if (isByeActiveMatch) setActiveMatchId(null); }}
                   className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm px-4 py-2.5 rounded-xl font-bold transition-colors">
                   Cancel
                 </button>
@@ -467,9 +504,12 @@ interface BracketCardProps {
 function BracketCard({ match, getPlayerName, isActive, onSelect, isFinal, readOnly = false }: BracketCardProps) {
   const p1Wins = match.games.filter(g => g.score1 > g.score2).length;
   const p2Wins = match.games.filter(g => g.score2 > g.score1).length;
+  const isByeMatch = match.player2Id === 'BYE';
   const canInteract = readOnly
     ? match.games.length > 0
-    : ((!match.winnerId && match.player2Id !== 'BYE') || (!!match.winnerId && match.games.length > 0))
+    : ((!match.winnerId && !isByeMatch) ||                  // regular unplayed match
+        (!!match.winnerId && match.games.length > 0) ||     // completed match (view scores)
+        (isByeMatch && !readOnly))                          // bye match (swap player)
       && match.player1Id !== 'PLAY_IN_WINNER' && match.player2Id !== 'PLAY_IN_WINNER';
 
   const ring = isFinal && match.winnerId
