@@ -314,6 +314,18 @@ export async function unregisterMatchIndex(matchId: string): Promise<void> {
   }
 }
 
+// Bulk-unregister multiple match IDs from the index
+export async function unregisterMatchesIndex(matchIds: string[]): Promise<void> {
+  if (matchIds.length === 0) return;
+  try {
+    if (!redisClient) await initRedis();
+    await redisClient.hDel(MATCH_INDEX_KEY, matchIds);
+  } catch (error) {
+    console.error('Error bulk-unregistering match index:', error);
+    throw error;
+  }
+}
+
 // Bulk-register multiple matches in the index (used when creating many matches at once)
 export async function registerMatchesIndex(matches: Match[]): Promise<void> {
   if (matches.length === 0) return;

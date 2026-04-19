@@ -99,6 +99,42 @@ describe('cascadeBracketPlayerSwap', () => {
     expect(m2.player2Id).toBe('p4');
   });
 
+  it('cascades into a bye match when displacing a bye player', () => {
+    const byeMatch = makeMatch('m2', { bracketRound: 1, player1Id: 'p3', player2Id: 'BYE', winnerId: 'p3' });
+    const matches = [
+      makeMatch('m1', { bracketRound: 1, player1Id: 'p1', player2Id: 'p2' }),
+      byeMatch,
+    ];
+    // Swap p1 in m1 for p3 (the bye player) — p3 moves to m1, p1 takes the bye
+    const result = cascadeBracketPlayerSwap(matches, 'm1', 'p3', 'p2');
+    const m1 = result.find(m => m.id === 'm1')!;
+    const m2 = result.find(m => m.id === 'm2')!;
+    expect(m1.player1Id).toBe('p3');
+    expect(m1.player2Id).toBe('p2');
+    // p3 was displaced from the bye match, so p1 takes the bye slot
+    expect(m2.player1Id).toBe('p1');
+    expect(m2.player2Id).toBe('BYE');
+    // bye winner updated to the new bye holder
+    expect(m2.winnerId).toBe('p1');
+  });
+
+  it('updates winnerId on target match when swapping a bye match directly', () => {
+    const matches = [
+      makeMatch('m1', { bracketRound: 1, player1Id: 'p1', player2Id: 'BYE', winnerId: 'p1' }),
+      makeMatch('m2', { bracketRound: 1, player1Id: 'p2', player2Id: 'p3' }),
+    ];
+    // Click on the bye match and change who gets the bye
+    const result = cascadeBracketPlayerSwap(matches, 'm1', 'p2', 'BYE');
+    const m1 = result.find(m => m.id === 'm1')!;
+    const m2 = result.find(m => m.id === 'm2')!;
+    expect(m1.player1Id).toBe('p2');
+    expect(m1.player2Id).toBe('BYE');
+    expect(m1.winnerId).toBe('p2');
+    // p1 (displaced from bye) takes p2's slot in m2
+    expect(m2.player1Id).toBe('p1');
+    expect(m2.player2Id).toBe('p3');
+  });
+
   it('throws when the match is not found', () => {
     expect(() =>
       cascadeBracketPlayerSwap([], 'missing', 'p1', 'p2')

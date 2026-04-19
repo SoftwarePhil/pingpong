@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Tournament } from '../../../types/pingpong';
-import { getTournaments, saveData, setTournament, getTournament, deleteTournament, registerMatchesIndex, syncTournamentPlayers } from '../../../data/data';
+import { getTournaments, saveData, setTournament, getTournament, deleteTournament, registerMatchesIndex, unregisterMatchesIndex, syncTournamentPlayers } from '../../../data/data';
 import { createRoundRobinPairings, advanceBracketRound, createBracketMatches, advanceRoundRobinRound } from '../../../lib/tournament';
 
 export async function GET() {
@@ -168,6 +168,43 @@ if (action === 'advanceRound') {
     }
 
     if (players !== undefined) {
+      // ── Bracket stage: rebuild R1 with the new player list ──────────────────
+      if (tournament.status === 'bracket') {
+        const r1BracketMatches = (tournament.matches ?? []).filter(m =>
+          m.round === 'bracket' && ((m.bracketRound ?? 1) === 0 || (m.bracketRound ?? 1) === 1)
+        );
+        const playedR1 = r1BracketMatches.filter(m => m.games.length > 0);
+        if (playedR1.length > 0) {
+          return NextResponse.json(
+            { error: 'Cannot edit players after bracket round 1 games have been played' },
+            { status: 400 }
+          );
+        }
+
+        // Remove all R1 and play-in bracket matches, then rebuild
+        const removedIds = r1BracketMatches.map(m => m.id);
+        tournament.matches = (tournament.matches ?? []).filter(m =>
+          !(m.round === 'bracket' && ((m.bracketRound ?? 1) === 0 || (m.bracketRound ?? 1) === 1))
+        );
+        await unregisterMatchesIndex(removedIds);
+
+        // Update player roster
+        tournament.players = [...new Set(players)];
+        tournament.activePlayers = [...new Set(players)];
+        // Clear cached ranking so createBracketMatches recomputes it from RR results
+        tournament.playerRanking = undefined;
+
+        const bracketMatches = createBracketMatches(tournament);
+        if (!tournament.matches) tournament.matches = [];
+        tournament.matches.push(...bracketMatches);
+        await registerMatchesIndex(bracketMatches);
+        await syncTournamentPlayers(tournament);
+        await setTournament(tournament);
+        await saveData();
+        return NextResponse.json(tournament);
+      }
+
+      // ── Round-robin stage ────────────────────────────────────────────────────
       // Detect newly added players (not previously in the roster)
       const newPlayerIds = players.filter(pid => !tournament.players.includes(pid));
 

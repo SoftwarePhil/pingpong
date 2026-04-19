@@ -92,14 +92,21 @@ export function cascadeBracketR1PlayerSwap(
 
   return matches.map(m => {
     if (m.id === matchId) {
-      return { ...m, player1Id: newPlayer1Id, player2Id: newPlayer2Id };
+      const updated = { ...m, player1Id: newPlayer1Id, player2Id: newPlayer2Id };
+      // Update the automatic bye winner when swapping in/out of a bye slot
+      if (newPlayer1Id === 'BYE' || newPlayer2Id === 'BYE') {
+        updated.winnerId = newPlayer1Id === 'BYE' ? newPlayer2Id : newPlayer1Id;
+      }
+      return updated;
     }
-    // Only cascade to other unplayed bracket round-1 matches
+    // Only cascade to other unplayed bracket round-1 matches.
+    // Bye matches (player2Id === 'BYE') have winnerId set automatically but no games
+    // played — they must still be cascaded so player positions stay consistent.
     if (
       m.round !== 'bracket' ||
       m.bracketRound !== 1 ||
       m.games.length > 0 ||
-      m.winnerId
+      (m.winnerId && m.player1Id !== 'BYE' && m.player2Id !== 'BYE')
     ) {
       return m;
     }
@@ -108,7 +115,12 @@ export function cascadeBracketR1PlayerSwap(
     if (swapMap.has(p1)) p1 = swapMap.get(p1)!;
     if (swapMap.has(p2)) p2 = swapMap.get(p2)!;
     if (p1 === m.player1Id && p2 === m.player2Id) return m;
-    return { ...m, player1Id: p1, player2Id: p2 };
+    const updated = { ...m, player1Id: p1, player2Id: p2 };
+    // Keep the automatic bye winner in sync
+    if (p1 === 'BYE' || p2 === 'BYE') {
+      updated.winnerId = p1 === 'BYE' ? p2 : p1;
+    }
+    return updated;
   });
 }
 
@@ -146,14 +158,21 @@ export function cascadeBracketPlayerSwap(
 
   return matches.map(m => {
     if (m.id === matchId) {
-      return { ...m, player1Id: newPlayer1Id, player2Id: newPlayer2Id };
+      const updated = { ...m, player1Id: newPlayer1Id, player2Id: newPlayer2Id };
+      // Update the automatic bye winner when swapping in/out of a bye slot
+      if (newPlayer1Id === 'BYE' || newPlayer2Id === 'BYE') {
+        updated.winnerId = newPlayer1Id === 'BYE' ? newPlayer2Id : newPlayer1Id;
+      }
+      return updated;
     }
-    // Only cascade to other unplayed bracket matches in the same round
+    // Only cascade to other unplayed bracket matches in the same round.
+    // Bye matches (player2Id === 'BYE') have winnerId set automatically but no
+    // real games — they must still be cascaded so player positions stay consistent.
     if (
       m.round !== 'bracket' ||
       m.bracketRound !== target.bracketRound ||
       m.games.length > 0 ||
-      m.winnerId
+      (m.winnerId && m.player1Id !== 'BYE' && m.player2Id !== 'BYE')
     ) {
       return m;
     }
@@ -162,7 +181,12 @@ export function cascadeBracketPlayerSwap(
     if (swapMap.has(p1)) p1 = swapMap.get(p1)!;
     if (swapMap.has(p2)) p2 = swapMap.get(p2)!;
     if (p1 === m.player1Id && p2 === m.player2Id) return m;
-    return { ...m, player1Id: p1, player2Id: p2 };
+    const updated = { ...m, player1Id: p1, player2Id: p2 };
+    // Keep the automatic bye winner in sync
+    if (p1 === 'BYE' || p2 === 'BYE') {
+      updated.winnerId = p1 === 'BYE' ? p2 : p1;
+    }
+    return updated;
   });
 }
 
