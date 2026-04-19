@@ -60,6 +60,17 @@ export function cascadeRoundRobinPlayerSwap(
 }
 
 /**
+ * Returns true for a match that has been definitively won by a real player
+ * (i.e. at least one game was played), **or** has a winnerId set while not
+ * being a bye-match placeholder.  Bye matches (player2Id === 'BYE') carry a
+ * winnerId automatically but contain no real games and must still be eligible
+ * for player-swap cascades.
+ */
+function isNonByeCompletedMatch(m: Match): boolean {
+  return m.games.length > 0 || (!!m.winnerId && m.player1Id !== 'BYE' && m.player2Id !== 'BYE');
+}
+
+/**
  * Applies a player swap to a bracket round-1 match and cascades the displaced
  * player(s) into any other unplayed bracket round-1 match, so each player
  * appears at most once.
@@ -105,8 +116,7 @@ export function cascadeBracketR1PlayerSwap(
     if (
       m.round !== 'bracket' ||
       m.bracketRound !== 1 ||
-      m.games.length > 0 ||
-      (m.winnerId && m.player1Id !== 'BYE' && m.player2Id !== 'BYE')
+      isNonByeCompletedMatch(m)
     ) {
       return m;
     }
@@ -171,8 +181,7 @@ export function cascadeBracketPlayerSwap(
     if (
       m.round !== 'bracket' ||
       m.bracketRound !== target.bracketRound ||
-      m.games.length > 0 ||
-      (m.winnerId && m.player1Id !== 'BYE' && m.player2Id !== 'BYE')
+      isNonByeCompletedMatch(m)
     ) {
       return m;
     }

@@ -112,13 +112,14 @@ export default function BracketView({ bracketMatches, getPlayerName, tournamentP
 
   // Players eligible for swap: all players in unplayed same-round matches (including bye matches).
   // Bye players are now eligible so they can be swapped with regular-match players and vice versa.
+  // A "non-bye completed match" is one with real games played or a winnerId on a non-bye match.
+  const isNonByeCompleted = (m: Match) =>
+    m.games.length > 0 || (!!m.winnerId && m.player1Id !== 'BYE' && m.player2Id !== 'BYE');
+
   const eligibleSwapPlayers = (() => {
     if (!activeMatch) return tournamentPlayers;
     const sameRoundUnplayed = bracketMatches.filter(m =>
-      m.bracketRound === activeMatch.bracketRound &&
-      m.games.length === 0 &&
-      // Include bye matches (winnerId auto-set) but skip genuinely completed matches
-      !(m.winnerId && m.player1Id !== 'BYE' && m.player2Id !== 'BYE')
+      m.bracketRound === activeMatch.bracketRound && !isNonByeCompleted(m)
     );
     return sameRoundUnplayed
       .flatMap(m => [m.player1Id, m.player2Id])

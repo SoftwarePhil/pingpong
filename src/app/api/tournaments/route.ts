@@ -170,9 +170,11 @@ if (action === 'advanceRound') {
     if (players !== undefined) {
       // ── Bracket stage: rebuild R1 with the new player list ──────────────────
       if (tournament.status === 'bracket') {
-        const r1BracketMatches = (tournament.matches ?? []).filter(m =>
-          m.round === 'bracket' && ((m.bracketRound ?? 1) === 0 || (m.bracketRound ?? 1) === 1)
-        );
+        // R1 (bracketRound === 1) and play-in (bracketRound === 0) matches
+        const isR1OrPlayIn = (m: { round: string; bracketRound?: number }) =>
+          m.round === 'bracket' && ((m.bracketRound ?? 1) === 0 || (m.bracketRound ?? 1) === 1);
+
+        const r1BracketMatches = (tournament.matches ?? []).filter(isR1OrPlayIn);
         const playedR1 = r1BracketMatches.filter(m => m.games.length > 0);
         if (playedR1.length > 0) {
           return NextResponse.json(
@@ -183,9 +185,7 @@ if (action === 'advanceRound') {
 
         // Remove all R1 and play-in bracket matches, then rebuild
         const removedIds = r1BracketMatches.map(m => m.id);
-        tournament.matches = (tournament.matches ?? []).filter(m =>
-          !(m.round === 'bracket' && ((m.bracketRound ?? 1) === 0 || (m.bracketRound ?? 1) === 1))
-        );
+        tournament.matches = (tournament.matches ?? []).filter(m => !isR1OrPlayIn(m));
         await unregisterMatchesIndex(removedIds);
 
         // Update player roster
