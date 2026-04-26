@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Game } from '../../../../types/pingpong';
-import { getAllGames, updateGameInMatch, removeGameFromMatch } from '../../../../data/data';
+import { getAllGames, updateGameInMatch, removeGameFromMatch, getTournamentIdForMatch, getTournament } from '../../../../data/data';
 import { validateScore } from '../../../../lib/scoring';
+import { canEditGameScore } from '../../../../lib/tournament';
 
 export async function PUT(
   request: NextRequest,
@@ -26,6 +27,20 @@ export async function PUT(
     const currentGame = allGames.find((g: Game) => g.id === gameId);
     if (!currentGame) {
       return NextResponse.json({ error: 'Game not found' }, { status: 404 });
+    }
+
+    // Check that the score edit won't change who plays in an already-played match
+    if (score1 !== undefined && score2 !== undefined && currentGame.matchId) {
+      const tournamentId = await getTournamentIdForMatch(currentGame.matchId);
+      if (tournamentId) {
+        const tournament = await getTournament(tournamentId);
+        if (tournament?.matches) {
+          const editError = canEditGameScore(tournament.matches, currentGame.matchId, gameId, score1, score2);
+          if (editError) {
+            return NextResponse.json({ error: editError }, { status: 400 });
+          }
+        }
+      }
     }
 
     const updatedGame: Game = {

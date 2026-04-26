@@ -1,4 +1,4 @@
-import { Tournament, Match } from '../types/pingpong';
+import { Tournament, Match, Game } from '../types/pingpong';
 
 /** Returns the configured bestOf for a bracket round with the given match count.
  * Falls back to 1 if no config entry matches. */
@@ -526,4 +526,71 @@ export function advanceRoundRobinRound(tournament: Tournament): Match[] {
   // Random strategy (default)
   const shuffledPlayers = [...activePlayers].sort(() => Math.random() - 0.5);
   return createRoundRobinPairings(shuffledPlayers, tournament.id, nextRound, tournament.rrBestOf ?? 1);
+}
+
+/**
+ * Determines the winner of a match from its games without requiring the full data layer.
+ * Returns the winnerId if someone has reached the required number of wins, or undefined.
+ */
+function computeWinner(match: Match, games: Game[]): string | undefined {
+  const p1Wins = games.filter(g => g.score1 > g.score2).length;
+  const p2Wins = games.filter(g => g.score2 > g.score1).length;
+  const required = Math.ceil(match.bestOf / 2);
+  if (p1Wins >= required) return match.player1Id;
+  if (p2Wins >= required) return match.player2Id;
+  return undefined;
+}
+
+/**
+ * Checks whether editing a game score would violate the constraint that a score
+ * edit must not change who plays in a match that has already been played.
+ *
+ * Only applies to bracket matches: if the edit would change the match winner and
+ * the old winner has already played in a subsequent bracket round (games > 0),
+ * the edit is rejected.
+ *
+ * Returns an error message string if the edit should be rejected, or null if it
+ * is safe to proceed.
+ */
+export function canEditGameScore(
+  matches: Match[],
+  matchId: string,
+  gameId: string,
+  newScore1: number,
+  newScore2: number,
+): string | null {
+  const match = matches.find(m => m.id === matchId);
+  if (!match) return null;
+
+  // Round-robin scores don't control which players appear in other matches
+  if (match.round !== 'bracket') return null;
+
+  const currentWinnerId = match.winnerId;
+
+  // Compute what the winner would be after the edit
+  const updatedGames = match.games.map(g =>
+    g.id === gameId ? { ...g, score1: newScore1, score2: newScore2 } : g
+  );
+  const newWinnerId = computeWinner(match, updatedGames);
+
+  // If the winner stays the same the edit is always safe
+  if (currentWinnerId === newWinnerId) return null;
+
+  // Winner would change — reject if the old winner has already played in a
+  // later bracket round (i.e. a subsequent match with games already recorded)
+  if (currentWinnerId) {
+    const bracketRound = match.bracketRound ?? 1;
+    const blockedBySubsequentMatch = matches.some(
+      m =>
+        m.round === 'bracket' &&
+        (m.bracketRound ?? 1) > bracketRound &&
+        m.games.length > 0 &&
+        (m.player1Id === currentWinnerId || m.player2Id === currentWinnerId),
+    );
+    if (blockedBySubsequentMatch) {
+      return 'Cannot edit this score: the match winner has already played in a subsequent round';
+    }
+  }
+
+  return null;
 }

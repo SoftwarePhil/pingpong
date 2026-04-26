@@ -1,5 +1,5 @@
-import { createRoundRobinPairings, advanceBracketRound, createBracketMatches, advanceRoundRobinRound } from '../lib/tournament';
-import { Tournament, Match } from '../types/pingpong';
+import { createRoundRobinPairings, advanceBracketRound, createBracketMatches, advanceRoundRobinRound, canEditGameScore } from '../lib/tournament';
+import { Tournament, Match, Game } from '../types/pingpong';
 
 function makeTournament(overrides: Partial<Tournament> = {}): Tournament {
   return {
@@ -424,5 +424,112 @@ describe('activePlayers', () => {
       expect(tournament.playerRanking).not.toContain('p3');
       expect(tournament.playerRanking).not.toContain('p4');
     });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// canEditGameScore
+// ─────────────────────────────────────────────────────────────────────────────
+
+function makeGame(id: string, score1: number, score2: number, matchId = 'm1'): Game {
+  return { id, matchId, player1Id: 'p1', player2Id: 'p2', score1, score2, date: new Date().toISOString() };
+}
+
+describe('canEditGameScore', () => {
+  it('returns null for a round-robin match (no restriction)', () => {
+    const match = makeMatch('m1', {
+      round: 'roundRobin',
+      bracketRound: 1,
+      games: [makeGame('g1', 11, 5)],
+      winnerId: 'p1',
+    });
+    expect(canEditGameScore([match], 'm1', 'g1', 5, 11)).toBeNull();
+  });
+
+  it('returns null when the winner does not change', () => {
+    const match = makeMatch('m1', {
+      bracketRound: 1,
+      bestOf: 3,
+      games: [makeGame('g1', 11, 5), makeGame('g2', 11, 3)],
+      winnerId: 'p1',
+    });
+    // Editing g1 to 11-7 still keeps p1 winning 2 games
+    expect(canEditGameScore([match], 'm1', 'g1', 11, 7)).toBeNull();
+  });
+
+  it('returns null when the winner changes but no subsequent played match exists', () => {
+    const match = makeMatch('m1', {
+      bracketRound: 1,
+      bestOf: 1,
+      games: [makeGame('g1', 11, 5)],
+      winnerId: 'p1',
+    });
+    // No other matches at all
+    expect(canEditGameScore([match], 'm1', 'g1', 5, 11)).toBeNull();
+  });
+
+  it('returns null when the winner changes and subsequent match exists but has no games', () => {
+    const r1 = makeMatch('m1', {
+      bracketRound: 1,
+      bestOf: 1,
+      games: [makeGame('g1', 11, 5)],
+      winnerId: 'p1',
+    });
+    const r2 = makeMatch('m2', {
+      bracketRound: 2,
+      player1Id: 'p1',
+      player2Id: 'p3',
+      games: [],
+    });
+    expect(canEditGameScore([r1, r2], 'm1', 'g1', 5, 11)).toBeNull();
+  });
+
+  it('returns an error when the winner changes and old winner has played in a subsequent round', () => {
+    const r1 = makeMatch('m1', {
+      bracketRound: 1,
+      bestOf: 1,
+      games: [makeGame('g1', 11, 5)],
+      winnerId: 'p1',
+    });
+    const r2 = makeMatch('m2', {
+      bracketRound: 2,
+      player1Id: 'p1',
+      player2Id: 'p3',
+      games: [makeGame('g2', 11, 5, 'm2')],
+      winnerId: 'p1',
+    });
+    const result = canEditGameScore([r1, r2], 'm1', 'g1', 5, 11);
+    expect(result).not.toBeNull();
+    expect(result).toMatch(/subsequent round/i);
+  });
+
+  it('returns null when match is not found', () => {
+    expect(canEditGameScore([], 'nonexistent', 'g1', 11, 5)).toBeNull();
+  });
+
+  it('handles best-of-3: returns error only when the winner changes and old winner has played on', () => {
+    // r1: p1 wins 2-1 (g1: p1 win, g2: p2 win, g3: p1 win)
+    const r1 = makeMatch('m1', {
+      bracketRound: 1,
+      bestOf: 3,
+      games: [
+        makeGame('g1', 11, 5),
+        makeGame('g2', 5, 11),
+        makeGame('g3', 11, 9),
+      ],
+      winnerId: 'p1',
+    });
+    const r2 = makeMatch('m2', {
+      bracketRound: 2,
+      player1Id: 'p1',
+      player2Id: 'p3',
+      games: [makeGame('g4', 11, 5, 'm2')],
+      winnerId: 'p1',
+    });
+    // Editing g1 from 11-5 to 11-7: p1 still wins g1, overall winner stays p1 → no block
+    expect(canEditGameScore([r1, r2], 'm1', 'g1', 11, 7)).toBeNull();
+    // Editing g3 from 11-9 to 9-11: p2 now wins g3, making p2 the 2-win winner → winner changes to p2
+    // Old winner (p1) has played in r2 → should be blocked
+    expect(canEditGameScore([r1, r2], 'm1', 'g3', 9, 11)).not.toBeNull();
   });
 });
