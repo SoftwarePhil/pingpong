@@ -155,7 +155,7 @@ if (action === 'advanceRound') {
         // Drop all unplayed matches in the current round to re-pair remaining players
         tournament.matches = (tournament.matches ?? []).filter(m => {
           if (m.round !== 'roundRobin' || (m.bracketRound ?? 1) !== currentRound) return true;
-          if (m.games.length > 0 || m.winnerId) return true; // already played — keep for stats
+          if (m.games.length > 0 || (m.winnerId && m.player2Id !== 'BYE')) return true; // already played — keep for stats; bye matches (auto-won, no real games) are dropped so they can be re-paired
           return false; // drop unplayed matches to re-pair
         });
         // Re-create pairings for the remaining active players

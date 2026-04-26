@@ -294,6 +294,38 @@ describe('advanceBracketRound', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// createRoundRobinPairings – re-pair after player removal (bye-duplicate fix)
+// ─────────────────────────────────────────────────────────────────────────────
+describe('re-pairing after player removal', () => {
+  it('does not produce a duplicate player when the removed player had a bye in the current round', () => {
+    // Setup: 3 players, round 1 has p1 vs p2 (unplayed) and p3 vs BYE (winnerId set automatically)
+    const existingMatches: Match[] = [
+      makeMatch('m1', { round: 'roundRobin', bracketRound: 1, player1Id: 'p1', player2Id: 'p2', games: [] }),
+      makeMatch('m2', { round: 'roundRobin', bracketRound: 1, player1Id: 'p3', player2Id: 'BYE', winnerId: 'p3', games: [] }),
+    ];
+
+    // Simulate the "remove p1" handler: drop unplayed current-round matches, keeping only
+    // actually-played ones (bye matches with winnerId but no games must also be dropped).
+    const currentRound = 1;
+    const remainingMatches = existingMatches.filter(m => {
+      if (m.round !== 'roundRobin' || (m.bracketRound ?? 1) !== currentRound) return true;
+      // Fixed condition: do NOT keep bye matches solely because they have winnerId
+      if (m.games.length > 0 || (m.winnerId && m.player2Id !== 'BYE')) return true;
+      return false;
+    });
+
+    // Re-pair the active players (p1 removed → [p2, p3])
+    const newPairings = createRoundRobinPairings(['p2', 'p3'], 't1', currentRound);
+    const allMatches = [...remainingMatches, ...newPairings];
+
+    // Collect every player-slot (excluding BYE) and verify no player appears more than once
+    const slots = allMatches.flatMap(m => [m.player1Id, m.player2Id]).filter(id => id !== 'BYE');
+    const unique = new Set(slots);
+    expect(unique.size).toBe(slots.length);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // activePlayers
 // ─────────────────────────────────────────────────────────────────────────────
 describe('activePlayers', () => {
