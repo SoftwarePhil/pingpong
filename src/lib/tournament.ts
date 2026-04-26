@@ -531,10 +531,16 @@ export function advanceRoundRobinRound(tournament: Tournament): Match[] {
 /**
  * Determines the winner of a match from its games without requiring the full data layer.
  * Returns the winnerId if someone has reached the required number of wins, or undefined.
+ * (Intentionally local — importing recalculateMatchWinner from data.ts would introduce a
+ * cross-layer dependency and this keeps tournament.ts a pure-logic module.)
  */
 function computeWinner(match: Match, games: Game[]): string | undefined {
-  const p1Wins = games.filter(g => g.score1 > g.score2).length;
-  const p2Wins = games.filter(g => g.score2 > g.score1).length;
+  let p1Wins = 0;
+  let p2Wins = 0;
+  for (const g of games) {
+    if (g.score1 > g.score2) p1Wins++;
+    else if (g.score2 > g.score1) p2Wins++;
+  }
   const required = Math.ceil(match.bestOf / 2);
   if (p1Wins >= required) return match.player1Id;
   if (p2Wins >= required) return match.player2Id;
