@@ -99,7 +99,9 @@ export default function TournamentBracketPage() {
       return;
     }
     await fetchData();
-    await checkBracketAdvancement(tournament.id);
+    if (tournament) {
+      await checkBracketAdvancement(tournament.id);
+    }
   };
 
   const swapPlayers = async (matchId: string, player1Id: string, player2Id: string) => {
