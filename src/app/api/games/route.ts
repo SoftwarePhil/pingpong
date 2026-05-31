@@ -43,11 +43,11 @@ export async function POST(request: NextRequest) {
       if (!existingMatch) {
         return NextResponse.json({ error: 'Match not found' }, { status: 404 });
       }
-      const tournament = await getTournament(existingMatch.tournamentId);
+      const tournamentForLock = await getTournament(existingMatch.tournamentId);
       const bracketStarted = Boolean(
-        tournament?.bracketStartedAt ||
-        (tournament?.matches ?? []).some(m => m.round === 'bracket') ||
-        tournament?.status === 'bracket'
+        tournamentForLock?.bracketStartedAt ||
+        (tournamentForLock?.matches ?? []).some(m => m.round === 'bracket') ||
+        tournamentForLock?.status === 'bracket'
       );
       if (existingMatch.round === 'roundRobin' && bracketStarted) {
         return NextResponse.json(
