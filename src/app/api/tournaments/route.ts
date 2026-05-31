@@ -64,7 +64,13 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, status, action, activePlayers, players }: { id: string; status?: 'roundRobin' | 'bracket' | 'completed'; action?: 'advanceRound' | 'addRoundRobinRound'; activePlayers?: string[]; players?: string[] } = body;
+    const { id, status, action, activePlayers, players }: {
+      id: string;
+      status?: 'roundRobin' | 'bracket' | 'completed';
+      action?: 'advanceRound' | 'addRoundRobinRound' | 'startBracket';
+      activePlayers?: string[];
+      players?: string[];
+    } = body;
 
     const tournament = await getTournament(id);
 
@@ -72,8 +78,11 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Tournament not found' }, { status: 404 });
     }
 
+    const bracketMatches = (tournament.matches ?? []).filter(m => m.round === 'bracket');
+    const bracketStarted = Boolean(tournament.bracketStartedAt || bracketMatches.length > 0 || tournament.status === 'bracket');
+
 if (action === 'advanceRound') {
-      if (tournament.status === 'roundRobin') {
+      if (!bracketStarted && tournament.status !== 'completed') {
         // Check if all current round matches are completed
         const currentRoundMatches = (tournament.matches ?? []).filter(m =>
           m.round === 'roundRobin' &&
@@ -88,22 +97,19 @@ if (action === 'advanceRound') {
         const newMatches = advanceRoundRobinRound(tournament);
 
         if (newMatches.length === 0) {
-                // No more round robin rounds — transition to bracket
-          tournament.status = 'bracket';
-          // players list is narrowed to activePlayers when bracket is created (inside createBracketMatches via tournament.activePlayers)
-          const bracketMatches = createBracketMatches(tournament);
-          if (!tournament.matches) tournament.matches = [];
-          tournament.matches.push(...bracketMatches);
-          await registerMatchesIndex(bracketMatches);
-        } else {
-          if (!tournament.matches) tournament.matches = [];
-          tournament.matches.push(...newMatches);
-          await registerMatchesIndex(newMatches);
+          return NextResponse.json(
+            { error: 'No more round robin rounds. Add another round or start bracket.' },
+            { status: 400 }
+          );
         }
+
+        if (!tournament.matches) tournament.matches = [];
+        tournament.matches.push(...newMatches);
+        await registerMatchesIndex(newMatches);
 
         await setTournament(tournament);
         await saveData();
-      } else if (tournament.status === 'bracket') {
+      } else if (bracketStarted && tournament.status !== 'completed') {
         // Advance bracket round
         const newBracketMatches = advanceBracketRound(tournament);
         if (newBracketMatches.length === 0 && (tournament.status as string) !== 'completed') {
@@ -121,9 +127,53 @@ if (action === 'advanceRound') {
       }
     }
 
+    if (action === 'startBracket') {
+      if (tournament.status === 'completed') {
+        return NextResponse.json({ error: 'Tournament is already completed' }, { status: 400 });
+      }
+
+      const rrMatches = (tournament.matches ?? []).filter(m => m.round === 'roundRobin');
+      if (rrMatches.length === 0) {
+        return NextResponse.json({ error: 'No round robin matches found' }, { status: 400 });
+      }
+      const currentRound = Math.max(...rrMatches.map(m => m.bracketRound ?? 1));
+      const incompleteCurrent = rrMatches.filter(m => (m.bracketRound ?? 1) === currentRound && !m.winnerId);
+      if (incompleteCurrent.length > 0) {
+        return NextResponse.json({ error: 'Finish the current round robin round before starting bracket' }, { status: 400 });
+      }
+
+      const existingBracketMatches = (tournament.matches ?? []).filter(m => m.round === 'bracket');
+      const hasPlayedBracket = existingBracketMatches.some(m =>
+        m.games.length > 0 || (!!m.winnerId && m.player1Id !== 'BYE' && m.player2Id !== 'BYE')
+      );
+      if (hasPlayedBracket) {
+        return NextResponse.json({ error: 'Cannot rebuild bracket after bracket games have been played' }, { status: 400 });
+      }
+
+      if (existingBracketMatches.length > 0) {
+        const removeIds = existingBracketMatches.map(m => m.id);
+        tournament.matches = (tournament.matches ?? []).filter(m => m.round !== 'bracket');
+        await unregisterMatchesIndex(removeIds);
+      }
+
+      tournament.status = 'bracket';
+      tournament.bracketStartedAt = tournament.bracketStartedAt ?? new Date().toISOString();
+      tournament.playerRanking = undefined;
+      const newBracketMatches = createBracketMatches(tournament, true);
+      if (newBracketMatches.length === 0) {
+        return NextResponse.json({ error: 'Failed to create bracket matches' }, { status: 400 });
+      }
+      if (!tournament.matches) tournament.matches = [];
+      tournament.matches.push(...newBracketMatches);
+      await registerMatchesIndex(newBracketMatches);
+      await setTournament(tournament);
+      await saveData();
+      return NextResponse.json(tournament);
+    }
+
     if (action === 'addRoundRobinRound') {
-      if (tournament.status !== 'roundRobin') {
-        return NextResponse.json({ error: 'Tournament is not in round robin stage' }, { status: 400 });
+      if (bracketStarted || tournament.status === 'completed') {
+        return NextResponse.json({ error: 'Cannot add rounds after bracket has started' }, { status: 400 });
       }
 
       // Increment the planned round count first so that advanceRoundRobinRound's guard
@@ -144,6 +194,9 @@ if (action === 'advanceRound') {
     }
 
     if (activePlayers !== undefined) {
+      if (bracketStarted || tournament.status === 'completed') {
+        return NextResponse.json({ error: 'Cannot edit active players after bracket has started' }, { status: 400 });
+      }
       // Determine which players were just removed
       const removedIds = new Set(
         tournament.players.filter(id => !activePlayers.includes(id))
@@ -168,40 +221,11 @@ if (action === 'advanceRound') {
     }
 
     if (players !== undefined) {
-      // ── Bracket stage: rebuild R1 with the new player list ──────────────────
-      if (tournament.status === 'bracket') {
-        // R1 (bracketRound === 1) and play-in (bracketRound === 0) matches
-        const isR1OrPlayIn = (m: { round: string; bracketRound?: number }) =>
-          m.round === 'bracket' && ((m.bracketRound ?? 1) === 0 || (m.bracketRound ?? 1) === 1);
-
-        const r1BracketMatches = (tournament.matches ?? []).filter(isR1OrPlayIn);
-        const playedR1 = r1BracketMatches.filter(m => m.games.length > 0);
-        if (playedR1.length > 0) {
-          return NextResponse.json(
-            { error: 'Cannot edit players after bracket round 1 games have been played' },
-            { status: 400 }
-          );
-        }
-
-        // Remove all R1 and play-in bracket matches, then rebuild
-        const removedIds = r1BracketMatches.map(m => m.id);
-        tournament.matches = (tournament.matches ?? []).filter(m => !isR1OrPlayIn(m));
-        await unregisterMatchesIndex(removedIds);
-
-        // Update player roster
-        tournament.players = [...new Set(players)];
-        tournament.activePlayers = [...new Set(players)];
-        // Clear cached ranking so createBracketMatches recomputes it from RR results
-        tournament.playerRanking = undefined;
-
-        const bracketMatches = createBracketMatches(tournament);
-        if (!tournament.matches) tournament.matches = [];
-        tournament.matches.push(...bracketMatches);
-        await registerMatchesIndex(bracketMatches);
-        await syncTournamentPlayers(tournament);
-        await setTournament(tournament);
-        await saveData();
-        return NextResponse.json(tournament);
+      if (bracketStarted || tournament.status === 'completed') {
+        return NextResponse.json(
+          { error: 'Cannot edit tournament players after bracket has started' },
+          { status: 400 }
+        );
       }
 
       // ── Round-robin stage ────────────────────────────────────────────────────
@@ -282,17 +306,13 @@ if (action === 'advanceRound') {
     }
 
     if (status) {
-      const oldStatus = tournament.status;
-      tournament.status = status;
-      // If changing to bracket status or already bracket but no matches, create bracket matches
-      if (status === 'bracket' && (oldStatus !== 'bracket' || !(tournament.matches ?? []).some(m => m.round === 'bracket'))) {
-        // activePlayers is used inside createBracketMatches via tournament.activePlayers
-        const bracketMatches = createBracketMatches(tournament, false);
-        if (!tournament.matches) tournament.matches = [];
-        tournament.matches.push(...bracketMatches);
-        await registerMatchesIndex(bracketMatches);
-        await saveData();
+      if (status === 'bracket') {
+        return NextResponse.json(
+          { error: 'Use action=startBracket to start bracket stage' },
+          { status: 400 }
+        );
       }
+      tournament.status = status;
     }
 
     await setTournament(tournament);

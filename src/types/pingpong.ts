@@ -19,6 +19,7 @@ export interface Tournament {
   name: string;
   startDate: string;
   status: 'roundRobin' | 'bracket' | 'completed';
+  bracketStartedAt?: string; // Set when bracket is explicitly started
   roundRobinRounds: number;
   rrBestOf: number;
   bracketRounds: { matchCount: number; bestOf: number }[];

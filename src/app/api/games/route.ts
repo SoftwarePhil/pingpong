@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Game, Match } from '../../../types/pingpong';
-import { getAllGames, addGameToMatch, setTournament, registerMatchesIndex } from '../../../data/data';
+import { getAllGames, addGameToMatch, setTournament, registerMatchesIndex, getMatch, getTournament } from '../../../data/data';
 import { validateScore } from '../../../lib/scoring';
 import { generateBracketSeeding } from '../../../lib/tournament';
 
@@ -39,6 +39,23 @@ export async function POST(request: NextRequest) {
     };
 
     if (matchId) {
+      const existingMatch = await getMatch(matchId);
+      if (!existingMatch) {
+        return NextResponse.json({ error: 'Match not found' }, { status: 404 });
+      }
+      const tournament = await getTournament(existingMatch.tournamentId);
+      const bracketStarted = Boolean(
+        tournament?.bracketStartedAt ||
+        (tournament?.matches ?? []).some(m => m.round === 'bracket') ||
+        tournament?.status === 'bracket'
+      );
+      if (existingMatch.round === 'roundRobin' && bracketStarted) {
+        return NextResponse.json(
+          { error: 'Cannot record round robin games after bracket has started' },
+          { status: 400 }
+        );
+      }
+
       const result = await addGameToMatch(newGame);
       if (!result) {
         return NextResponse.json({ error: 'Match not found' }, { status: 404 });

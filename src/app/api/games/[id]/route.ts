@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Game } from '../../../../types/pingpong';
-import { getAllGames, updateGameInMatch, removeGameFromMatch } from '../../../../data/data';
+import { getAllGames, updateGameInMatch, removeGameFromMatch, getMatch, getTournament } from '../../../../data/data';
 import { validateScore } from '../../../../lib/scoring';
 
 export async function PUT(
@@ -37,6 +37,23 @@ export async function PUT(
     };
 
     if (updatedGame.matchId) {
+      const match = await getMatch(updatedGame.matchId);
+      if (!match) {
+        return NextResponse.json({ error: 'Match not found for this game' }, { status: 404 });
+      }
+      const tournament = await getTournament(match.tournamentId);
+      const bracketStarted = Boolean(
+        tournament?.bracketStartedAt ||
+        (tournament?.matches ?? []).some(m => m.round === 'bracket') ||
+        tournament?.status === 'bracket'
+      );
+      if (match.round === 'roundRobin' && bracketStarted) {
+        return NextResponse.json(
+          { error: 'Cannot edit round robin games after bracket has started' },
+          { status: 400 }
+        );
+      }
+
       const result = await updateGameInMatch(updatedGame);
       if (!result) {
         return NextResponse.json({ error: 'Match not found for this game' }, { status: 404 });
@@ -66,6 +83,23 @@ export async function DELETE(
 
     if (!gameToDelete.matchId) {
       return NextResponse.json({ error: 'Game has no associated match' }, { status: 400 });
+    }
+
+    const match = await getMatch(gameToDelete.matchId);
+    if (!match) {
+      return NextResponse.json({ error: 'Match not found for this game' }, { status: 404 });
+    }
+    const tournament = await getTournament(match.tournamentId);
+    const bracketStarted = Boolean(
+      tournament?.bracketStartedAt ||
+      (tournament?.matches ?? []).some(m => m.round === 'bracket') ||
+      tournament?.status === 'bracket'
+    );
+    if (match.round === 'roundRobin' && bracketStarted) {
+      return NextResponse.json(
+        { error: 'Cannot delete round robin games after bracket has started' },
+        { status: 400 }
+      );
     }
 
     const result = await removeGameFromMatch(gameId, gameToDelete.matchId);

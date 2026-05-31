@@ -45,6 +45,18 @@ export async function PUT(
         return NextResponse.json({ error: 'Tournament not found' }, { status: 404 });
       }
 
+      const bracketStarted = Boolean(
+        tournament.bracketStartedAt ||
+        (tournament.matches ?? []).some(m => m.round === 'bracket') ||
+        tournament.status === 'bracket'
+      );
+      if (isRR && bracketStarted) {
+        return NextResponse.json(
+          { error: 'Cannot edit round robin matches after bracket has started' },
+          { status: 400 }
+        );
+      }
+
       if (isRR) {
         tournament.matches = cascadeRoundRobinPlayerSwap(tournament.matches, matchId, newP1, newP2);
       } else {
