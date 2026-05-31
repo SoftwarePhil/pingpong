@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Game, Match } from '../../../types/pingpong';
-import { getAllGames, addGameToMatch, setTournament, registerMatchesIndex, getMatch, getTournament } from '../../../data/data';
+import { getAllGames, addGameToMatch, setTournament, registerMatchesIndex, unregisterMatchesIndex, getMatch, getTournament } from '../../../data/data';
 import { validateScore } from '../../../lib/scoring';
 import { generateBracketSeeding } from '../../../lib/tournament';
 
@@ -99,6 +99,16 @@ export async function POST(request: NextRequest) {
           // Reverse the bottom half so seed 2 appears at the bottom
           const half = newMatches.length / 2;
           const orderedMatches = [...newMatches.slice(0, half), ...newMatches.slice(half).reverse()];
+          const existingMainRound = (tournament.matches ?? []).filter(
+            m => m.round === 'bracket' && (m.bracketRound ?? 0) === 1
+          );
+          if (existingMainRound.length > 0) {
+            const removeIds = existingMainRound.map(m => m.id);
+            tournament.matches = (tournament.matches ?? []).filter(
+              m => !(m.round === 'bracket' && (m.bracketRound ?? 0) === 1)
+            );
+            await unregisterMatchesIndex(removeIds);
+          }
           if (!tournament.matches) tournament.matches = [];
           tournament.matches.push(...orderedMatches);
           await registerMatchesIndex(orderedMatches);

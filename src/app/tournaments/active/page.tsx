@@ -3,9 +3,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { Tournament, Player, Match, Game } from '../../../types/pingpong';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import RoundRobinView from './RoundRobinView';
+import BracketView from './BracketView';
+import { createBracketMatches } from '../../../lib/tournament';
 
 export default function ActiveTournamentsPage() {
+  const router = useRouter();
   const [tournaments, setTournaments]           = useState<Tournament[]>([]);
   const [players, setPlayers]                   = useState<Player[]>([]);
   const [games, setGames]                       = useState<Game[]>([]);
@@ -19,6 +23,7 @@ export default function ActiveTournamentsPage() {
   const [newPlayerError, setNewPlayerError]       = useState<string | null>(null);
 
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [activeTabByTournament, setActiveTabByTournament] = useState<Record<string, 'roundRobin' | 'bracket'>>({});
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -35,6 +40,7 @@ export default function ActiveTournamentsPage() {
     const res  = await fetch('/api/tournaments');
     const data: Tournament[] = await res.json();
     setTournaments(data);
+    return data;
   };
 
   const fetchPlayers = async () => { const res = await fetch('/api/players'); setPlayers(await res.json()); };
@@ -44,7 +50,7 @@ export default function ActiveTournamentsPage() {
     fetchTournaments();
     fetchPlayers();
     fetchGames();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   const getPlayerName = (id: string) => {
     if (id === 'PLAY_IN_WINNER') return 'Play-in Winner';
@@ -59,6 +65,9 @@ export default function ActiveTournamentsPage() {
     });
     if (!res.ok) return;
     await Promise.all([fetchGames(), fetchTournaments()]);
+    if (match.round === 'bracket') {
+      await maybeAdvanceBracketRound(match.tournamentId);
+    }
   };
 
   const deleteMatch = async (matchId: string) => {
@@ -76,13 +85,52 @@ export default function ActiveTournamentsPage() {
   };
 
   const saveGameEdit = async (gameId: string, score1: number, score2: number) => {
+    const tournamentIdForGame = tournaments.find(t =>
+      (t.matches ?? []).some(m => m.games.some(g => g.id === gameId))
+    )?.id;
+
     const res = await fetch(`/api/games/${gameId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ score1, score2 }),
     });
-    if (res.ok) { fetchGames(); fetchTournaments(); }
+    if (res.ok) {
+      await Promise.all([fetchGames(), fetchTournaments()]);
+      if (tournamentIdForGame) {
+        await maybeAdvanceBracketRound(tournamentIdForGame);
+      }
+    }
     else { const err = await res.json(); alert(err.error ?? 'Failed to update game'); }
+  };
+
+  const maybeAdvanceBracketRound = async (tournamentId: string) => {
+    const refreshed = await fetchTournaments();
+    const tournament = refreshed.find(t => t.id === tournamentId);
+    if (!tournament) return;
+
+    const bracketMatches = (tournament.matches ?? []).filter(
+      m => m.round === 'bracket' && (m.bracketRound ?? 0) > 0
+    );
+    if (bracketMatches.length === 0) return;
+
+    const currentRound = Math.max(...bracketMatches.map(m => m.bracketRound ?? 1));
+    const currentRoundMatches = bracketMatches.filter(m => (m.bracketRound ?? 1) === currentRound);
+    if (!currentRoundMatches.length || !currentRoundMatches.every(m => m.winnerId)) return;
+
+    const res = await fetch('/api/tournaments', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: tournamentId, action: 'advanceRound' }),
+    });
+
+    if (res.ok) {
+      await fetchGames();
+      const afterAdvance = await fetchTournaments();
+      const updated = afterAdvance.find(t => t.id === tournamentId);
+      if (updated?.status === 'completed') {
+        router.push(`/tournaments/history?id=${tournamentId}`);
+      }
+    }
   };
 
   const swapPlayers = async (matchId: string, player1Id: string, player2Id: string) => {
@@ -126,6 +174,21 @@ export default function ActiveTournamentsPage() {
     });
     if (res.ok) { await fetchTournaments(); }
     else { const err = await res.json(); alert(err.error ?? 'Failed to add round'); }
+  };
+
+  const startBracket = async (tournament: Tournament) => {
+    const res = await fetch('/api/tournaments', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: tournament.id, action: 'startBracket' }),
+    });
+    if (res.ok) {
+      await Promise.all([fetchTournaments(), fetchGames()]);
+      setActiveTabByTournament(prev => ({ ...prev, [tournament.id]: 'bracket' }));
+    } else {
+      const err = await res.json();
+      alert(err.error ?? 'Failed to start bracket');
+    }
   };
 
   const updateTournamentPlayers = async (e: React.FormEvent) => {
@@ -197,6 +260,30 @@ export default function ActiveTournamentsPage() {
   const activeTournaments = tournaments.filter(t => t.status !== 'completed');
   const totalGamesCount = (t: Tournament) =>
     games.filter(g => g.matchId && (t.matches ?? []).some(m => m.id === g.matchId)).length;
+
+  const getProjectedBracketMatches = (tournament: Tournament): Match[] => {
+    const rrMatches = (tournament.matches ?? []).filter(m => m.round === 'roundRobin');
+    const firstRoundMatches = rrMatches.filter(m => (m.bracketRound ?? 1) === 1);
+    const firstRoundComplete = firstRoundMatches.length > 0 && firstRoundMatches.every(m => Boolean(m.winnerId));
+
+    if (!firstRoundComplete) {
+      return [];
+    }
+
+    const projectionTournament: Tournament = {
+      ...tournament,
+      players: [...tournament.players],
+      activePlayers: tournament.activePlayers ? [...tournament.activePlayers] : undefined,
+      bracketRounds: tournament.bracketRounds.map(round => ({ ...round })),
+      playerRanking: undefined,
+      matches: rrMatches.map(match => ({
+        ...match,
+        games: match.games.map(game => ({ ...game })),
+      })),
+    };
+
+    return createBracketMatches(projectionTournament, true);
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -293,6 +380,20 @@ export default function ActiveTournamentsPage() {
             const tm = t.matches ?? [];
             const bracketMatches = tm.filter(m => m.round === 'bracket');
             const bracketStarted = Boolean(t.bracketStartedAt || bracketMatches.length > 0 || t.status === 'bracket');
+            const activeTab = activeTabByTournament[t.id] ?? (bracketStarted ? 'bracket' : 'roundRobin');
+            const rrMatches = tm.filter(m => m.round === 'roundRobin');
+            const currentRound = rrMatches.length > 0 ? Math.max(...rrMatches.map(m => m.bracketRound ?? 1)) : 1;
+            const pastRounds = Array.from(new Set(
+              rrMatches.filter(m => (m.bracketRound ?? 1) < currentRound).map(m => m.bracketRound ?? 1)
+            )).sort((a, b) => a - b);
+            const firstRoundMatches = rrMatches.filter(m => (m.bracketRound ?? 1) === 1);
+            const firstRoundComplete = firstRoundMatches.length > 0 && firstRoundMatches.every(m => Boolean(m.winnerId));
+            const projectedBracketMatches = !bracketStarted ? getProjectedBracketMatches(t) : [];
+            const tournamentGames = games
+              .filter(g => g.matchId && tm.some(m => m.id === g.matchId))
+              .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+            const allRoundRobinComplete = rrMatches.length > 0 && rrMatches.every(m => Boolean(m.winnerId));
+
             return (
               <div key={t.id} className="bg-white rounded-2xl shadow-sm border-2 border-gray-200 overflow-hidden">
 
@@ -305,12 +406,6 @@ export default function ActiveTournamentsPage() {
                       </p>
                     </div>
                     <div className="flex items-center gap-3">
-                      <Link
-                        href={`/tournaments/${t.id}/bracket`}
-                        className="text-xs font-bold px-3 py-1.5 rounded-lg border border-white/20 bg-white/10 hover:bg-white/20 transition-colors"
-                      >
-                        Bracket →
-                      </Link>
                       {statusBadge(t)}
                       <div className="relative" ref={openMenuId === t.id ? menuRef : null}>
                         <button
@@ -350,53 +445,72 @@ export default function ActiveTournamentsPage() {
 
                 <div className="px-8 py-6 space-y-8">
 
-                  {!bracketStarted && (
-                    <div>
-                      <div className="flex items-center gap-2 mb-3">
-                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Players</span>
-                        <span className="text-xs text-gray-400">(toggle to mark who is playing today)</span>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {t.players.map(pid => {
-                          const activeList = t.activePlayers ?? t.players;
-                          const isActive = activeList.includes(pid);
-                          return (
-                            <button
-                              key={pid}
-                              onClick={() => toggleActivePlayer(t, pid)}
-                              className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
-                                isActive
-                                  ? 'bg-green-100 text-green-800 border-green-300 hover:bg-green-200'
-                                  : 'bg-gray-100 text-gray-400 border-gray-200 hover:bg-gray-200 line-through'
-                              }`}
-                            >
+                  <div className="border-b border-gray-200">
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setActiveTabByTournament(prev => ({ ...prev, [t.id]: 'roundRobin' }))}
+                        className={`px-4 py-2.5 text-sm font-semibold rounded-t-lg border-b-2 transition-colors ${
+                          activeTab === 'roundRobin'
+                            ? 'text-blue-700 border-blue-600 bg-blue-50'
+                            : 'text-gray-500 border-transparent hover:text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        Round Robin
+                      </button>
+                      <button
+                        onClick={() => setActiveTabByTournament(prev => ({ ...prev, [t.id]: 'bracket' }))}
+                        className={`px-4 py-2.5 text-sm font-semibold rounded-t-lg border-b-2 transition-colors ${
+                          activeTab === 'bracket'
+                            ? 'text-blue-700 border-blue-600 bg-blue-50'
+                            : 'text-gray-500 border-transparent hover:text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        Bracket
+                      </button>
+                    </div>
+                  </div>
+
+                  {activeTab === 'roundRobin' && (
+                    <>
+                      {!bracketStarted && (
+                        <div>
+                          <div className="flex items-center gap-2 mb-3">
+                            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Players</span>
+                            <span className="text-xs text-gray-400">(toggle to mark who is playing today)</span>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {t.players.map(pid => {
+                              const activeList = t.activePlayers ?? t.players;
+                              const isActive = activeList.includes(pid);
+                              return (
+                                <button
+                                  key={pid}
+                                  onClick={() => toggleActivePlayer(t, pid)}
+                                  className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
+                                    isActive
+                                      ? 'bg-green-100 text-green-800 border-green-300 hover:bg-green-200'
+                                      : 'bg-gray-100 text-gray-400 border-gray-200 hover:bg-gray-200 line-through'
+                                  }`}
+                                >
+                                  {getPlayerName(pid)}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {bracketStarted && (
+                        <div className="flex flex-wrap gap-2">
+                          {t.players.map(pid => (
+                            <span key={pid} className="bg-gray-100 text-gray-700 text-xs font-medium px-3 py-1.5 rounded-full border border-gray-200">
                               {getPlayerName(pid)}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
+                            </span>
+                          ))}
+                        </div>
+                      )}
 
-                  {bracketStarted && (
-                    <div className="flex flex-wrap gap-2">
-                      {t.players.map(pid => (
-                        <span key={pid} className="bg-gray-100 text-gray-700 text-xs font-medium px-3 py-1.5 rounded-full border border-gray-200">
-                          {getPlayerName(pid)}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-
-                  {!bracketStarted && (() => {
-                    const rrMatches = tm.filter(m => m.round === 'roundRobin');
-                    const currentRound = rrMatches.length > 0 ? Math.max(...rrMatches.map(m => m.bracketRound ?? 1)) : 1;
-                    const pastRounds = Array.from(new Set(
-                      rrMatches.filter(m => (m.bracketRound ?? 1) < currentRound).map(m => m.bracketRound ?? 1)
-                    )).sort((a, b) => a - b);
-
-                    return (
-                      <>
+                      {!bracketStarted && (
                         <RoundRobinView
                           tournament={t}
                           getPlayerName={getPlayerName}
@@ -408,68 +522,154 @@ export default function ActiveTournamentsPage() {
                           onAdvanceRound={advanceRound}
                           onAddRound={addRoundRobinRound}
                         />
+                      )}
 
-                        {pastRounds.length > 0 && (
-                          <div className="mt-6 border-t border-gray-200 pt-6 space-y-5">
-                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Past Rounds</p>
-                            {pastRounds.map(round => {
-                              const roundMatches = rrMatches.filter(m => (m.bracketRound ?? 1) === round && m.player2Id !== 'BYE');
-                              return (
-                                <div key={round}>
-                                  <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Round {round}</div>
-                                  <div className="space-y-1.5">
-                                    {roundMatches.map(match => {
-                                      const p1Won = match.winnerId === match.player1Id;
-                                      const p2Won = match.winnerId === match.player2Id;
-                                      return (
-                                        <div key={match.id} className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
-                                          <div className="flex items-center px-4 py-2 text-sm gap-3">
-                                            <span className={`font-semibold flex-1 ${p1Won ? 'text-green-700' : 'text-gray-500'}`}>
-                                              {getPlayerName(match.player1Id)}
-                                            </span>
-                                            <div className="flex items-center gap-1.5 flex-shrink-0">
-                                              {match.games.map((g, gi) => {
-                                                const g1w = g.score1 > g.score2;
-                                                return (
-                                                  <span key={g.id} className="text-xs tabular-nums text-gray-500">
-                                                    {gi > 0 && <span className="mx-1 text-gray-300">·</span>}
-                                                    <span className={g1w ? 'font-bold text-gray-800' : ''}>{g.score1}</span>
-                                                    <span className="text-gray-400">–</span>
-                                                    <span className={!g1w ? 'font-bold text-gray-800' : ''}>{g.score2}</span>
-                                                  </span>
-                                                );
-                                              })}
-                                              {match.games.length === 0 && <span className="text-xs text-gray-400 italic">no games</span>}
-                                            </div>
-                                            <span className={`font-semibold flex-1 text-right ${p2Won ? 'text-green-700' : 'text-gray-500'}`}>
-                                              {getPlayerName(match.player2Id)}
-                                            </span>
+                      {(pastRounds.length > 0 || bracketStarted) && (
+                        <div className="mt-2 border-t border-gray-200 pt-6 space-y-5">
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Previous Round Robin Rounds</p>
+                          {(bracketStarted
+                            ? Array.from(new Set(rrMatches.map(m => m.bracketRound ?? 1))).sort((a, b) => a - b)
+                            : pastRounds
+                          ).map(round => {
+                            const roundMatches = rrMatches.filter(m => (m.bracketRound ?? 1) === round && m.player2Id !== 'BYE');
+                            return (
+                              <div key={round}>
+                                <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Round {round}</div>
+                                <div className="space-y-1.5">
+                                  {roundMatches.map(match => {
+                                    const p1Won = match.winnerId === match.player1Id;
+                                    const p2Won = match.winnerId === match.player2Id;
+                                    return (
+                                      <div key={match.id} className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
+                                        <div className="flex items-center px-4 py-2 text-sm gap-3">
+                                          <span className={`font-semibold flex-1 ${p1Won ? 'text-green-700' : 'text-gray-500'}`}>
+                                            {getPlayerName(match.player1Id)}
+                                          </span>
+                                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                                            {match.games.map((g, gi) => {
+                                              const g1w = g.score1 > g.score2;
+                                              return (
+                                                <span key={g.id} className="text-xs tabular-nums text-gray-500">
+                                                  {gi > 0 && <span className="mx-1 text-gray-300">·</span>}
+                                                  <span className={g1w ? 'font-bold text-gray-800' : ''}>{g.score1}</span>
+                                                  <span className="text-gray-400">–</span>
+                                                  <span className={!g1w ? 'font-bold text-gray-800' : ''}>{g.score2}</span>
+                                                </span>
+                                              );
+                                            })}
+                                            {match.games.length === 0 && <span className="text-xs text-gray-400 italic">no games</span>}
                                           </div>
+                                          <span className={`font-semibold flex-1 text-right ${p2Won ? 'text-green-700' : 'text-gray-500'}`}>
+                                            {getPlayerName(match.player2Id)}
+                                          </span>
                                         </div>
-                                      );
-                                    })}
+                                      </div>
+                                    );
+                                  })}
+                                  {roundMatches.length === 0 && (
+                                    <p className="text-xs text-gray-400 italic">No completed head-to-head matches in this round.</p>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {activeTab === 'bracket' && (
+                    <div className="space-y-6">
+                      {!bracketStarted && (
+                        <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-5">
+                          <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider mb-1">Bracket preview</p>
+                          <p className="text-sm text-blue-900">This preview updates live based on current round robin standings.</p>
+                          <div className="mt-4 flex flex-wrap items-center gap-3">
+                            <button
+                              onClick={() => startBracket(t)}
+                              disabled={!firstRoundComplete}
+                              className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold transition-colors border ${
+                                firstRoundComplete
+                                  ? 'bg-blue-600 hover:bg-blue-700 text-white border-blue-700'
+                                  : 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+                              }`}
+                            >
+                              🏆 Start Bracket Stage
+                            </button>
+                            {!firstRoundComplete && (
+                              <span className="text-xs text-blue-800">Available after Round Robin Round 1 is complete.</span>
+                            )}
+                            {firstRoundComplete && !allRoundRobinComplete && (
+                              <span className="text-xs text-blue-800">You can start now or keep playing round robin rounds.</span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {!bracketStarted && allRoundRobinComplete && firstRoundComplete && (
+                        <div className="bg-emerald-50 border-2 border-emerald-200 rounded-xl p-4 flex items-center justify-between gap-3">
+                          <p className="text-sm text-emerald-900 font-semibold">All round robin games are complete. Bracket is ready to start.</p>
+                          <button
+                            onClick={() => startBracket(t)}
+                            className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-bold border border-emerald-700 transition-colors"
+                          >
+                            Start Bracket
+                          </button>
+                        </div>
+                      )}
+
+                      {(bracketStarted || projectedBracketMatches.length > 0) ? (
+                        <div className="bg-white rounded-2xl shadow-sm border-2 border-gray-200 p-6">
+                          <BracketView
+                            bracketMatches={bracketStarted ? bracketMatches : projectedBracketMatches}
+                            getPlayerName={getPlayerName}
+                            tournamentPlayers={t.players}
+                            onAddGame={addGameToMatch}
+                            onSaveGameEdit={saveGameEdit}
+                            onSwapPlayers={swapPlayers}
+                            readOnly={!bracketStarted}
+                          />
+                        </div>
+                      ) : (
+                        <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-5">
+                          <p className="text-sm text-gray-700 font-semibold">Bracket preview is unavailable until Round Robin Round 1 is complete.</p>
+                          {!firstRoundComplete && <p className="text-xs text-gray-500 mt-1">Finish all Round 1 matches to see projected bracket pairings.</p>}
+                        </div>
+                      )}
+
+                      <div className="bg-white rounded-2xl shadow-sm border-2 border-gray-200 p-5">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Game History</p>
+                        {tournamentGames.length === 0 ? (
+                          <p className="text-sm text-gray-500">No games recorded yet.</p>
+                        ) : (
+                          <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                            {tournamentGames.map(game => {
+                              const match = tm.find(m => m.id === game.matchId);
+                              const roundLabel = match?.round === 'bracket'
+                                ? match.bracketRound === 0
+                                  ? 'Bracket Play-in'
+                                  : `Bracket R${match?.bracketRound ?? 1}`
+                                : `RR R${match?.bracketRound ?? 1}`;
+                              const p1Won = game.score1 > game.score2;
+                              return (
+                                <div key={game.id} className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-semibold text-gray-900 truncate">
+                                      <span className={p1Won ? 'text-green-700' : 'text-gray-600'}>{getPlayerName(game.player1Id)}</span>
+                                      <span className="text-gray-300 mx-1.5">vs</span>
+                                      <span className={!p1Won ? 'text-green-700' : 'text-gray-600'}>{getPlayerName(game.player2Id)}</span>
+                                    </p>
+                                    <p className="text-xs text-gray-500">{roundLabel} · {new Date(game.date).toLocaleString()}</p>
                                   </div>
+                                  <span className="font-black text-gray-900 tabular-nums text-sm whitespace-nowrap">
+                                    {game.score1}–{game.score2}
+                                  </span>
                                 </div>
                               );
                             })}
                           </div>
                         )}
-                      </>
-                    );
-                  })()}
-
-                  {bracketStarted && (
-                    <div className="bg-purple-50 border-2 border-purple-200 rounded-xl p-5 flex items-center justify-between gap-4">
-                      <div>
-                        <p className="text-xs font-semibold text-purple-700 uppercase tracking-wider mb-1">Bracket started</p>
-                        <p className="text-sm text-purple-900">Round-robin controls are locked. Manage bracket matches on the bracket page.</p>
                       </div>
-                      <Link
-                        href={`/tournaments/${t.id}/bracket`}
-                        className="whitespace-nowrap bg-purple-600 hover:bg-purple-700 text-white px-4 py-2.5 rounded-lg font-semibold text-sm transition-colors border border-purple-700"
-                      >
-                        Open Bracket
-                      </Link>
                     </div>
                   )}
 

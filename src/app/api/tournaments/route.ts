@@ -136,10 +136,10 @@ if (action === 'advanceRound') {
       if (rrMatches.length === 0) {
         return NextResponse.json({ error: 'No round robin matches found' }, { status: 400 });
       }
-      const currentRound = Math.max(...rrMatches.map(m => m.bracketRound ?? 1));
-      const incompleteCurrent = rrMatches.filter(m => (m.bracketRound ?? 1) === currentRound && !m.winnerId);
-      if (incompleteCurrent.length > 0) {
-        return NextResponse.json({ error: 'Finish the current round robin round before starting bracket' }, { status: 400 });
+      const firstRound = rrMatches.filter(m => (m.bracketRound ?? 1) === 1);
+      const incompleteFirstRound = firstRound.filter(m => !m.winnerId);
+      if (incompleteFirstRound.length > 0) {
+        return NextResponse.json({ error: 'Finish round robin round 1 before starting bracket' }, { status: 400 });
       }
 
       const existingBracketMatches = (tournament.matches ?? []).filter(m => m.round === 'bracket');
