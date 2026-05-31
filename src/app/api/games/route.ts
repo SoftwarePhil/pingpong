@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Game, Match } from '../../../types/pingpong';
-import { getAllGames, addGameToMatch, setTournament, registerMatchesIndex } from '../../../data/data';
+import { getAllGames, addGameToMatch, setTournament, registerMatchesIndex, unregisterMatchesIndex, getMatch, getTournament } from '../../../data/data';
 import { validateScore } from '../../../lib/scoring';
 import { generateBracketSeeding } from '../../../lib/tournament';
 
@@ -39,6 +39,23 @@ export async function POST(request: NextRequest) {
     };
 
     if (matchId) {
+      const existingMatch = await getMatch(matchId);
+      if (!existingMatch) {
+        return NextResponse.json({ error: 'Match not found' }, { status: 404 });
+      }
+      const tournamentForLock = await getTournament(existingMatch.tournamentId);
+      const bracketStarted = Boolean(
+        tournamentForLock?.bracketStartedAt ||
+        (tournamentForLock?.matches ?? []).some(m => m.round === 'bracket') ||
+        tournamentForLock?.status === 'bracket'
+      );
+      if (existingMatch.round === 'roundRobin' && bracketStarted) {
+        return NextResponse.json(
+          { error: 'Cannot record round robin games after bracket has started' },
+          { status: 400 }
+        );
+      }
+
       const result = await addGameToMatch(newGame);
       if (!result) {
         return NextResponse.json({ error: 'Match not found' }, { status: 404 });
@@ -82,6 +99,16 @@ export async function POST(request: NextRequest) {
           // Reverse the bottom half so seed 2 appears at the bottom
           const half = newMatches.length / 2;
           const orderedMatches = [...newMatches.slice(0, half), ...newMatches.slice(half).reverse()];
+          const existingMainRound = (tournament.matches ?? []).filter(
+            m => m.round === 'bracket' && (m.bracketRound ?? 0) === 1
+          );
+          if (existingMainRound.length > 0) {
+            const removeIds = existingMainRound.map(m => m.id);
+            tournament.matches = (tournament.matches ?? []).filter(
+              m => !(m.round === 'bracket' && (m.bracketRound ?? 0) === 1)
+            );
+            await unregisterMatchesIndex(removeIds);
+          }
           if (!tournament.matches) tournament.matches = [];
           tournament.matches.push(...orderedMatches);
           await registerMatchesIndex(orderedMatches);
