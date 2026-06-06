@@ -309,6 +309,162 @@ describe('advanceBracketRound', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// advanceBracketRound – positional pairing (regression for wrong-pairing bug)
+// ─────────────────────────────────────────────────────────────────────────────
+describe('advanceBracketRound – positional pairing', () => {
+  /**
+   * The bug: winners were re-sorted by playerRanking then re-seeded, which
+   * scrambled them.  The fix: winners advance in the order the matches are
+   * stored (positional order), and adjacent pairs feed into the next round.
+   * match[0].winner vs match[1].winner → next-round match[0]
+   * match[2].winner vs match[3].winner → next-round match[1]  … and so on.
+   */
+
+  it('pairs winner of match[0] with winner of match[1], not by playerRanking', () => {
+    // Scenario from the bug report:
+    //   R1 match 0: p1 (seed 1) vs BYE → p1 wins
+    //   R1 match 1: p3 (seed 3) vs BYE → p3 wins
+    //   R1 match 2: p4 (seed 4) vs p5  → p4 wins
+    //   R1 match 3: p2 (seed 2) vs BYE → p2 wins
+    //
+    // Expected R2:  match 0 → p1 vs p3 (positional pairs 0+1)
+    //               match 1 → p4 vs p2 (positional pairs 2+3)
+    //
+    // Wrong result before fix: winners were re-sorted by seed (p1,p2,p3,p4)
+    // then re-seeded, producing p1 vs p4 and p3 vs p2 — wrong halves.
+    const tournament = makeTournament({
+      players: ['p1', 'p2', 'p3', 'p4', 'p5'],
+      playerRanking: ['p1', 'p2', 'p3', 'p4', 'p5'],
+      bracketRounds: [{ matchCount: 2, bestOf: 3 }, { matchCount: 1, bestOf: 5 }],
+      matches: [
+        makeMatch('m1', { bracketRound: 1, player1Id: 'p1', player2Id: 'BYE',  winnerId: 'p1' }),
+        makeMatch('m2', { bracketRound: 1, player1Id: 'p3', player2Id: 'BYE',  winnerId: 'p3' }),
+        makeMatch('m3', { bracketRound: 1, player1Id: 'p4', player2Id: 'p5',   winnerId: 'p4' }),
+        makeMatch('m4', { bracketRound: 1, player1Id: 'p2', player2Id: 'BYE',  winnerId: 'p2' }),
+      ],
+    });
+    const next = advanceBracketRound(tournament);
+    expect(next).toHaveLength(2);
+
+    const players0 = [next[0].player1Id, next[0].player2Id];
+    const players1 = [next[1].player1Id, next[1].player2Id];
+
+    // Positional pair 0+1 → p1 and p3
+    expect(players0).toContain('p1');
+    expect(players0).toContain('p3');
+
+    // Positional pair 2+3 → p4 and p2
+    expect(players1).toContain('p4');
+    expect(players1).toContain('p2');
+  });
+
+  it('preserves bracket halves: seeds 1 and 2 meet only in the final (4-player bracket end-to-end)', () => {
+    // Build a standard 4-player bracket using createBracketMatches, then
+    // advance through it and verify the final is seed1 vs seed2.
+    //
+    // createBracketMatches for [p1,p2,p3,p4] with seeding [1,4,3,2]:
+    //   after bottom-half reversal the two R1 matches are:
+    //     match 0: p1 (seed 1) vs p4 (seed 4)
+    //     match 1: p3 (seed 3) vs p2 (seed 2)
+    //
+    // For the final to be seed1 vs seed2 we need:
+    //   winner(match0) vs winner(match1)
+    // i.e. positional order, NOT a re-seeding of [p1,p2] back to [1 vs 2].
+
+    // Give all players 0 wins so ranking is insertion order: p1 > p2 > p3 > p4
+    const tournament = makeTournament({
+      players: ['p1', 'p2', 'p3', 'p4'],
+      bracketRounds: [{ matchCount: 2, bestOf: 3 }, { matchCount: 1, bestOf: 5 }],
+      matches: [],
+    });
+    const r1Matches = createBracketMatches(tournament);
+    expect(r1Matches).toHaveLength(2);
+
+    // p1 wins match 0, p2 wins match 1 (the best case for a seeds-1-vs-2 final)
+    const completedR1 = r1Matches.map(m => ({
+      ...m,
+      winnerId: m.player1Id === 'p1' || m.player2Id === 'p1' ? 'p1'
+              : m.player1Id === 'p2' || m.player2Id === 'p2' ? 'p2'
+              : m.player1Id, // fallback: player1 wins
+    }));
+    tournament.matches = [...completedR1];
+
+    const finalMatches = advanceBracketRound(tournament);
+    expect(finalMatches).toHaveLength(1);
+    const finalists = [finalMatches[0].player1Id, finalMatches[0].player2Id];
+    expect(finalists).toContain('p1');
+    expect(finalists).toContain('p2');
+  });
+
+  it('8-player bracket R1→R2: each next-round match pairs winners from the correct positional pair', () => {
+    // 8 players, R1 has 4 matches.  Each player at position i wins their R1 match.
+    // After advancement:
+    //   R2 match 0 → winner[0] vs winner[1]
+    //   R2 match 1 → winner[2] vs winner[3]
+    const players = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8'];
+    const tournament = makeTournament({
+      players,
+      playerRanking: players,
+      bracketRounds: [{ matchCount: 4, bestOf: 3 }, { matchCount: 2, bestOf: 3 }, { matchCount: 1, bestOf: 5 }],
+      matches: [
+        makeMatch('m1', { bracketRound: 1, player1Id: 'p1', player2Id: 'p8', winnerId: 'p1' }),
+        makeMatch('m2', { bracketRound: 1, player1Id: 'p4', player2Id: 'p5', winnerId: 'p4' }),
+        makeMatch('m3', { bracketRound: 1, player1Id: 'p2', player2Id: 'p7', winnerId: 'p2' }),
+        makeMatch('m4', { bracketRound: 1, player1Id: 'p3', player2Id: 'p6', winnerId: 'p3' }),
+      ],
+    });
+
+    const r2 = advanceBracketRound(tournament);
+    expect(r2).toHaveLength(2);
+
+    // Positional pair 0+1: p1 and p4
+    expect([r2[0].player1Id, r2[0].player2Id]).toContain('p1');
+    expect([r2[0].player1Id, r2[0].player2Id]).toContain('p4');
+
+    // Positional pair 2+3: p2 and p3
+    expect([r2[1].player1Id, r2[1].player2Id]).toContain('p2');
+    expect([r2[1].player1Id, r2[1].player2Id]).toContain('p3');
+  });
+
+  it('does NOT re-sort winners by playerRanking when positional order differs from seed order', () => {
+    // playerRanking says p1 > p2 > p3 > p4, but both top seeds are upset in R1.
+    // Old (buggy) code re-sorted winners back to seed order [p1,p2,...] then re-seeded.
+    // Correct code keeps positional order: match[0] winner (p3) vs match[1] winner (p4).
+    const t = makeTournament({
+      players: ['p1', 'p2', 'p3', 'p4'],
+      playerRanking: ['p1', 'p2', 'p3', 'p4'],
+      bracketRounds: [{ matchCount: 2, bestOf: 3 }, { matchCount: 1, bestOf: 5 }],
+      matches: [
+        // match[0] winner → p3 (upsets p1)
+        makeMatch('m1', { bracketRound: 1, player1Id: 'p3', player2Id: 'p1', winnerId: 'p3' }),
+        // match[1] winner → p4 (upsets p2)
+        makeMatch('m2', { bracketRound: 1, player1Id: 'p4', player2Id: 'p2', winnerId: 'p4' }),
+      ],
+    });
+    const next = advanceBracketRound(t);
+    expect(next).toHaveLength(1);
+    // Positional pair 0+1 → p3 and p4 (actual winners), NOT p1 and p2 (the seeded players)
+    const finalists = [next[0].player1Id, next[0].player2Id];
+    expect(finalists).toContain('p3');
+    expect(finalists).toContain('p4');
+    expect(finalists).not.toContain('p1');
+    expect(finalists).not.toContain('p2');
+  });
+
+  it('all next-round matches are assigned bracketRound = currentRound + 1', () => {
+    const tournament = makeTournament({
+      bracketRounds: [{ matchCount: 2, bestOf: 3 }, { matchCount: 1, bestOf: 5 }],
+      matches: [
+        makeMatch('m1', { bracketRound: 1, player1Id: 'p1', player2Id: 'p2', winnerId: 'p1' }),
+        makeMatch('m2', { bracketRound: 1, player1Id: 'p3', player2Id: 'p4', winnerId: 'p3' }),
+      ],
+    });
+    const next = advanceBracketRound(tournament);
+    expect(next.every(m => m.bracketRound === 2)).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // createRoundRobinPairings – re-pair after player removal (bye-duplicate fix)
 // ─────────────────────────────────────────────────────────────────────────────
 describe('re-pairing after player removal', () => {
