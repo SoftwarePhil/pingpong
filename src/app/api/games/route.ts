@@ -61,58 +61,36 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Match not found' }, { status: 404 });
       }
 
-      // Handle play-in match completion (bracketRound === 0 is the play-in round)
+      // Handle play-in match completion (bracketRound === 0 is the play-in round).
+      // Patch ONLY the specific R1 match that still has the 'PLAY_IN_WINNER' placeholder
+      // by replacing the placeholder with the actual winnerId on the correct side.
+      // This preserves any custom player swaps/reassignments the user made in the preview
+      // for the *other* R1 matches. No full re-seed or removal of other matches.
       const { match, tournament } = result;
-      const bracketPool = tournament.activePlayers ?? tournament.players;
-      if (match.winnerId && match.bracketRound === 0 && bracketPool.length % 2 === 1) {
-        const rankedPlayers = tournament.playerRanking || bracketPool;
-        if (rankedPlayers.length >= 3) {
-          // Top (n-2) seeds + actual play-in winner, seeded properly
-          const mainBracketPlayers: string[] = [
-            ...rankedPlayers.slice(0, rankedPlayers.length - 2),
-            match.winnerId,
-          ];
-          const n = mainBracketPlayers.length;
-          const nextPowerOf2 = Math.pow(2, Math.ceil(Math.log2(Math.max(n, 2))));
-          const firstRoundMatchCount = nextPowerOf2 / 2;
-          const bracketConfig = tournament.bracketRounds.find(b => b.matchCount === firstRoundMatchCount);
-          const mainBestOf = bracketConfig?.bestOf ?? 1;
-          const seeding = generateBracketSeeding(nextPowerOf2);
-          const newMatches: Match[] = [];
-
-          for (let i = 0; i < seeding.length; i += 2) {
-            const p1 = seeding[i]     <= n ? mainBracketPlayers[seeding[i] - 1]     : 'BYE';
-            const p2 = seeding[i + 1] <= n ? mainBracketPlayers[seeding[i + 1] - 1] : 'BYE';
-            const isBye = p1 === 'BYE' || p2 === 'BYE';
-            newMatches.push({
-              id: Date.now().toString() + Math.random(),
-              tournamentId: tournament.id,
-              player1Id: p1,
-              player2Id: p2,
-              round: 'bracket',
-              bracketRound: 1,
-              bestOf: isBye ? 1 : mainBestOf,
-              games: [],
-              ...(isBye ? { winnerId: p1 === 'BYE' ? p2 : p1 } : {}),
-            });
+      const hasPlayInPrelim = (tournament.matches ?? []).some(
+        m => m.round === 'bracket' && (m.bracketRound ?? 0) === 0
+      );
+      if (match.winnerId && match.bracketRound === 0 && hasPlayInPrelim) {
+        const matches = tournament.matches ?? [];
+        const r1MatchIdx = matches.findIndex(
+          m => m.round === 'bracket' &&
+               (m.bracketRound ?? 0) === 1 &&
+               (m.player1Id === 'PLAY_IN_WINNER' || m.player2Id === 'PLAY_IN_WINNER')
+        );
+        if (r1MatchIdx !== -1) {
+          const r1Match = { ...matches[r1MatchIdx] };
+          if (r1Match.player1Id === 'PLAY_IN_WINNER') {
+            r1Match.player1Id = match.winnerId;
+          } else if (r1Match.player2Id === 'PLAY_IN_WINNER') {
+            r1Match.player2Id = match.winnerId;
           }
-          // Reverse the bottom half so seed 2 appears at the bottom
-          const half = newMatches.length / 2;
-          const orderedMatches = [...newMatches.slice(0, half), ...newMatches.slice(half).reverse()];
-          const existingMainRound = (tournament.matches ?? []).filter(
-            m => m.round === 'bracket' && (m.bracketRound ?? 0) === 1
-          );
-          if (existingMainRound.length > 0) {
-            const removeIds = existingMainRound.map(m => m.id);
-            tournament.matches = (tournament.matches ?? []).filter(
-              m => !(m.round === 'bracket' && (m.bracketRound ?? 0) === 1)
-            );
-            await unregisterMatchesIndex(removeIds);
-          }
-          if (!tournament.matches) tournament.matches = [];
-          tournament.matches.push(...orderedMatches);
-          await registerMatchesIndex(orderedMatches);
+          // Keep all other fields (bestOf, id, games:[], etc.) as they were from preview/custom creation.
+          // Clear any stale winnerId if present (shouldn't be for unplayed).
+          r1Match.winnerId = undefined;
+          matches[r1MatchIdx] = r1Match;
+          tournament.matches = matches;
           await setTournament(tournament);
+          // No need to touch match index for an in-place player swap on unplayed match.
         }
       }
     }

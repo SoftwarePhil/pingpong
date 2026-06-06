@@ -30,6 +30,7 @@ export default function TournamentBracketPage() {
   }, [tournamentId]);
 
   const getPlayerName = (id: string) => {
+    if (id === 'BYE') return 'BYE';
     if (id === 'PLAY_IN_WINNER') return 'Play-in Winner';
     return players.find(p => p.id === id)?.name ?? 'Unknown';
   };

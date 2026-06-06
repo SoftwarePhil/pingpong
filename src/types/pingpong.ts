@@ -28,6 +28,7 @@ export interface Tournament {
   rrPairingStrategy?: 'random' | 'top-vs-top'; // Strategy for determining RR pairings (default: 'random')
   playerRanking?: string[];
   matches?: Match[]; // Embedded matches for hybrid schema
+  bracketConfig?: BracketConfig; // Custom bracket setup chosen in preview
 }
 
 export interface Match {
@@ -40,4 +41,11 @@ export interface Match {
   bestOf: number;
   games: Game[];
   winnerId?: string;
+}
+
+export type PlayInMode = 'auto' | 'force' | 'none';
+
+export interface BracketConfig {
+  playInMode?: PlayInMode;
+  byePlayerIds?: string[];
 }
