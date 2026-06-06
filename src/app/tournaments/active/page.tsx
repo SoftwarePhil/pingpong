@@ -1,12 +1,12 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Tournament, Player, Match, Game } from '../../../types/pingpong';
+import { Tournament, Player, Match, Game, BracketConfig } from '../../../types/pingpong';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import RoundRobinView from './RoundRobinView';
 import BracketView from './BracketView';
-import { createBracketMatches } from '../../../lib/tournament';
+import { createBracketMatches, cascadeBracketR1PlayerSwap, cascadeBracketPlayerSwap } from '../../../lib/tournament';
 
 export default function ActiveTournamentsPage() {
   const router = useRouter();
@@ -25,6 +25,12 @@ export default function ActiveTournamentsPage() {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [activeTabByTournament, setActiveTabByTournament] = useState<Record<string, 'roundRobin' | 'bracket'>>({});
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Client-side editable preview of the bracket *before* it is started.
+  // Allows users to reassign byes and R1 players via the same swap UI as the live bracket.
+  // Keyed by tournament id. When present, the bracket tab uses these matches for the preview.
+  const [bracketPreviewById, setBracketPreviewById] = useState<Record<string, Match[]>>({});
+
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -53,6 +59,7 @@ export default function ActiveTournamentsPage() {
   }, []);
 
   const getPlayerName = (id: string) => {
+    if (id === 'BYE') return 'BYE';
     if (id === 'PLAY_IN_WINNER') return 'Play-in Winner';
     return players.find(p => p.id === id)?.name ?? 'Unknown';
   };
@@ -177,17 +184,108 @@ export default function ActiveTournamentsPage() {
   };
 
   const startBracket = async (tournament: Tournament) => {
+    // If the user configured the bracket in preview, send the exact matches we previewed
+    // so the committed bracket matches what they set up (byes, play-in participants, etc.).
+    const previewMatches = bracketPreviewById[tournament.id];
+    const body: { id: string; action: string; initialBracketMatches?: Match[]; bracketConfig?: BracketConfig } = { id: tournament.id, action: 'startBracket' };
+    if (previewMatches && previewMatches.length > 0) {
+      body.initialBracketMatches = previewMatches;
+      // Also send a derived config so the stored tournament remembers the high-level choice (play-in or not)
+      const hasPlayIn = previewMatches.some((m: Match) => (m.bracketRound ?? 0) === 0);
+      body.bracketConfig = { playInMode: hasPlayIn ? 'force' : 'none' };
+    }
+
     const res = await fetch('/api/tournaments', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: tournament.id, action: 'startBracket' }),
+      body: JSON.stringify(body),
     });
     if (res.ok) {
+      // Clear the preview override once it has been committed
+      setBracketPreviewById(prev => {
+        const next = { ...prev };
+        delete next[tournament.id];
+        return next;
+      });
       await Promise.all([fetchTournaments(), fetchGames()]);
       setActiveTabByTournament(prev => ({ ...prev, [tournament.id]: 'bracket' }));
     } else {
       const err = await res.json();
       alert(err.error ?? 'Failed to start bracket');
+    }
+  };
+
+  // Apply a player/bye swap *locally* in the editable preview (before the bracket is started).
+  // Uses the same pure cascade logic as the live bracket so the result is consistent.
+  const handlePreviewBracketSwap = (tournamentId: string, matchId: string, player1Id: string, player2Id: string, seedMatches?: Match[]) => {
+    setBracketPreviewById(prev => {
+      let current = prev[tournamentId];
+      if (!current || current.length === 0) {
+        current = seedMatches && seedMatches.length > 0 ? seedMatches : [];
+      }
+      if (!current || current.length === 0) return prev;
+
+      try {
+        const target = current.find(m => m.id === matchId);
+        if (!target) return prev;
+
+        let updated: Match[];
+        if (target.bracketRound === 0) {
+          // Play-in round (round 0) — use the general cascade (it handles R0 too via the any-bracket-round version)
+          updated = cascadeBracketPlayerSwap(current, matchId, player1Id, player2Id);
+        } else if (target.bracketRound === 1) {
+          updated = cascadeBracketR1PlayerSwap(current, matchId, player1Id, player2Id);
+        } else {
+          updated = cascadeBracketPlayerSwap(current, matchId, player1Id, player2Id);
+        }
+
+        return { ...prev, [tournamentId]: updated };
+      } catch (e: unknown) {
+        const msg = (e as Error)?.message || 'Invalid swap in preview';
+        alert(msg);
+        return prev;
+      }
+    });
+  };
+
+  const resetBracketPreview = (tournamentId: string) => {
+    setBracketPreviewById(prev => {
+      const next = { ...prev };
+      delete next[tournamentId];
+      return next;
+    });
+  };
+
+  // Regenerate the preview bracket using a specific play-in mode (for "add or remove play-in round").
+  // We clone the tournament, set bracketConfig, and run the real creation logic.
+  const applyPlayInModeToPreview = (tournament: Tournament, mode: 'auto' | 'force' | 'none') => {
+    try {
+      const rrMatches = (tournament.matches ?? []).filter(m => m.round === 'roundRobin');
+      const clone: Tournament = {
+        ...tournament,
+        players: [...tournament.players],
+        activePlayers: tournament.activePlayers ? [...tournament.activePlayers] : undefined,
+        bracketRounds: tournament.bracketRounds.map(r => ({ ...r })),
+        matches: rrMatches.map(m => ({
+          ...m,
+          games: m.games.map(g => ({ ...g })),
+        })),
+        playerRanking: undefined,
+        bracketConfig: {
+          ...(tournament.bracketConfig || {}),
+          playInMode: mode,
+        },
+      };
+
+      const generated = createBracketMatches(clone, true);
+      if (generated.length > 0) {
+        setBracketPreviewById(prev => ({ ...prev, [tournament.id]: generated }));
+      } else {
+        alert('Could not generate bracket with that setting.');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Error applying play-in setting to preview.');
     }
   };
 
@@ -388,7 +486,10 @@ export default function ActiveTournamentsPage() {
             )).sort((a, b) => a - b);
             const firstRoundMatches = rrMatches.filter(m => (m.bracketRound ?? 1) === 1);
             const firstRoundComplete = firstRoundMatches.length > 0 && firstRoundMatches.every(m => Boolean(m.winnerId));
-            const projectedBracketMatches = !bracketStarted ? getProjectedBracketMatches(t) : [];
+            const baseProjected = !bracketStarted ? getProjectedBracketMatches(t) : [];
+            // Use locally edited preview if the user has made configuration changes in the bracket tab preview.
+            const previewMatches = bracketPreviewById[t.id];
+            const effectivePreviewMatches = !bracketStarted && previewMatches && previewMatches.length > 0 ? previewMatches : baseProjected;
             const tournamentGames = games
               .filter(g => g.matchId && tm.some(m => m.id === g.matchId))
               .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -458,7 +559,12 @@ export default function ActiveTournamentsPage() {
                         Round Robin
                       </button>
                       <button
-                        onClick={() => setActiveTabByTournament(prev => ({ ...prev, [t.id]: 'bracket' }))}
+                        onClick={() => {
+                          if (!bracketStarted && (!bracketPreviewById[t.id] || bracketPreviewById[t.id].length === 0) && effectivePreviewMatches.length > 0) {
+                            setBracketPreviewById(prev => ({ ...prev, [t.id]: [...effectivePreviewMatches] }));
+                          }
+                          setActiveTabByTournament(prev => ({ ...prev, [t.id]: 'bracket' }));
+                        }}
                         className={`px-4 py-2.5 text-sm font-semibold rounded-t-lg border-b-2 transition-colors ${
                           activeTab === 'bracket'
                             ? 'text-blue-700 border-blue-600 bg-blue-50'
@@ -581,10 +687,45 @@ export default function ActiveTournamentsPage() {
                   {activeTab === 'bracket' && (
                     <div className="space-y-6">
                       {!bracketStarted && (
-                        <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-5">
-                          <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider mb-1">Bracket preview</p>
-                          <p className="text-sm text-blue-900">This preview updates live based on current round robin standings.</p>
-                          <div className="mt-4 flex flex-wrap items-center gap-3">
+                        <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-5 space-y-4">
+                          <div>
+                            <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider mb-1">Bracket preview — editable</p>
+                            <p className="text-sm text-blue-900">Click matches in the bracket below (especially byes or the play-in) to reassign players or choose who gets byes. Use the controls to add or remove the play-in round.</p>
+                          </div>
+
+                          {/* Play-in round controls for add/remove */}
+                          <div className="bg-white/70 border border-blue-200 rounded-lg p-3">
+                            <div className="text-xs font-semibold text-blue-800 mb-2">Play-in / preliminary round</div>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                onClick={() => applyPlayInModeToPreview(t, 'force')}
+                                className="px-3 py-1.5 text-xs font-medium rounded-lg border bg-white hover:bg-blue-50 border-blue-300 text-blue-700"
+                              >
+                                + Add / Force play-in round
+                              </button>
+                              <button
+                                onClick={() => applyPlayInModeToPreview(t, 'none')}
+                                className="px-3 py-1.5 text-xs font-medium rounded-lg border bg-white hover:bg-blue-50 border-blue-300 text-blue-700"
+                              >
+                                − Remove play-in (use bye instead)
+                              </button>
+                              <button
+                                onClick={() => applyPlayInModeToPreview(t, 'auto')}
+                                className="px-3 py-1.5 text-xs font-medium rounded-lg border bg-white hover:bg-blue-50 border-blue-300 text-blue-700"
+                              >
+                                Auto (based on player count)
+                              </button>
+                              <button
+                                onClick={() => resetBracketPreview(t.id)}
+                                className="px-3 py-1.5 text-xs font-medium rounded-lg border bg-white hover:bg-gray-50 border-gray-300 text-gray-600 ml-auto"
+                              >
+                                Reset to auto-generated
+                              </button>
+                            </div>
+                            <p className="text-[10px] text-blue-600 mt-1.5">Changing this will regenerate the bracket structure for the preview using the current RR standings.</p>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-3">
                             <button
                               onClick={() => startBracket(t)}
                               disabled={!firstRoundComplete}
@@ -594,7 +735,7 @@ export default function ActiveTournamentsPage() {
                                   : 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
                               }`}
                             >
-                              🏆 Start Bracket Stage
+                              🏆 Start Bracket with Current Preview
                             </button>
                             {!firstRoundComplete && (
                               <span className="text-xs text-blue-800">Available after Round Robin Round 1 is complete.</span>
@@ -613,22 +754,33 @@ export default function ActiveTournamentsPage() {
                             onClick={() => startBracket(t)}
                             className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-bold border border-emerald-700 transition-colors"
                           >
-                            Start Bracket
+                            Start Bracket with Current Preview
                           </button>
                         </div>
                       )}
 
-                      {(bracketStarted || projectedBracketMatches.length > 0) ? (
+                      {(bracketStarted || effectivePreviewMatches.length > 0) ? (
                         <div className="bg-white rounded-2xl shadow-sm border-2 border-gray-200 p-6">
                           <BracketView
-                            bracketMatches={bracketStarted ? bracketMatches : projectedBracketMatches}
+                            bracketMatches={bracketStarted ? bracketMatches : effectivePreviewMatches}
                             getPlayerName={getPlayerName}
                             tournamentPlayers={t.players}
                             onAddGame={addGameToMatch}
                             onSaveGameEdit={saveGameEdit}
-                            onSwapPlayers={swapPlayers}
-                            readOnly={!bracketStarted}
+                            onSwapPlayers={bracketStarted ? swapPlayers : async (mid, p1, p2) => { handlePreviewBracketSwap(t.id, mid, p1, p2, effectivePreviewMatches); }}
+                            readOnly={false}
+                            previewMode={!bracketStarted}
                           />
+                          {!bracketStarted && (
+                            <div className="mt-3 flex justify-end">
+                              <button
+                                onClick={() => resetBracketPreview(t.id)}
+                                className="text-xs text-gray-500 hover:text-gray-700 underline"
+                              >
+                                Reset preview to auto-generated
+                              </button>
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-5">

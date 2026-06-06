@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Tournament } from '../../../types/pingpong';
+import { Tournament, Match, BracketConfig } from '../../../types/pingpong';
 import { getTournaments, saveData, setTournament, getTournament, deleteTournament, registerMatchesIndex, unregisterMatchesIndex, syncTournamentPlayers } from '../../../data/data';
 import { createRoundRobinPairings, advanceBracketRound, createBracketMatches, advanceRoundRobinRound } from '../../../lib/tournament';
 
@@ -159,10 +159,48 @@ if (action === 'advanceRound') {
       tournament.status = 'bracket';
       tournament.bracketStartedAt = tournament.bracketStartedAt ?? new Date().toISOString();
       tournament.playerRanking = undefined;
-      const newBracketMatches = createBracketMatches(tournament, true);
+
+      // Support committing a user-configured bracket from the live preview in the UI.
+      // The client can send the exact (edited) initial bracket matches (R1 + optional play-in)
+      // and/or a bracketConfig (e.g. playInMode).
+      const initialBracketMatches: Match[] | undefined = (body as { initialBracketMatches?: Match[] }).initialBracketMatches;
+      const incomingConfig = (body as { bracketConfig?: BracketConfig }).bracketConfig;
+      if (incomingConfig) {
+        tournament.bracketConfig = incomingConfig;
+      }
+      let newBracketMatches: Match[];
+
+      if (initialBracketMatches && Array.isArray(initialBracketMatches) && initialBracketMatches.length > 0) {
+        // Basic validation: only unplayed bracket matches for round 0 (play-in) or 1+
+        const invalid = initialBracketMatches.some(m =>
+          m.round !== 'bracket' ||
+          (m.games && m.games.length > 0) ||
+          (m.winnerId && m.player1Id !== 'BYE' && m.player2Id !== 'BYE' && (m.bracketRound ?? 0) > 0)
+        );
+        if (invalid) {
+          return NextResponse.json({ error: 'Invalid initial bracket matches for preview commit' }, { status: 400 });
+        }
+
+        // Run normal creation on a clone purely for side-effects (playerRanking etc.)
+        try {
+          const clone: Tournament = {
+            ...tournament,
+            matches: [...(tournament.matches ?? [])],
+            bracketRounds: tournament.bracketRounds.map(r => ({ ...r })),
+          };
+          createBracketMatches(clone, true);
+          if (clone.playerRanking) tournament.playerRanking = clone.playerRanking;
+        } catch {}
+
+        newBracketMatches = initialBracketMatches.map(m => ({ ...m }));
+      } else {
+        newBracketMatches = createBracketMatches(tournament, true);
+      }
+
       if (newBracketMatches.length === 0) {
         return NextResponse.json({ error: 'Failed to create bracket matches' }, { status: 400 });
       }
+
       if (!tournament.matches) tournament.matches = [];
       tournament.matches.push(...newBracketMatches);
       await registerMatchesIndex(newBracketMatches);

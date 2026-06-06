@@ -267,7 +267,9 @@ export function advanceBracketRound(tournament: Tournament): Match[] {
     return []; // Current round not complete
   }
 
-  // Get winners
+  // Get winners in positional order (preserves the bracket structure encoded at R1 creation).
+  // currentRoundMatches are already stored in display order, so winners[i] is the winner
+  // of the i-th match. Pairs of adjacent matches (0+1, 2+3, …) feed into the next round.
   const winners = currentRoundMatches.map(m => m.winnerId).filter(id => id) as string[];
 
   if (winners.length < 2) {
@@ -280,62 +282,25 @@ export function advanceBracketRound(tournament: Tournament): Match[] {
   const nextMatchCount = Math.floor(winners.length / 2);
   const bestOf = getBestOfForMatchCount(tournament, nextMatchCount);
 
-  // Sort winners by seeding to maintain bracket integrity
-  if (tournament.playerRanking) {
-    winners.sort((a, b) => {
-      const indexA = tournament.playerRanking!.indexOf(a);
-      const indexB = tournament.playerRanking!.indexOf(b);
-      return indexA - indexB;
-    });
-  }
-
-  // Ensure bye players don't play each other in the next round
-  const byePlayers = (tournament.matches ?? [])
-    .filter(m => m.bracketRound === 1 && m.player2Id === 'BYE')
-    .map(m => m.player1Id);
-
-  if (winners.length >= 3 && byePlayers.includes(winners[0]) && byePlayers.includes(winners[1])) {
-    [winners[1], winners[2]] = [winners[2], winners[1]];
-  }
-
-  // Handle byes: if odd number of winners, the last one gets a bye
-  let playersForNextRound = [...winners];
-  if (winners.length % 2 === 1) {
-    if (currentRound === 1) {
-      playersForNextRound = winners.slice(0, -1);
-      const byePlayer = winners[winners.length - 1];
-
-      const byeMatch: Match = {
-        id: Date.now().toString() + Math.random(),
-        tournamentId: tournament.id,
-        player1Id: byePlayer,
-        player2Id: 'BYE',
-        round: 'bracket',
-        bracketRound: currentRound + 1,
-        bestOf: 1,
-        games: [],
-        winnerId: byePlayer,
-      };
-      newMatches.push(byeMatch);
-    } else {
-      playersForNextRound = winners;
-    }
-  }
-
-  for (let i = 0; i < playersForNextRound.length; i += 2) {
-    if (i + 1 < playersForNextRound.length) {
-      const newMatch: Match = {
-        id: Date.now().toString() + Math.random(),
-        tournamentId: tournament.id,
-        player1Id: playersForNextRound[i],
-        player2Id: playersForNextRound[i + 1],
-        round: 'bracket',
-        bracketRound: currentRound + 1,
-        bestOf: bestOf,
-        games: [],
-      };
-      newMatches.push(newMatch);
-    }
+  // Pair winners sequentially by position: winner[0] vs winner[1], winner[2] vs winner[3], …
+  // No re-sorting or re-seeding — the initial bracket already encoded all seeding logic.
+  // Re-ordering here is what caused the wrong pairings bug.
+  for (let i = 0; i + 1 < winners.length; i += 2) {
+    const p1 = winners[i];
+    const p2 = winners[i + 1];
+    const isBye = p1 === 'BYE' || p2 === 'BYE';
+    const newMatch: Match = {
+      id: Date.now().toString() + Math.random(),
+      tournamentId: tournament.id,
+      player1Id: p1,
+      player2Id: p2,
+      round: 'bracket',
+      bracketRound: currentRound + 1,
+      bestOf: isBye ? 1 : bestOf,
+      games: [],
+      ...(isBye ? { winnerId: p1 === 'BYE' ? p2 : p1 } : {}),
+    };
+    newMatches.push(newMatch);
   }
 
   return newMatches;
@@ -449,10 +414,19 @@ export function createBracketMatches(tournament: Tournament, createMainBracket =
   // Set player ranking on tournament
   tournament.playerRanking = rankedPlayers;
 
-  // Create bracket matches
+  const bracketConfig = tournament.bracketConfig || {};
+  const playInMode = bracketConfig.playInMode || 'auto';
+
+  const isOdd = bracketPlayers.length % 2 === 1;
+  const shouldPlayIn = playInMode === 'force' || (playInMode === 'auto' && isOdd);
+
   if (bracketPlayers.length >= 2) {
-    if (bracketPlayers.length % 2 === 1) {
-      // Odd number of players: bottom two seeds play in to fill the last spot
+    if (shouldPlayIn) {
+      // Play-in round (prelim for odd or forced): bottom two lowest seeds play each other.
+      // This is bracketRound 0 (special prelim). The main bracket is then created on the
+      // reduced set (n-1 players: top n-2 + PLAY_IN_WINNER placeholder) so that the main
+      // R1 is a clean power-of-2 with no extra byes in the main bracket's first round.
+      // For 9 players: 1 play-in + 4 matches in main R1 (for the 8 advancers).
       const playInMatch: Match = {
         id: Date.now().toString() + Math.random(),
         tournamentId: tournament.id,
@@ -473,7 +447,8 @@ export function createBracketMatches(tournament: Tournament, createMainBracket =
         newMatches.push(...createSeededBracketMatches(mainBracketPlayers, tournament));
       }
     } else {
-      // Even number of players: use standard seeding with byes for non-power-of-2 counts
+      // No play-in ( 'none' on odd, or even without force): full n, power-of-2 R1 will
+      // contain BYEs for the excess slots. Top seeds get the byes in R1.
       newMatches.push(...createSeededBracketMatches(bracketPlayers, tournament));
     }
   }

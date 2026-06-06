@@ -154,6 +154,21 @@ describe('createBracketMatches', () => {
     expect(playIn).toHaveLength(1);
   });
 
+  it('for 9 players with play-in: creates exactly 1 play-in (round 0) + 4 main R1 matches (round 1) with no BYEs in the main first round', () => {
+    const tournament = makeTournament({ players: ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8', 'p9'], matches: [] });
+    const matches = createBracketMatches(tournament);
+    const playIns = matches.filter(m => m.bracketRound === 0);
+    const mainR1 = matches.filter(m => m.bracketRound === 1);
+    expect(playIns).toHaveLength(1);
+    expect(mainR1).toHaveLength(4);
+    // The main R1 should be the first round after play-in, with 8 "players" (7 real + PLAY_IN_WINNER), so no BYE
+    const hasByeInMainR1 = mainR1.some(m => m.player1Id === 'BYE' || m.player2Id === 'BYE');
+    expect(hasByeInMainR1).toBe(false);
+    // One of them should have the PLAY_IN_WINNER
+    const hasPlaceholder = mainR1.some(m => m.player1Id === 'PLAY_IN_WINNER' || m.player2Id === 'PLAY_IN_WINNER');
+    expect(hasPlaceholder).toBe(true);
+  });
+
   it('returns empty array when bracket matches already exist', () => {
     const tournament = makeTournament({
       matches: [makeMatch('existing', { round: 'bracket', bracketRound: 1 })],
@@ -373,7 +388,7 @@ describe('activePlayers', () => {
       const matches = createBracketMatches(tournament);
       const allPlayerIds = matches.flatMap(m => [m.player1Id, m.player2Id]).filter(id => id !== 'BYE');
       expect(allPlayerIds).not.toContain('p4');
-      // Should be a play-in since 3 is odd
+      // Should be a play-in (round 0) since 3 active is odd
       const playIn = matches.filter(m => m.bracketRound === 0);
       expect(playIn).toHaveLength(1);
     });
