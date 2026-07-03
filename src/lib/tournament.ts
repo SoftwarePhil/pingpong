@@ -456,6 +456,38 @@ export function createBracketMatches(tournament: Tournament, createMainBracket =
   return newMatches;
 }
 
+/**
+ * Ranks `players` by current round-robin standings: most wins first, ties
+ * broken by point differential. Only results among the given `players` are
+ * counted, so this works correctly for ranking just an active subset.
+ * Shared by the 'top-vs-top' pairing strategy in both `advanceRoundRobinRound`
+ * and `resyncRoundRobinMatches`.
+ */
+function rankPlayersByStandings(players: string[], matches: Match[]): string[] {
+  const wins: Record<string, number> = {};
+  const pointDiff: Record<string, number> = {};
+  players.forEach(p => { wins[p] = 0; pointDiff[p] = 0; });
+  matches.forEach(m => {
+    if (m.winnerId && players.includes(m.winnerId)) {
+      wins[m.winnerId] = (wins[m.winnerId] || 0) + 1;
+    }
+    if (m.player2Id !== 'BYE') {
+      m.games.forEach(g => {
+        if (players.includes(m.player1Id)) {
+          pointDiff[m.player1Id] = (pointDiff[m.player1Id] || 0) + g.score1 - g.score2;
+        }
+        if (players.includes(m.player2Id)) {
+          pointDiff[m.player2Id] = (pointDiff[m.player2Id] || 0) + g.score2 - g.score1;
+        }
+      });
+    }
+  });
+  return [...players].sort((a, b) => {
+    if (wins[b] !== wins[a]) return wins[b] - wins[a];
+    return (pointDiff[b] || 0) - (pointDiff[a] || 0);
+  });
+}
+
 // Function to advance to next round robin round
 export function advanceRoundRobinRound(tournament: Tournament): Match[] {
   // Find the next round number
@@ -472,33 +504,114 @@ export function advanceRoundRobinRound(tournament: Tournament): Match[] {
   const strategy = tournament.rrPairingStrategy ?? 'random';
 
   if (strategy === 'top-vs-top') {
-    // Sort players by current standings: wins then point differential
-    const playerWins: Record<string, number> = {};
-    const playerPointDiff: Record<string, number> = {};
-    activePlayers.forEach(p => { playerWins[p] = 0; playerPointDiff[p] = 0; });
-    tournamentMatches.forEach(m => {
-      if (m.winnerId && activePlayers.includes(m.winnerId)) {
-        playerWins[m.winnerId] = (playerWins[m.winnerId] || 0) + 1;
-      }
-      if (m.player2Id !== 'BYE') {
-        m.games.forEach(g => {
-          if (activePlayers.includes(m.player1Id)) {
-            playerPointDiff[m.player1Id] = (playerPointDiff[m.player1Id] || 0) + g.score1 - g.score2;
-          }
-          if (activePlayers.includes(m.player2Id)) {
-            playerPointDiff[m.player2Id] = (playerPointDiff[m.player2Id] || 0) + g.score2 - g.score1;
-          }
-        });
-      }
-    });
-    const sortedPlayers = [...activePlayers].sort((a, b) => {
-      if (playerWins[b] !== playerWins[a]) return playerWins[b] - playerWins[a];
-      return (playerPointDiff[b] || 0) - (playerPointDiff[a] || 0);
-    });
+    const sortedPlayers = rankPlayersByStandings(activePlayers, tournamentMatches);
     return createRoundRobinPairings(sortedPlayers, tournament.id, nextRound, tournament.rrBestOf ?? 1);
   }
 
   // Random strategy (default)
   const shuffledPlayers = [...activePlayers].sort(() => Math.random() - 0.5);
   return createRoundRobinPairings(shuffledPlayers, tournament.id, nextRound, tournament.rrBestOf ?? 1);
+}
+
+export interface RoundRobinResyncResult {
+  /** The tournament's full matches array after resyncing (untouched bracket
+   *  matches + untouched earlier RR rounds + the freshly paired current round). */
+  matches: Match[];
+  /** Newly created matches for the current round — register these in the match index. */
+  addedMatches: Match[];
+  /** IDs of matches removed by the resync — unregister these from the match index. */
+  removedMatchIds: string[];
+}
+
+/**
+ * Recomputes round-robin pairings for the CURRENT round so that every active
+ * player who has not completed a real match yet this round ends up paired
+ * exactly once (or given a bye if the pool is odd) — and touches nothing else.
+ *
+ * Rules implemented:
+ * - A player who hasn't played gets added back to the pairing pool — this
+ *   covers brand-new players, reactivated players, and players whose
+ *   opponent was just removed (they're "unplayed" once their old match is
+ *   dropped, same as anyone else without a real result this round).
+ * - Players who have already played (a real game was recorded, or they have
+ *   a genuine non-BYE winner) are left completely untouched, in every round.
+ * - Players who haven't played and get removed are dropped from every
+ *   *unplayed* match they're in — including stale leftovers in earlier
+ *   rounds, not just the current one.
+ * - A BYE match is intentionally NOT treated as "played for real": the bye
+ *   holder always returns to the pool so they can be matched against anyone
+ *   newly added/reactivated instead of auto-winning by default.
+ * - Bracket matches — and everything once the bracket has started — are
+ *   never touched.
+ *
+ * Because the "needs a match" pool is always rebuilt from scratch (rather
+ * than patching individual matches in place), a player can never end up in
+ * two matches at once. This is what makes the operation safe to run
+ * automatically after every roster change, and again on demand via an
+ * explicit "Refresh Matches" action, without ever producing duplicates.
+ */
+export function resyncRoundRobinMatches(tournament: Tournament): RoundRobinResyncResult {
+  const allMatches = tournament.matches ?? [];
+
+  const bracketStarted = Boolean(
+    tournament.bracketStartedAt ||
+    allMatches.some(m => m.round === 'bracket') ||
+    tournament.status === 'bracket' ||
+    tournament.status === 'completed'
+  );
+  if (bracketStarted) {
+    // Never touch round-robin history once the tournament has moved past it.
+    return { matches: allMatches, addedMatches: [], removedMatchIds: [] };
+  }
+
+  const nonRRMatches = allMatches.filter(m => m.round !== 'roundRobin');
+  const rrMatches    = allMatches.filter(m => m.round === 'roundRobin');
+
+  const currentRound = rrMatches.length > 0
+    ? Math.max(...rrMatches.map(m => m.bracketRound ?? 1))
+    : 1;
+
+  const currentRoundMatches = rrMatches.filter(m => (m.bracketRound ?? 1) === currentRound);
+  const otherRoundMatches   = rrMatches.filter(m => (m.bracketRound ?? 1) !== currentRound);
+
+  // "Played for real": has a recorded game, or a genuine (non-BYE) winner.
+  const isLocked = (m: Match) =>
+    m.games.length > 0 || (!!m.winnerId && m.player1Id !== 'BYE' && m.player2Id !== 'BYE');
+
+  const activePlayers = tournament.activePlayers ?? tournament.players;
+  const activeSet = new Set(activePlayers);
+
+  // Defensive cleanup of earlier rounds: an unplayed match left behind for a
+  // player who is no longer active is stale and gets dropped. Played matches
+  // are always kept, regardless of a participant's current active status.
+  const keptOtherRoundMatches: Match[] = [];
+  const staleOtherRoundMatchIds: string[] = [];
+  for (const m of otherRoundMatches) {
+    const stillValid = isLocked(m) ||
+      (activeSet.has(m.player1Id) && (m.player2Id === 'BYE' || activeSet.has(m.player2Id)));
+    if (stillValid) keptOtherRoundMatches.push(m);
+    else staleOtherRoundMatchIds.push(m.id);
+  }
+
+  const lockedMatches   = currentRoundMatches.filter(isLocked);
+  const unlockedMatches = currentRoundMatches.filter(m => !isLocked(m));
+  const lockedPlayerIds = new Set(lockedMatches.flatMap(m => [m.player1Id, m.player2Id]));
+
+  // Everyone active who doesn't already have a real result this round needs
+  // to be (re)paired: brand-new players, reactivated players, players whose
+  // opponent was removed, and bye holders all fall into this pool. Rebuilding
+  // it from `activePlayers` (rather than patching old matches) guarantees no
+  // player can ever appear in more than one match this round.
+  const pool = activePlayers.filter(pid => !lockedPlayerIds.has(pid));
+
+  const orderedPool = (tournament.rrPairingStrategy ?? 'random') === 'top-vs-top'
+    ? rankPlayersByStandings(pool, rrMatches)
+    : [...pool].sort(() => Math.random() - 0.5);
+
+  const addedMatches = createRoundRobinPairings(orderedPool, tournament.id, currentRound, tournament.rrBestOf ?? 1);
+
+  const removedMatchIds = [...unlockedMatches.map(m => m.id), ...staleOtherRoundMatchIds];
+  const matches = [...nonRRMatches, ...keptOtherRoundMatches, ...lockedMatches, ...addedMatches];
+
+  return { matches, addedMatches, removedMatchIds };
 }

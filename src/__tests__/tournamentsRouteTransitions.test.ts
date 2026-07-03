@@ -113,23 +113,25 @@ describe('tournaments route transitions', () => {
     expect(mockedRegisterMatchesIndex).toHaveBeenCalledTimes(1);
   });
 
-  it('rejects roster edits after bracket has started', async () => {
-    mockedGetTournament.mockResolvedValue(
-      makeTournament({
-        status: 'bracket',
-        bracketStartedAt: new Date().toISOString(),
-        matches: [makeMatch({ id: 'b1', round: 'bracket', bracketRound: 1 })],
-      })
-    );
+  it('ignores legacy players/activePlayers fields — roster edits now live on their own endpoint', async () => {
+    // Adding/removing players is handled exclusively by
+    // PATCH /api/tournaments/[id]/players now. The main PUT handler no longer
+    // destructures `players`/`activePlayers` at all, so sending them here is a
+    // no-op rather than an error — the request just falls through to whatever
+    // other fields (status/action) were provided.
+    const tournament = makeTournament({ status: 'roundRobin' });
+    mockedGetTournament.mockResolvedValue(tournament);
 
     const request = new Request('http://localhost/api/tournaments', {
       method: 'PUT',
-      body: JSON.stringify({ id: 't1', players: ['p1', 'p2', 'p3'] }),
+      body: JSON.stringify({ id: 't1', players: ['p1', 'p2', 'p3'], activePlayers: ['p1', 'p2', 'p3'] }),
     });
     const response = await PUT(request as never);
     const body = await response.json();
 
-    expect(response.status).toBe(400);
-    expect(body.error).toMatch(/after bracket has started/i);
+    expect(response.status).toBe(200);
+    // Roster is untouched by this endpoint
+    expect(body.players).toEqual(['p1', 'p2', 'p3', 'p4']);
+    expect(mockedSetTournament).toHaveBeenCalledTimes(1);
   });
 });

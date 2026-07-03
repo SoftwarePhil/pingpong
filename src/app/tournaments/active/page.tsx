@@ -152,15 +152,24 @@ export default function ActiveTournamentsPage() {
 
   const toggleActivePlayer = async (tournament: Tournament, playerId: string) => {
     const current = tournament.activePlayers ?? tournament.players;
-    const updated = current.includes(playerId)
-      ? current.filter(id => id !== playerId)
-      : [...current, playerId];
-    await fetch('/api/tournaments', {
-      method: 'PUT',
+    const isActive = current.includes(playerId);
+    // Atomic diff-based roster update — the server resyncs round-robin
+    // matches for the current round in the same request (no separate call
+    // needed): the removed player's unplayed match is dropped and their
+    // opponent (or the reactivated player) returns to the pairing pool.
+    const res = await fetch(`/api/tournaments/${tournament.id}/players`, {
+      method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: tournament.id, activePlayers: updated }),
+      body: JSON.stringify(isActive ? { remove: [playerId] } : { add: [playerId] }),
     });
-    await fetchTournaments();
+    if (res.ok) { await fetchTournaments(); }
+    else { const err = await res.json(); alert(err.error ?? 'Failed to update player'); }
+  };
+
+  const refreshMatches = async (tournament: Tournament) => {
+    const res = await fetch(`/api/tournaments/${tournament.id}/refresh-matches`, { method: 'POST' });
+    if (res.ok) { await fetchTournaments(); }
+    else { const err = await res.json(); alert(err.error ?? 'Failed to refresh matches'); }
   };
 
   const advanceRound = async (tournament: Tournament) => {
@@ -292,16 +301,28 @@ export default function ActiveTournamentsPage() {
   const updateTournamentPlayers = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingTournament || [...new Set(selectedPlayers)].length < 2) return;
-    const res = await fetch('/api/tournaments', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: editingTournament.id, players: [...new Set(selectedPlayers)], activePlayers: [...new Set(selectedPlayers)] }),
-    });
-    if (res.ok) {
+    const desired = [...new Set(selectedPlayers)];
+    const currentActive = editingTournament.activePlayers ?? editingTournament.players;
+    // Diff against the current active roster so this always goes through the
+    // atomic { add, remove } endpoint — the server performs the roster change
+    // and the round-robin match resync as a single request.
+    const add = desired.filter(id => !currentActive.includes(id));
+    const remove = currentActive.filter(id => !desired.includes(id));
+
+    const closeForm = () => {
       setShowEditForm(false); setEditingTournament(null); setSelectedPlayers([]);
       setShowNewPlayerForm(false); setNewPlayerName(''); setNewPlayerError(null);
-      fetchTournaments();
-    } else { const err = await res.json(); alert(err.error ?? 'Failed to update tournament'); }
+    };
+
+    if (add.length === 0 && remove.length === 0) { closeForm(); return; }
+
+    const res = await fetch(`/api/tournaments/${editingTournament.id}/players`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ add, remove }),
+    });
+    if (res.ok) { closeForm(); fetchTournaments(); }
+    else { const err = await res.json(); alert(err.error ?? 'Failed to update tournament'); }
   };
 
   const createPlayerAndSelect = async () => {
@@ -627,6 +648,7 @@ export default function ActiveTournamentsPage() {
                           onSwapPlayers={swapPlayers}
                           onAdvanceRound={advanceRound}
                           onAddRound={addRoundRobinRound}
+                          onRefreshMatches={refreshMatches}
                         />
                       )}
 

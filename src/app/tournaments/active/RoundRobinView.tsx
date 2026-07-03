@@ -13,6 +13,7 @@ interface RoundRobinViewProps {
   onSwapPlayers: (matchId: string, p1: string, p2: string) => void;
   onAdvanceRound: (tournament: Tournament) => void;
   onAddRound: (tournament: Tournament) => void;
+  onRefreshMatches: (tournament: Tournament) => void;
 }
 
 export default function RoundRobinView({
@@ -25,6 +26,7 @@ export default function RoundRobinView({
   onSwapPlayers,
   onAdvanceRound,
   onAddRound,
+  onRefreshMatches,
 }: RoundRobinViewProps) {
   const allMatches = tournament.matches ?? [];
   const rrMatches  = allMatches.filter(m => m.round === 'roundRobin');
@@ -137,7 +139,16 @@ export default function RoundRobinView({
 
       {/* Current round matches */}
       <div>
-        <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wide mb-4">Current Matches</h4>
+        <div className="flex items-center justify-between mb-4">
+          <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wide">Current Matches</h4>
+          <button
+            onClick={() => onRefreshMatches(tournament)}
+            title="Regenerate matches for any active player who hasn't played this round yet (fixes duplicates/missing pairings)"
+            className="text-xs font-semibold text-blue-600 hover:text-blue-800 px-3 py-1.5 rounded-lg border border-blue-200 hover:bg-blue-50 transition-colors"
+          >
+            🔄 Refresh Matches
+          </button>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {currentRoundMatches.map(match => (
             <MatchCard
