@@ -85,13 +85,20 @@ export async function PUT(request: NextRequest) {
 
 if (action === 'advanceRound') {
       if (!bracketStarted && tournament.status !== 'completed') {
-        // Check if all current round matches are completed
-        const currentRoundMatches = (tournament.matches ?? []).filter(m =>
-          m.round === 'roundRobin' &&
-          !m.winnerId
+        // Check if all matches in the CURRENT round are completed. Scoped to
+        // just the current (highest) round — not all rounds — so that an
+        // edited/incomplete match left behind in an earlier round (e.g. via
+        // the round-picker in the UI) never blocks advancing an
+        // already-finished current round.
+        const rrMatchesForCheck = (tournament.matches ?? []).filter(m => m.round === 'roundRobin');
+        const currentRRRound = rrMatchesForCheck.length > 0
+          ? Math.max(...rrMatchesForCheck.map(m => m.bracketRound ?? 1))
+          : 1;
+        const incompleteCurrentRoundMatches = rrMatchesForCheck.filter(m =>
+          (m.bracketRound ?? 1) === currentRRRound && !m.winnerId
         );
 
-        if (currentRoundMatches.length > 0) {
+        if (incompleteCurrentRoundMatches.length > 0) {
           return NextResponse.json({ error: 'Current round is not complete' }, { status: 400 });
         }
 
