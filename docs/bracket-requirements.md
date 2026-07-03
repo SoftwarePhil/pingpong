@@ -22,9 +22,16 @@ This document reflects the current implemented behavior (prelim play-in + reduce
 - Only **active players** (`activePlayers` field, defaults to all players) participate in current and future rounds.
 
 ### Player Management During Round Robin
-- **Removing a player**: unplayed matches in the current round involving that player are deleted. Completed matches are preserved for stats.
-- **Adding 1 player**: if a bye match exists in the current round, it is converted into a real match against the new player. Otherwise the player is included from the next round onward.
-- **Adding 2+ players at once**: new players are paired against each other first (two at a time) and new matches are created for the current round. Any single leftover follows the single-player rule above.
+Adding/removing players is its **own atomic operation**, deliberately separate from the main tournament PUT endpoint: `PATCH /api/tournaments/[id]/players` with a diff-based body `{ add?: string[], remove?: string[] }`. The server computes the resulting roster/active-player lists itself and, in the same request, resyncs the current round's matches via `resyncRoundRobinMatches` (`src/lib/tournament.ts`) — a single call either fully applies the roster change *and* fixes up matches, or fails with no partial/duplicated state.
+
+`resyncRoundRobinMatches` always rebuilds the "needs a match" pool for the current round from scratch (rather than patching individual matches in place), which is what makes it safe to run repeatedly without ever producing duplicate pairings:
+- **A player who hasn't played gets added back to the pool.** This covers brand-new players, reactivated players (previously removed but never played), and players whose opponent was just removed — anyone active without a real result this round is eligible to be re-paired.
+- **Players who have played don't change.** A match with a recorded game, or a genuine (non-BYE) winner, is left completely untouched, in every round — including matches whose participant was later removed (kept for historical accuracy).
+- **Players who haven't played and get removed are dropped from every unplayed match they're in** — not just the current round. Stale unplayed leftovers from earlier rounds are also cleaned up defensively.
+- A BYE match is intentionally **not** treated as "played for real": the bye holder always returns to the pool so they can be matched against anyone newly added/reactivated instead of auto-winning by default.
+- The pool is paired via `createRoundRobinPairings`, honoring `rrPairingStrategy` (`top-vs-top` ranks the pool by current standings before pairing; `random` shuffles it) — the same pairing engine used everywhere else, so there is a single source of truth for how matches get built.
+
+**Refreshing matches on demand:** `POST /api/tournaments/[id]/refresh-matches` runs the exact same `resyncRoundRobinMatches` resync without changing the roster at all. Roster edits already resync automatically as part of the PATCH above; this endpoint exists purely so the host can re-trigger the same fix-up on demand (e.g. a "🔄 Refresh Matches" button next to "Current Matches" in the UI) if matches ever look out of sync. Both endpoints reject requests once the bracket has started or the tournament is completed.
 
 ### Advancement
 - The host manually advances rounds after all current-round matches are complete.
@@ -156,13 +163,18 @@ Top seeds get BYE in R1 and advance to the "quarterfinal" round. Lowest seeds pl
 
 | File | Responsibility |
 |------|---------------|
-| `src/lib/tournament.ts` | `generateBracketSeeding`, `createSeededBracketMatches`, `createBracketMatches` (play-in prelim + reduced main when shouldPlayIn / force, else full n; uses bracketConfig.playInMode), `advanceBracketRound`, cascade re-pairing functions (used for preview swaps and explicit bye forcing) |
-| `src/app/api/tournaments/route.ts` | Bracket start (accepts `initialBracketMatches` and `bracketConfig` from preview), round advancement |
-| `src/app/tournaments/active/page.tsx` | Preview state management (`bracketPreviewById`), "Apply play-in mode" regeneration (sets `bracketConfig` on clone and calls creation), swap wrapper that calls cascades locally, "Start Bracket" that commits preview matches + config |
+| `src/lib/tournament.ts` | `generateBracketSeeding`, `createSeededBracketMatches`, `createBracketMatches` (play-in prelim + reduced main when shouldPlayIn / force, else full n; uses bracketConfig.playInMode), `advanceBracketRound`, cascade re-pairing functions (used for preview swaps and explicit bye forcing), `resyncRoundRobinMatches` (roster-change/refresh match reconciliation for the current RR round) |
+| `src/app/api/tournaments/route.ts` | Bracket start (accepts `initialBracketMatches` and `bracketConfig` from preview), round advancement. Does **not** handle player roster edits — see the dedicated endpoint below. |
+| `src/app/api/tournaments/[id]/players/route.ts` | Atomic, diff-based add/remove-players endpoint (`PATCH { add?, remove? }`); resyncs RR matches in the same request via `resyncRoundRobinMatches`. |
+| `src/app/api/tournaments/[id]/refresh-matches/route.ts` | On-demand "Refresh Matches" endpoint (`POST`, no body); re-runs `resyncRoundRobinMatches` without changing the roster. |
+| `src/app/tournaments/active/page.tsx` | Preview state management (`bracketPreviewById`), "Apply play-in mode" regeneration (sets `bracketConfig` on clone and calls creation), swap wrapper that calls cascades locally, "Start Bracket" that commits preview matches + config, roster edit/toggle handlers that call the players/refresh-matches endpoints |
+| `src/app/tournaments/active/RoundRobinView.tsx` | Current-round match list + "🔄 Refresh Matches" action |
 | `src/app/tournaments/active/BracketView.tsx` | Renders R1 (including play-in real match + bye cards) in a single column for new brackets. Legacy round-0 / `PLAY_IN_WINNER` handling retained for old data. Supports config-mode clicks in preview. |
 | `src/app/api/games/route.ts` | Normal game recording. Play-in substitution block: when the play-in match (round 0) is completed, the `PLAY_IN_WINNER` placeholder in the R1 match is replaced with the real winner's ID. |
 | `src/types/pingpong.ts` | `BracketConfig { playInMode?, byePlayerIds? }`, added to `Tournament` |
 | `src/__tests__/tournament.test.ts` | Tests updated to assert integrated R1 behavior (real play-in in R1 + BYEs for top) |
+| `src/__tests__/resyncRoundRobinMatches.test.ts` | Pure-function coverage for the roster-change/refresh match reconciliation rules above, including the simultaneous add+remove duplicate-match regression |
+| `src/__tests__/tournamentPlayersRoute.test.ts`, `src/__tests__/tournamentRefreshMatchesRoute.test.ts` | Route-level wiring/guard tests for the two endpoints above |
 
 Legacy round-0 play-ins and `PLAY_IN_WINNER` placeholders continue to be supported for existing tournaments (filters, rendering, and advancement tests still cover them).
 
