@@ -501,10 +501,6 @@ export default function ActiveTournamentsPage() {
             const bracketStarted = Boolean(t.bracketStartedAt || bracketMatches.length > 0 || t.status === 'bracket');
             const activeTab = activeTabByTournament[t.id] ?? (bracketStarted ? 'bracket' : 'roundRobin');
             const rrMatches = tm.filter(m => m.round === 'roundRobin');
-            const currentRound = rrMatches.length > 0 ? Math.max(...rrMatches.map(m => m.bracketRound ?? 1)) : 1;
-            const pastRounds = Array.from(new Set(
-              rrMatches.filter(m => (m.bracketRound ?? 1) < currentRound).map(m => m.bracketRound ?? 1)
-            )).sort((a, b) => a - b);
             const firstRoundMatches = rrMatches.filter(m => (m.bracketRound ?? 1) === 1);
             const firstRoundComplete = firstRoundMatches.length > 0 && firstRoundMatches.every(m => Boolean(m.winnerId));
             const baseProjected = !bracketStarted ? getProjectedBracketMatches(t) : [];
@@ -652,13 +648,14 @@ export default function ActiveTournamentsPage() {
                         />
                       )}
 
-                      {(pastRounds.length > 0 || bracketStarted) && (
+                      {/* Once the bracket has started, round robin matches are frozen — this is a
+                          permanent read-only history. While round robin is still in progress,
+                          past rounds are instead browsable/editable directly inside RoundRobinView
+                          (click a round dot), so this summary is only needed post-bracket-start. */}
+                      {bracketStarted && (
                         <div className="mt-2 border-t border-gray-200 pt-6 space-y-5">
                           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Previous Round Robin Rounds</p>
-                          {(bracketStarted
-                            ? Array.from(new Set(rrMatches.map(m => m.bracketRound ?? 1))).sort((a, b) => a - b)
-                            : pastRounds
-                          ).map(round => {
+                          {Array.from(new Set(rrMatches.map(m => m.bracketRound ?? 1))).sort((a, b) => a - b).map(round => {
                             const roundMatches = rrMatches.filter(m => (m.bracketRound ?? 1) === round && m.player2Id !== 'BYE');
                             return (
                               <div key={round}>

@@ -134,4 +134,58 @@ describe('tournaments route transitions', () => {
     expect(body.players).toEqual(['p1', 'p2', 'p3', 'p4']);
     expect(mockedSetTournament).toHaveBeenCalledTimes(1);
   });
+
+  describe('advanceRound completeness check is scoped to the current round only', () => {
+    // Regression: an incomplete/no-winner round-robin match left behind in an
+    // EARLIER round (e.g. edited via the round picker in the UI) must never
+    // block advancing an already-finished current round — the pre-fix check
+    // scanned all rounds instead of just the current one.
+    it('advances the current round even when an earlier round has an incomplete match', async () => {
+      const tournament = makeTournament({
+        matches: [
+          // Round 1 — one match missing a winner (e.g. a score was edited/cleared)
+          makeMatch({ id: 'rr1a', round: 'roundRobin', bracketRound: 1, winnerId: 'p1' }),
+          makeMatch({ id: 'rr1b', round: 'roundRobin', bracketRound: 1, player1Id: 'p3', player2Id: 'p4' }), // no winnerId
+          // Round 2 (current) — fully complete
+          makeMatch({ id: 'rr2a', round: 'roundRobin', bracketRound: 2, winnerId: 'p1' }),
+          makeMatch({ id: 'rr2b', round: 'roundRobin', bracketRound: 2, player1Id: 'p3', player2Id: 'p4', winnerId: 'p3' }),
+        ],
+      });
+      mockedGetTournament.mockResolvedValue(tournament);
+      mockedAdvanceRoundRobinRound.mockReturnValue([makeMatch({ id: 'rr3', bracketRound: 3 })]);
+
+      const request = new Request('http://localhost/api/tournaments', {
+        method: 'PUT',
+        body: JSON.stringify({ id: 't1', action: 'advanceRound' }),
+      });
+      const response = await PUT(request as never);
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.error).toBeUndefined();
+      expect(mockedAdvanceRoundRobinRound).toHaveBeenCalledTimes(1);
+    });
+
+    it('still blocks advancing when the actual current round has an incomplete match', async () => {
+      const tournament = makeTournament({
+        matches: [
+          makeMatch({ id: 'rr1a', round: 'roundRobin', bracketRound: 1, winnerId: 'p1' }),
+          makeMatch({ id: 'rr2a', round: 'roundRobin', bracketRound: 2, winnerId: 'p1' }),
+          makeMatch({ id: 'rr2b', round: 'roundRobin', bracketRound: 2, player1Id: 'p3', player2Id: 'p4' }), // no winnerId — current round incomplete
+        ],
+      });
+      mockedGetTournament.mockResolvedValue(tournament);
+
+      const request = new Request('http://localhost/api/tournaments', {
+        method: 'PUT',
+        body: JSON.stringify({ id: 't1', action: 'advanceRound' }),
+      });
+      const response = await PUT(request as never);
+      const body = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(body.error).toMatch(/current round is not complete/i);
+      expect(mockedAdvanceRoundRobinRound).not.toHaveBeenCalled();
+    });
+  });
 });
