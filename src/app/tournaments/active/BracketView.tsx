@@ -25,13 +25,15 @@ interface BracketViewProps {
   tournamentPlayers?: string[];
   onAddGame: (match: Match, score1: number, score2: number) => Promise<void>;
   onSaveGameEdit: (gameId: string, score1: number, score2: number) => Promise<void>;
+  onDeleteGame?: (gameId: string) => Promise<void>;
+  onChangeBestOf?: (matchId: string, bestOf: number) => Promise<void>;
   onSwapPlayers?: (matchId: string, p1: string, p2: string) => Promise<void>;
   readOnly?: boolean;
   /** When true, the bracket is a preview before starting. Allows player/bye configuration via swaps but suppresses game recording. */
   previewMode?: boolean;
 }
 
-export default function BracketView({ bracketMatches, getPlayerName, tournamentPlayers = [], onAddGame, onSaveGameEdit, onSwapPlayers, readOnly = false, previewMode = false }: BracketViewProps) {
+export default function BracketView({ bracketMatches, getPlayerName, tournamentPlayers = [], onAddGame, onSaveGameEdit, onDeleteGame, onChangeBestOf, onSwapPlayers, readOnly = false, previewMode = false }: BracketViewProps) {
   const [activeMatchId, setActiveMatchId] = useState<string | null>(null);
   const [score1, setScore1] = useState('');
   const [score2, setScore2] = useState('');
@@ -105,12 +107,14 @@ export default function BracketView({ bracketMatches, getPlayerName, tournamentP
   // ── Active match score entry ───────────────────────────────────────────────
   const activeMatch = activeMatchId ? bracketMatches.find(m => m.id === activeMatchId) : null;
   const isByeActiveMatch = activeMatch && (activeMatch.player1Id === 'BYE' || activeMatch.player2Id === 'BYE');
+  const seriesComplete = !!activeMatch && activeMatch.games.length >= activeMatch.bestOf;
   const canSwapActiveMatch = ( !readOnly || previewMode ) && onSwapPlayers && activeMatch &&
     activeMatch.round === 'bracket' &&
     activeMatch.games.length === 0 &&
     // Allow swap on bye matches (they have winnerId set automatically but no real games)
     (!activeMatch.winnerId || isByeActiveMatch) &&
-    activeMatch.player1Id !== 'PLAY_IN_WINNER' && activeMatch.player2Id !== 'PLAY_IN_WINNER';
+    activeMatch.player1Id !== 'PLAY_IN_WINNER' && activeMatch.player2Id !== 'PLAY_IN_WINNER' &&
+    activeMatch.player1Id !== 'TBD' && activeMatch.player2Id !== 'TBD';
 
   // Players eligible for swap: all players in unplayed same-round matches (including bye matches).
   // Bye players are now eligible so they can be swapped with regular-match players and vice versa.
@@ -125,11 +129,12 @@ export default function BracketView({ bracketMatches, getPlayerName, tournamentP
     );
     return sameRoundUnplayed
       .flatMap(m => [m.player1Id, m.player2Id])
-      .filter((pid, idx, arr) => arr.indexOf(pid) === idx && pid !== 'PLAY_IN_WINNER' && pid !== 'BYE');
+      .filter((pid, idx, arr) => arr.indexOf(pid) === idx && pid !== 'PLAY_IN_WINNER' && pid !== 'BYE' && pid !== 'TBD');
   })();
 
   const handleRecord = async () => {
     if (!activeMatch) return;
+    if (activeMatch.games.length >= activeMatch.bestOf) return;
     const s1 = parseInt(score1);
     const s2 = parseInt(score2);
     //DO NOT CHANGE THIS BLOCK OF CODE
@@ -283,14 +288,14 @@ export default function BracketView({ bracketMatches, getPlayerName, tournamentP
       </div>
 
       {/* Score entry / Config panel — appears below the bracket when a match is selected */}
-      {activeMatch && ( !readOnly || previewMode ) && (!activeMatch.winnerId || isByeActiveMatch) && (
+      {activeMatch && ( !readOnly || previewMode ) && (
         <div className="bg-white border-2 border-blue-100 rounded-2xl p-5 shadow-sm">
           <div className="flex justify-between items-center mb-4">
             <div>
               <p className="text-xs font-semibold text-blue-500 uppercase tracking-widest mb-0.5">
                 {previewMode
                   ? (swapMode || isByeActiveMatch ? 'Change players / bye (preview)' : 'Adjust this match')
-                  : (swapMode ? (isByeActiveMatch ? 'Change Bye' : 'Change Players') : 'Recording game')}
+                  : (swapMode ? (isByeActiveMatch ? 'Change Bye' : 'Change Players') : activeMatch.winnerId ? 'Match complete — edit if needed' : 'Recording game')}
               </p>
               <h4 className="font-bold text-gray-900 text-base">
                 {getPlayerName(activeMatch.player1Id)}
@@ -371,6 +376,30 @@ export default function BracketView({ bracketMatches, getPlayerName, tournamentP
             </div>
           ) : (
             <>
+              {!previewMode && onChangeBestOf && (
+                <div className="flex items-center gap-2 mb-3 pb-3 border-b border-gray-100">
+                  <span className="text-xs text-gray-500 font-medium">Best of</span>
+                  <div className="flex gap-1">
+                    {[1, 3, 5].map(n => (
+                      <button
+                        key={n}
+                        onClick={() => onChangeBestOf(activeMatch.id, n)}
+                        className={`text-xs font-bold px-2.5 py-1 rounded-lg border transition-colors ${
+                          activeMatch.bestOf === n
+                            ? 'bg-blue-600 text-white border-blue-700'
+                            : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                        }`}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                  {activeMatch.winnerId && (
+                    <span className="text-[11px] text-amber-600 ml-1">Changing games may correct the winner and later-round matches</span>
+                  )}
+                </div>
+              )}
+
               <div className="flex items-end gap-3">
                 <div className="flex-1">
                   <label className="block text-xs text-gray-500 font-medium mb-1.5">
@@ -380,7 +409,8 @@ export default function BracketView({ bracketMatches, getPlayerName, tournamentP
                     type="number" min="0" max="50" value={score1}
                     onChange={e => setScore1(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && handleRecord()}
-                    className="w-full border-2 border-gray-200 rounded-xl px-3 py-3 text-2xl font-bold text-center text-gray-900 focus:border-blue-400 focus:outline-none transition-colors"
+                    disabled={seriesComplete}
+                    className="w-full border-2 border-gray-200 rounded-xl px-3 py-3 text-2xl font-bold text-center text-gray-900 focus:border-blue-400 focus:outline-none transition-colors disabled:bg-gray-50 disabled:text-gray-300 disabled:cursor-not-allowed"
                     placeholder="0"
                   />
                 </div>
@@ -395,7 +425,8 @@ export default function BracketView({ bracketMatches, getPlayerName, tournamentP
                     type="number" min="0" max="50" value={score2}
                     onChange={e => setScore2(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && handleRecord()}
-                    className="w-full border-2 border-gray-200 rounded-xl px-3 py-3 text-2xl font-bold text-center text-gray-900 focus:border-blue-400 focus:outline-none transition-colors"
+                    disabled={seriesComplete}
+                    className="w-full border-2 border-gray-200 rounded-xl px-3 py-3 text-2xl font-bold text-center text-gray-900 focus:border-blue-400 focus:outline-none transition-colors disabled:bg-gray-50 disabled:text-gray-300 disabled:cursor-not-allowed"
                     placeholder="0"
                   />
                 </div>
@@ -404,12 +435,20 @@ export default function BracketView({ bracketMatches, getPlayerName, tournamentP
                   <div className="h-[21px] mb-1.5" />
                   <button
                     onClick={handleRecord}
-                    className="bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white px-6 py-3.5 rounded-xl font-bold text-sm transition-colors shadow-sm whitespace-nowrap"
+                    disabled={seriesComplete}
+                    title={seriesComplete ? `Series is already complete (Bo${activeMatch.bestOf}) — increase "Best of" above to record more games` : undefined}
+                    className="bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white px-6 py-3.5 rounded-xl font-bold text-sm transition-colors shadow-sm whitespace-nowrap disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed disabled:hover:bg-gray-200"
                   >
                     ✓ Record
                   </button>
                 </div>
               </div>
+
+              {seriesComplete && (
+                <p className="mt-2 text-xs text-amber-600 text-center">
+                  Series complete at Bo{activeMatch.bestOf} — increase &quot;Best of&quot; above to record additional games.
+                </p>
+              )}
 
               {activeMatch.games.length > 0 && (
                 <div className="mt-4 pt-3 border-t border-gray-100">
@@ -438,13 +477,25 @@ export default function BracketView({ bracketMatches, getPlayerName, tournamentP
                         );
                       }
                       return (
-                        <button key={g.id}
-                          onClick={() => { setEditingGameId(g.id); setEditG1(g.score1.toString()); setEditG2(g.score2.toString()); }}
-                          className={`text-xs font-bold px-2.5 py-1 rounded-full border transition-opacity hover:opacity-70 ${
+                        <div key={g.id} className={`flex items-center gap-1 text-xs font-bold pl-2.5 pr-1 py-1 rounded-full border ${
                             p1Won ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'
                           }`}>
-                          G{i + 1}: {g.score1}–{g.score2}
-                        </button>
+                          <button
+                            onClick={() => { setEditingGameId(g.id); setEditG1(g.score1.toString()); setEditG2(g.score2.toString()); }}
+                            className="hover:opacity-70 transition-opacity"
+                          >
+                            G{i + 1}: {g.score1}–{g.score2}
+                          </button>
+                          {onDeleteGame && (
+                            <button
+                              onClick={() => onDeleteGame(g.id)}
+                              title="Delete this game"
+                              className="text-gray-400 hover:text-red-600 px-1 leading-none"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
                       );
                     })}
                     <span className="text-xs text-gray-400">
@@ -460,8 +511,8 @@ export default function BracketView({ bracketMatches, getPlayerName, tournamentP
         </div>
       )}
 
-      {/* Game scores panel — completed matches in both active and history mode */}
-      {activeMatch && (readOnly || !!activeMatch.winnerId) && activeMatch.games.length > 0 && (
+      {/* Game scores panel — read-only history view only (editable views show the full edit panel above) */}
+      {activeMatch && readOnly && !previewMode && !!activeMatch.winnerId && activeMatch.games.length > 0 && (
         <div className="bg-white border-2 border-gray-100 rounded-2xl p-5 shadow-sm">
           <div className="flex justify-between items-center mb-3">
             <div>
@@ -535,7 +586,8 @@ function BracketCard({ match, getPlayerName, isActive, onSelect, isFinal, readOn
         (!!match.winnerId && match.games.length > 0) ||     // completed match (view scores)
         (isByeMatch && (!readOnly || previewMode)) ||       // bye match (swap player) — allow in preview for config
         previewMode)                                        // in preview allow selecting unplayed for config
-      && match.player1Id !== 'PLAY_IN_WINNER' && match.player2Id !== 'PLAY_IN_WINNER';
+      && match.player1Id !== 'PLAY_IN_WINNER' && match.player2Id !== 'PLAY_IN_WINNER'
+      && match.player1Id !== 'TBD' && match.player2Id !== 'TBD';
 
   const ring = isFinal && match.winnerId
     ? 'border-amber-400 shadow-lg shadow-amber-100'
@@ -557,6 +609,7 @@ function BracketCard({ match, getPlayerName, isActive, onSelect, isFinal, readOn
         }`}>
           {match.player1Id === 'BYE' ? 'BYE'
             : match.player1Id === 'PLAY_IN_WINNER' ? <em className="text-gray-400 not-italic text-xs">Play-in winner</em>
+            : match.player1Id === 'TBD' ? <em className="text-gray-400 not-italic text-xs">TBD</em>
             : getPlayerName(match.player1Id)}
         </span>
         <div className="flex items-center gap-1 flex-shrink-0">
@@ -572,11 +625,12 @@ function BracketCard({ match, getPlayerName, isActive, onSelect, isFinal, readOn
         <span className={`truncate text-sm font-semibold flex-1 ${
           match.winnerId === match.player2Id ? 'text-green-800'
           : match.winnerId ? 'text-gray-400'
-          : match.player2Id === 'BYE' || match.player2Id === 'PLAY_IN_WINNER' ? 'text-gray-400 italic text-xs'
+          : match.player2Id === 'BYE' || match.player2Id === 'PLAY_IN_WINNER' || match.player2Id === 'TBD' ? 'text-gray-400 italic text-xs'
           : 'text-gray-800'
         }`}>
           {match.player2Id === 'BYE' ? 'BYE'
            : match.player2Id === 'PLAY_IN_WINNER' ? <em className="not-italic text-xs">Play-in winner</em>
+           : match.player2Id === 'TBD' ? <em className="not-italic text-xs">TBD</em>
            : getPlayerName(match.player2Id)}
         </span>
         <div className="flex items-center gap-1 flex-shrink-0">

@@ -32,6 +32,7 @@ export default function TournamentBracketPage() {
   const getPlayerName = (id: string) => {
     if (id === 'BYE') return 'BYE';
     if (id === 'PLAY_IN_WINNER') return 'Play-in Winner';
+    if (id === 'TBD') return 'TBD';
     return players.find(p => p.id === id)?.name ?? 'Unknown';
   };
 
@@ -119,6 +120,37 @@ export default function TournamentBracketPage() {
     await fetchData();
   };
 
+  const deleteGame = async (gameId: string) => {
+    if (!confirm('Delete this game?')) return;
+    const res = await fetch(`/api/games/${gameId}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const err = await res.json();
+      alert(err.error ?? 'Failed to delete game');
+      return;
+    }
+    await fetchData();
+    if (tournament) {
+      await checkBracketAdvancement(tournament.id);
+    }
+  };
+
+  const changeMatchBestOf = async (matchId: string, bestOf: number) => {
+    const res = await fetch(`/api/matches/${matchId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bestOf }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      alert(err.error ?? 'Failed to change number of games');
+      return;
+    }
+    await fetchData();
+    if (tournament) {
+      await checkBracketAdvancement(tournament.id);
+    }
+  };
+
   const startBracket = async () => {
     if (!tournament) return;
     const res = await fetch('/api/tournaments', {
@@ -186,6 +218,8 @@ export default function TournamentBracketPage() {
               tournamentPlayers={tournament.players}
               onAddGame={addGameToMatch}
               onSaveGameEdit={saveGameEdit}
+              onDeleteGame={deleteGame}
+              onChangeBestOf={changeMatchBestOf}
               onSwapPlayers={swapPlayers}
             />
           </div>

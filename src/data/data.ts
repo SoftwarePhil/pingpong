@@ -1,6 +1,7 @@
 import { createClient, RedisClientType } from 'redis';
 import { MongoClient, Db, Collection } from 'mongodb';
 import { Player, Tournament, Match, Game } from '../types/pingpong';
+import { cascadeBracketOutcomeChange } from '../lib/tournament';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Environment isolation
@@ -498,6 +499,35 @@ async function removeGameHistory(gameId: string): Promise<void> {
   }
 }
 
+// Bulk variant of removeGameHistory — used when a bracket correction cascade
+// invalidates games on downstream matches.
+export async function removeGamesFromHistory(gameIds: string[]): Promise<void> {
+  if (gameIds.length === 0) return;
+  try {
+    if (!db) await initMongo();
+    await gamesCol().deleteMany({ _id: { $in: gameIds } });
+  } catch (error) {
+    console.warn(`Failed to bulk-remove games from MongoDB history:`, error);
+  }
+}
+
+/**
+ * If `match` is a bracket match, propagates its (re)computed winner forward
+ * to any already-created next-round match, clearing stale downstream games
+ * as needed. Mutates `tournament.matches` in place and returns the possibly
+ * updated `match` (re-fetched from the cascaded array). No-op for round-robin
+ * matches or bracket matches with no next round yet.
+ */
+async function applyBracketCascade(tournament: Tournament, match: Match): Promise<Match> {
+  if (match.round !== 'bracket' || !tournament.matches) return match;
+  const { matches, invalidatedGameIds } = cascadeBracketOutcomeChange(tournament.matches, match.id);
+  tournament.matches = matches;
+  if (invalidatedGameIds.length > 0) {
+    await removeGamesFromHistory(invalidatedGameIds);
+  }
+  return matches.find(m => m.id === match.id) ?? match;
+}
+
 // getAllGames reads from the MongoDB games collection (durable history)
 export async function getAllGames(): Promise<Game[]> {
   try {
@@ -525,10 +555,11 @@ export async function addGameToMatch(
       ...tournament.matches[matchIdx],
       games: [...tournament.matches[matchIdx].games, game],
     });
+    const finalMatch = await applyBracketCascade(tournament, tournament.matches[matchIdx]);
     await setTournament(tournament);
     // Persist game to MongoDB history
     await persistGameHistory(game);
-    return { match: tournament.matches[matchIdx], tournament };
+    return { match: finalMatch, tournament };
   } catch (error) {
     console.error('Error adding game to match:', error);
     throw error;
@@ -554,10 +585,11 @@ export async function updateGameInMatch(
       ...tournament.matches[matchIdx],
       games,
     });
+    const finalMatch = await applyBracketCascade(tournament, tournament.matches[matchIdx]);
     await setTournament(tournament);
     // Keep MongoDB history in sync
     await persistGameHistory(updatedGame);
-    return { match: tournament.matches[matchIdx], tournament };
+    return { match: finalMatch, tournament };
   } catch (error) {
     console.error('Error updating game in match:', error);
     throw error;
@@ -582,10 +614,11 @@ export async function removeGameFromMatch(
       ...tournament.matches[matchIdx],
       games: oldGames.filter(g => g.id !== gameId),
     });
+    const finalMatch = await applyBracketCascade(tournament, tournament.matches[matchIdx]);
     await setTournament(tournament);
     // Remove from MongoDB history
     await removeGameHistory(gameId);
-    return { game, match: tournament.matches[matchIdx] };
+    return { game, match: finalMatch };
   } catch (error) {
     console.error('Error removing game from match:', error);
     throw error;
