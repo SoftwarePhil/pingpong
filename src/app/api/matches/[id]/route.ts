@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Match } from '../../../../types/pingpong';
-import { getMatch, getTournamentIdForMatch, getTournament, setTournament, updateMatchInTournament, removeMatchFromTournament, saveData } from '../../../../data/data';
-import { cascadeRoundRobinPlayerSwap, cascadeBracketPlayerSwap } from '../../../../lib/tournament';
+import { getMatch, getTournamentIdForMatch, getTournament, setTournament, updateMatchInTournament, removeMatchFromTournament, removeGamesFromHistory, recalculateMatchWinner, saveData } from '../../../../data/data';
+import { cascadeRoundRobinPlayerSwap, cascadeBracketPlayerSwap, cascadeBracketOutcomeChange } from '../../../../lib/tournament';
 
 export async function PUT(
   request: NextRequest,
@@ -70,8 +70,41 @@ export async function PUT(
       return NextResponse.json(updatedMatch);
     }
 
-    // Non-player update (scores, winnerId, etc.) — standard path
-    const updatedMatch: Match = { ...currentMatch, ...updates };
+    // Non-player update (scores, winnerId, bestOf, etc.) — standard path
+    let updatedMatch: Match = { ...currentMatch, ...updates };
+
+    // Changing the number of games in a match may change (or clear) its
+    // winner based on the games already recorded — recompute it.
+    if (updates.bestOf !== undefined) {
+      updatedMatch = recalculateMatchWinner(updatedMatch);
+    }
+
+    if (updatedMatch.round === 'bracket') {
+      // Bracket matches may need to propagate a changed outcome forward to
+      // an already-created next-round match, so this goes through the full
+      // tournament document rather than the single-match helper.
+      const tournamentId = await getTournamentIdForMatch(matchId);
+      if (!tournamentId) {
+        return NextResponse.json({ error: 'Tournament not found for match' }, { status: 404 });
+      }
+      const tournament = await getTournament(tournamentId);
+      if (!tournament?.matches) {
+        return NextResponse.json({ error: 'Tournament not found' }, { status: 404 });
+      }
+      const idx = tournament.matches.findIndex(m => m.id === matchId);
+      if (idx === -1) {
+        return NextResponse.json({ error: 'Match not found' }, { status: 404 });
+      }
+      tournament.matches[idx] = updatedMatch;
+      const { matches, invalidatedGameIds } = cascadeBracketOutcomeChange(tournament.matches, matchId);
+      tournament.matches = matches;
+      await setTournament(tournament);
+      if (invalidatedGameIds.length > 0) {
+        await removeGamesFromHistory(invalidatedGameIds);
+      }
+      return NextResponse.json(tournament.matches.find(m => m.id === matchId)!);
+    }
+
     const tournament = await updateMatchInTournament(updatedMatch);
     if (!tournament) {
       return NextResponse.json({ error: 'Failed to update match' }, { status: 500 });

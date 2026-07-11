@@ -1,10 +1,84 @@
 import { Tournament, Match } from '../types/pingpong';
 
+/** Placeholder player slot used when a downstream bracket match's participant
+ * is invalidated by an upstream correction and no replacement winner is yet
+ * determined (i.e. the upstream match was edited back into an incomplete state). */
+export const TBD_PLACEHOLDER = 'TBD';
+
 /** Returns the configured bestOf for a bracket round with the given match count.
  * Falls back to 1 if no config entry matches. */
 function getBestOfForMatchCount(tournament: Tournament, matchCount: number): number {
   const config = tournament.bracketRounds.find(b => b.matchCount === matchCount);
   return config?.bestOf ?? 1;
+}
+
+/**
+ * Propagates a bracket match's (re)computed outcome forward into the bracket.
+ *
+ * When a completed bracket match is corrected after the fact (a game's score
+ * edited, added, or deleted, changing or clearing its winner), any later
+ * round match that was already seeded with the *old* winner is now stale.
+ * This walks forward from the given match, round by round, and:
+ *   - Updates the downstream match's player slot to the corrected winner
+ *     (or a TBD placeholder if the match no longer has a determined winner).
+ *   - If that downstream match already had games recorded or a winner of its
+ *     own, those are no longer valid (they were played against the wrong
+ *     participant) and are cleared, with the cascade continuing further
+ *     downstream from there.
+ *   - Stops as soon as a downstream slot already matches the expected value,
+ *     or once there is no further round to reconcile.
+ *
+ * Play-in matches (bracketRound 0) are intentionally excluded — their
+ * winner is threaded into R1 via a dedicated one-time placeholder swap
+ * elsewhere, not via this positional cascade.
+ *
+ * Returns a new matches array (does not mutate) plus the IDs of any games
+ * that were invalidated, so callers can also purge them from long-term
+ * history stores.
+ */
+export function cascadeBracketOutcomeChange(
+  matches: Match[],
+  matchId: string,
+): { matches: Match[]; invalidatedGameIds: string[] } {
+  let result = matches;
+  const invalidatedGameIds: string[] = [];
+  let currentId = matchId;
+
+  while (true) {
+    const match = result.find(m => m.id === currentId);
+    if (!match || match.round !== 'bracket') break;
+    const roundNum = match.bracketRound ?? 0;
+    if (roundNum <= 0) break; // Play-in propagation is handled separately
+
+    const roundMatches = result.filter(m => m.round === 'bracket' && (m.bracketRound ?? 0) === roundNum);
+    const posInRound = roundMatches.findIndex(m => m.id === match.id);
+    if (posInRound === -1) break;
+
+    const nextRoundMatches = result.filter(m => m.round === 'bracket' && (m.bracketRound ?? 0) === roundNum + 1);
+    const nextMatch = nextRoundMatches[Math.floor(posInRound / 2)];
+    if (!nextMatch) break; // Next round hasn't been created yet — nothing to reconcile
+
+    const isTopSlot = posInRound % 2 === 0;
+    const expectedSlot = match.winnerId ?? TBD_PLACEHOLDER;
+    const currentSlot = isTopSlot ? nextMatch.player1Id : nextMatch.player2Id;
+    if (currentSlot === expectedSlot) break; // Already consistent — nothing to propagate
+
+    let updatedNext: Match = {
+      ...nextMatch,
+      ...(isTopSlot ? { player1Id: expectedSlot } : { player2Id: expectedSlot }),
+    };
+
+    // Games already recorded against the stale participant are no longer valid.
+    if (updatedNext.games.length > 0 || updatedNext.winnerId) {
+      invalidatedGameIds.push(...updatedNext.games.map(g => g.id));
+      updatedNext = { ...updatedNext, games: [], winnerId: undefined };
+    }
+
+    result = result.map(m => (m.id === nextMatch.id ? updatedNext : m));
+    currentId = nextMatch.id;
+  }
+
+  return { matches: result, invalidatedGameIds };
 }
 
 /**

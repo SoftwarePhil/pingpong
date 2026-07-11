@@ -62,6 +62,7 @@ export default function ActiveTournamentsPage() {
   const getPlayerName = (id: string) => {
     if (id === 'BYE') return 'BYE';
     if (id === 'PLAY_IN_WINNER') return 'Play-in Winner';
+    if (id === 'TBD') return 'TBD';
     return players.find(p => p.id === id)?.name ?? 'Unknown';
   };
 
@@ -149,6 +150,22 @@ export default function ActiveTournamentsPage() {
     });
     if (res.ok) { await fetchTournaments(); }
     else { const err = await res.json(); alert(err.error ?? 'Failed to update players'); }
+  };
+
+  const changeMatchBestOf = async (matchId: string, bestOf: number) => {
+    const res = await fetch(`/api/matches/${matchId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bestOf }),
+    });
+    if (res.ok) {
+      const tournamentIdForMatch = tournaments.find(t => (t.matches ?? []).some(m => m.id === matchId))?.id;
+      await fetchTournaments();
+      if (tournamentIdForMatch) await maybeAdvanceBracketRound(tournamentIdForMatch);
+    } else {
+      const err = await res.json();
+      alert(err.error ?? 'Failed to change number of games');
+    }
   };
 
   const toggleActivePlayer = async (tournament: Tournament, playerId: string) => {
@@ -788,6 +805,8 @@ export default function ActiveTournamentsPage() {
                             tournamentPlayers={t.players}
                             onAddGame={addGameToMatch}
                             onSaveGameEdit={saveGameEdit}
+                            onDeleteGame={bracketStarted ? deleteGame : undefined}
+                            onChangeBestOf={bracketStarted ? changeMatchBestOf : undefined}
                             onSwapPlayers={bracketStarted ? swapPlayers : async (mid, p1, p2) => { handlePreviewBracketSwap(t.id, mid, p1, p2, effectivePreviewMatches); }}
                             readOnly={false}
                             previewMode={!bracketStarted}
