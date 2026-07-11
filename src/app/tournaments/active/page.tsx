@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import RoundRobinView from './RoundRobinView';
 import BracketView from './BracketView';
+import Leaderboard from './Leaderboard';
 import { createBracketMatches, cascadeBracketR1PlayerSwap, cascadeBracketPlayerSwap } from '../../../lib/tournament';
 
 export default function ActiveTournamentsPage() {
@@ -654,6 +655,7 @@ export default function ActiveTournamentsPage() {
                           (click a round dot), so this summary is only needed post-bracket-start. */}
                       {bracketStarted && (
                         <div className="mt-2 border-t border-gray-200 pt-6 space-y-5">
+                          <Leaderboard tournament={t} getPlayerName={getPlayerName} />
                           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Previous Round Robin Rounds</p>
                           {Array.from(new Set(rrMatches.map(m => m.bracketRound ?? 1))).sort((a, b) => a - b).map(round => {
                             const roundMatches = rrMatches.filter(m => (m.bracketRound ?? 1) === round && m.player2Id !== 'BYE');
@@ -807,6 +809,10 @@ export default function ActiveTournamentsPage() {
                           {!firstRoundComplete && <p className="text-xs text-gray-500 mt-1">Finish all Round 1 matches to see projected bracket pairings.</p>}
                         </div>
                       )}
+
+                      <div className="bg-white rounded-2xl shadow-sm border-2 border-gray-200 p-5">
+                        <Leaderboard tournament={t} getPlayerName={getPlayerName} />
+                      </div>
 
                       <div className="bg-white rounded-2xl shadow-sm border-2 border-gray-200 p-5">
                         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Game History</p>
