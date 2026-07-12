@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Tournament, Match, BracketConfig } from '../../../types/pingpong';
 import { getTournaments, saveData, setTournament, getTournament, deleteTournament, registerMatchesIndex, unregisterMatchesIndex, syncTournamentPlayers } from '../../../data/data';
-import { createRoundRobinPairings, advanceBracketRound, createBracketMatches, advanceRoundRobinRound } from '../../../lib/tournament';
+import { createRoundRobinPairings, advanceBracketRound, createBracketMatches, advanceRoundRobinRound, resyncRoundRobinMatches } from '../../../lib/tournament';
 
 export async function GET() {
   try {
@@ -64,10 +64,11 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, status, action }: {
+    const { id, status, action, rrPairingStrategy }: {
       id: string;
       status?: 'roundRobin' | 'bracket' | 'completed';
       action?: 'advanceRound' | 'addRoundRobinRound' | 'startBracket';
+      rrPairingStrategy?: 'random' | 'top-vs-top';
     } = body;
     // Note: adding/removing players is handled by its own atomic endpoint —
     // PATCH /api/tournaments/[id]/players — not by this PUT handler. See
@@ -82,6 +83,32 @@ export async function PUT(request: NextRequest) {
 
     const bracketMatches = (tournament.matches ?? []).filter(m => m.round === 'bracket');
     const bracketStarted = Boolean(tournament.bracketStartedAt || bracketMatches.length > 0 || tournament.status === 'bracket');
+
+    // Changing the round-robin pairing strategy on an already-active tournament.
+    // Only meaningful before the bracket has started; immediately re-pairs the
+    // current round's unplayed matches so the new strategy takes effect right away
+    // (future rounds pick it up automatically via advanceRoundRobinRound).
+    if (rrPairingStrategy) {
+      if (rrPairingStrategy !== 'random' && rrPairingStrategy !== 'top-vs-top') {
+        return NextResponse.json({ error: 'Invalid rrPairingStrategy' }, { status: 400 });
+      }
+      if (bracketStarted || tournament.status === 'completed') {
+        return NextResponse.json({ error: 'Cannot change pairing strategy after bracket has started' }, { status: 400 });
+      }
+
+      tournament.rrPairingStrategy = rrPairingStrategy;
+
+      if (tournament.status === 'roundRobin') {
+        const { matches, addedMatches, removedMatchIds } = resyncRoundRobinMatches(tournament);
+        tournament.matches = matches;
+        await unregisterMatchesIndex(removedMatchIds);
+        await registerMatchesIndex(addedMatches);
+      }
+
+      await setTournament(tournament);
+      await saveData();
+      return NextResponse.json(tournament);
+    }
 
 if (action === 'advanceRound') {
       if (!bracketStarted && tournament.status !== 'completed') {

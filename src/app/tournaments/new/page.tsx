@@ -1,24 +1,27 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Player, Tournament } from '../../../types/pingpong';
+import { Player, Tournament, Game } from '../../../types/pingpong';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { PlayerSearchSelect } from '../../../components/PlayerSearchSelect';
 
 export default function NewTournamentPage() {
   const router = useRouter();
   const [players, setPlayers] = useState<Player[]>([]);
+  const [games, setGames] = useState<Game[]>([]);
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [name, setName] = useState('');
   const [roundRobinRounds, setRoundRobinRounds] = useState(3);
   const [rrBestOf, setRrBestOf] = useState(1);
   const [semiBestOf, setSemiBestOf] = useState(3);
   const [finalBestOf, setFinalBestOf] = useState(3);
-  const [rrPairingStrategy, setRrPairingStrategy] = useState<'random' | 'top-vs-top'>('random');
+  const [rrPairingStrategy, setRrPairingStrategy] = useState<'random' | 'top-vs-top'>('top-vs-top');
   const [selectedPlayers, setSelectedPlayers] = useState<string[]>([]);
 
   useEffect(() => {
     fetchPlayers();
+    fetchGames();
     fetchTournaments();
   }, []);
 
@@ -26,6 +29,12 @@ export default function NewTournamentPage() {
     const res = await fetch('/api/players');
     const data = await res.json();
     setPlayers(data);
+  };
+
+  const fetchGames = async () => {
+    const res = await fetch('/api/games');
+    const data = await res.json();
+    setGames(data);
   };
 
   const fetchTournaments = async () => {
@@ -215,27 +224,7 @@ export default function NewTournamentPage() {
 
             <div>
               <label className="block text-lg font-semibold text-gray-800 mb-4">Select Players</label>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {players.map(p => (
-                  <label key={p.id} className="flex items-center space-x-3 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors border-2 border-gray-200">
-                    <input
-                      type="checkbox"
-                      checked={selectedPlayers.includes(p.id)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          if (!selectedPlayers.includes(p.id)) {
-                            setSelectedPlayers([...selectedPlayers, p.id]);
-                          }
-                        } else {
-                          setSelectedPlayers(selectedPlayers.filter(id => id !== p.id));
-                        }
-                      }}
-                      className="w-5 h-5 text-blue-600 rounded border-2 border-gray-300 focus:ring-blue-500"
-                    />
-                    <span className="font-medium text-gray-900 text-lg">{p.name}</span>
-                  </label>
-                ))}
-              </div>
+              <PlayerSearchSelect players={players} games={games} selected={selectedPlayers} onChange={setSelectedPlayers} />
               {players.length === 0 && (
                 <p className="text-gray-600 text-center py-8">No players available. Add some players first!</p>
               )}
