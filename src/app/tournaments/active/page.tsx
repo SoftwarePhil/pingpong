@@ -8,6 +8,7 @@ import RoundRobinView from './RoundRobinView';
 import BracketView from './BracketView';
 import Leaderboard from './Leaderboard';
 import { createBracketMatches, cascadeBracketR1PlayerSwap, cascadeBracketPlayerSwap } from '../../../lib/tournament';
+import { PlayerSearchSelect } from '../../../components/PlayerSearchSelect';
 
 export default function ActiveTournamentsPage() {
   const router = useRouter();
@@ -18,6 +19,8 @@ export default function ActiveTournamentsPage() {
   const [showEditForm, setShowEditForm]           = useState(false);
   const [editingTournament, setEditingTournament] = useState<Tournament | null>(null);
   const [selectedPlayers, setSelectedPlayers]     = useState<string[]>([]);
+  const [pairingStrategy, setPairingStrategy]     = useState<'random' | 'top-vs-top'>('top-vs-top');
+  const [savingPairingStrategy, setSavingPairingStrategy] = useState(false);
 
   const [showNewPlayerForm, setShowNewPlayerForm] = useState(false);
   const [newPlayerName, setNewPlayerName]         = useState('');
@@ -343,6 +346,27 @@ export default function ActiveTournamentsPage() {
     else { const err = await res.json(); alert(err.error ?? 'Failed to update tournament'); }
   };
 
+  const updatePairingStrategy = async (strategy: 'random' | 'top-vs-top') => {
+    if (!editingTournament || strategy === pairingStrategy) return;
+    setPairingStrategy(strategy);
+    setSavingPairingStrategy(true);
+    const res = await fetch('/api/tournaments', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: editingTournament.id, rrPairingStrategy: strategy }),
+    });
+    setSavingPairingStrategy(false);
+    if (res.ok) {
+      const updated: Tournament = await res.json();
+      setEditingTournament(updated);
+      fetchTournaments();
+    } else {
+      const err = await res.json();
+      alert(err.error ?? 'Failed to update pairing strategy');
+      setPairingStrategy(editingTournament.rrPairingStrategy ?? 'top-vs-top');
+    }
+  };
+
   const createPlayerAndSelect = async () => {
     if (!newPlayerName.trim()) return;
     const res = await fetch('/api/players', {
@@ -440,7 +464,7 @@ export default function ActiveTournamentsPage() {
 
         {showEditForm && editingTournament && (
           <div className="bg-white rounded-2xl shadow-lg p-8 mb-8 border-2 border-gray-200">
-            <h2 className="text-xl font-bold text-gray-900 mb-2">Edit Players — {editingTournament.name}</h2>
+            <h2 className="text-xl font-bold text-gray-900 mb-2">Edit Tournament — {editingTournament.name}</h2>
             {Boolean(editingTournament.bracketStartedAt || (editingTournament.matches ?? []).some(m => m.round === 'bracket') || editingTournament.status === 'bracket') && (
               <div className="mb-6 p-4 bg-amber-50 border-2 border-amber-200 rounded-xl">
                 <p className="text-sm font-semibold text-amber-800">⚠️ Bracket started — round robin roster is locked.</p>
@@ -449,21 +473,33 @@ export default function ActiveTournamentsPage() {
             )}
             {!Boolean(editingTournament.bracketStartedAt || (editingTournament.matches ?? []).some(m => m.round === 'bracket') || editingTournament.status === 'bracket') && <div className="mb-6" />}
             <form onSubmit={updateTournamentPlayers} className="space-y-6">
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                {players.map(p => (
-                  <label key={p.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl hover:bg-gray-100 cursor-pointer border-2 border-gray-200 transition-colors">
-                    <input type="checkbox" checked={selectedPlayers.includes(p.id)}
-                      onChange={e => setSelectedPlayers(prev =>
-                        e.target.checked
-                          ? prev.includes(p.id) ? prev : [...prev, p.id]
-                          : prev.filter(id => id !== p.id)
-                      )}
-                      className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
-                    />
-                    <span className="font-medium text-gray-900">{p.name}</span>
-                  </label>
-                ))}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-3">Round Robin Pairing Strategy</label>
+                <div className="flex gap-4">
+                  {([
+                    { value: 'random', label: '🎲 Random', desc: 'Players are paired randomly each round' },
+                    { value: 'top-vs-top', label: '🏆 Top vs Top', desc: 'Top-ranked players face each other for competitive matches' },
+                  ] as { value: 'random' | 'top-vs-top'; label: string; desc: string }[]).map(opt => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      disabled={savingPairingStrategy || Boolean(editingTournament.bracketStartedAt || (editingTournament.matches ?? []).some(m => m.round === 'bracket') || editingTournament.status === 'bracket')}
+                      onClick={() => updatePairingStrategy(opt.value)}
+                      className={`flex-1 p-4 rounded-lg border-2 text-left transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                        pairingStrategy === opt.value
+                          ? 'bg-blue-50 border-blue-500'
+                          : 'bg-white border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className={`font-semibold text-base mb-1 ${pairingStrategy === opt.value ? 'text-blue-700' : 'text-gray-800'}`}>{opt.label}</div>
+                      <div className="text-sm text-gray-500">{opt.desc}</div>
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-400 mt-2">Changes apply immediately to the current round&apos;s unplayed matches.</p>
               </div>
+
+              <PlayerSearchSelect players={players} games={games} selected={selectedPlayers} onChange={setSelectedPlayers} />
 
               <div className="pt-2">
                 {!showNewPlayerForm ? (
@@ -554,10 +590,10 @@ export default function ActiveTournamentsPage() {
                         {openMenuId === t.id && (
                           <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-xl shadow-xl border border-gray-200 py-1 z-50">
                             <button
-                              onClick={() => { setOpenMenuId(null); setEditingTournament(t); setSelectedPlayers(t.activePlayers ?? t.players); setShowEditForm(true); }}
+                              onClick={() => { setOpenMenuId(null); setEditingTournament(t); setSelectedPlayers(t.activePlayers ?? t.players); setPairingStrategy(t.rrPairingStrategy ?? 'top-vs-top'); setShowEditForm(true); }}
                               className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
                             >
-                              ✏️ Edit Players
+                              ✏️ Edit Tournament
                             </button>
                             <button
                               onClick={() => { setOpenMenuId(null); endTournament(t); }}
