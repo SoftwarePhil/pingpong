@@ -68,93 +68,87 @@ export function PlayerSearchSelect({ players, games, selected, onChange, suggest
           type="text"
           value={query}
           onChange={e => setQuery(e.target.value)}
-          placeholder="🔍 Search players to add..."
-          className="w-full border-2 border-gray-300 rounded-lg px-4 py-3 text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:outline-none text-lg"
+          placeholder="Search players to add…"
+          className="input"
         />
         {query && (
-          <div className="absolute z-10 mt-2 w-full bg-white border-2 border-blue-300 rounded-lg shadow-lg overflow-hidden">
+          <div className="absolute z-10 mt-2 w-full panel-raised overflow-hidden shadow-2xl">
             {searchResults.length > 0 ? (
               searchResults.map(p => (
                 <button
                   key={p.id}
                   type="button"
                   onClick={() => addPlayer(p.id)}
-                  className="w-full text-left px-4 py-3 hover:bg-blue-50 transition-colors text-gray-900 font-medium border-b border-gray-100 last:border-b-0"
+                  className="w-full text-left px-4 py-3 text-sm hover:bg-[rgba(232,184,74,0.08)] transition-colors border-b border-[var(--border)] last:border-0 flex items-center gap-3"
                 >
-                  {p.name}
+                  <span className="avatar avatar-sm">{p.name.charAt(0).toUpperCase()}</span>
+                  <span className="font-medium">{p.name}</span>
+                  <span className="text-dim text-xs ml-auto font-mono">{gamesPlayedById[p.id] ?? 0}g</span>
                 </button>
               ))
             ) : (
-              <div className="px-4 py-3 text-gray-500">No matching players</div>
+              <div className="px-4 py-3 text-sm text-muted">No matches for &quot;{query}&quot;</div>
             )}
           </div>
         )}
       </div>
 
-      {!query && suggestions.length > 0 && (
-        <div className="mt-3">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              {showAll ? 'All Players' : 'Most Active'}
-            </p>
-            {!showAll && availablePlayers.length > suggestions.length && (
-              <button
-                type="button"
-                onClick={() => setShowAll(true)}
-                className="text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors"
-              >
-                Show all players
-              </button>
-            )}
-          </div>
+      {selectedPlayers.length > 0 && (
+        <div className="flex flex-wrap gap-2 mt-4">
+          {selectedPlayers.map(p => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => removePlayer(p.id)}
+              className="chip chip-active gap-2"
+              title="Remove"
+            >
+              {p.name}
+              <span className="opacity-60">×</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-4">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs text-dim font-mono tracking-wider uppercase">
+            {query ? 'Search results above' : 'Suggestions'}
+          </p>
+          {!query && availablePlayers.length > suggestionCount && (
+            <button
+              type="button"
+              onClick={() => setShowAll(!showAll)}
+              className="text-xs text-gold hover:underline font-medium"
+            >
+              {showAll ? 'Show less' : `All ${availablePlayers.length}`}
+            </button>
+          )}
+        </div>
+        {!query && (
           <div className="flex flex-wrap gap-2">
             {(showAll ? allSorted : suggestions).map(p => (
               <button
                 key={p.id}
                 type="button"
                 onClick={() => addPlayer(p.id)}
-                className="flex items-center gap-1.5 bg-gray-50 hover:bg-blue-50 border-2 border-gray-200 hover:border-blue-300 text-gray-800 rounded-full pl-3 pr-3 py-1.5 text-sm font-medium transition-colors"
+                className="chip hover:border-[var(--border-gold)] hover:text-gold"
               >
-                <span className="text-blue-600">+</span> {p.name}
-                {gamesPlayedById[p.id] > 0 && (
-                  <span className="text-gray-400 text-xs">({gamesPlayedById[p.id]})</span>
-                )}
+                + {p.name}
               </button>
             ))}
+            {availablePlayers.length === 0 && selectedPlayers.length > 0 && (
+              <span className="text-xs text-dim">Everyone is selected</span>
+            )}
           </div>
-          {showAll && (
-            <button
-              type="button"
-              onClick={() => setShowAll(false)}
-              className="text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors mt-2"
-            >
-              Show fewer
-            </button>
-          )}
-        </div>
-      )}
-
-      <div className="flex flex-wrap gap-2 mt-4">
-        {selectedPlayers.length === 0 && (
-          <p className="text-gray-500 text-sm py-1">No players selected yet — search or pick a suggestion above.</p>
         )}
-        {selectedPlayers.map(p => (
-          <span
-            key={p.id}
-            className="flex items-center gap-2 bg-blue-50 border-2 border-blue-200 text-gray-900 rounded-full pl-4 pr-2 py-2 font-medium"
-          >
-            {p.name}
-            <button
-              type="button"
-              onClick={() => removePlayer(p.id)}
-              className="w-6 h-6 flex items-center justify-center rounded-full bg-blue-600 text-white hover:bg-blue-700 text-sm transition-colors"
-              aria-label={`Remove ${p.name}`}
-            >
-              ×
-            </button>
-          </span>
-        ))}
       </div>
+
+      {selectedPlayers.length > 0 && (
+        <p className="mt-3 text-xs text-dim font-mono">
+          {selectedPlayers.length} selected
+        </p>
+      )}
     </div>
   );
 }

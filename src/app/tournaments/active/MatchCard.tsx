@@ -61,22 +61,20 @@ export default function MatchCard({
   const canSwap = match.round === 'roundRobin' && match.games.length === 0 && !match.winnerId;
 
   return (
-    <div className="bg-white border-2 border-gray-200 rounded-xl shadow-sm overflow-hidden">
+    <div className="panel overflow-hidden">
       {/* Card header */}
-      <div className="flex justify-between items-center px-4 py-2 bg-gray-50 border-b border-gray-200">
-        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+      <div className="flex justify-between items-center px-4 py-2 border-b border-[var(--border)] bg-[var(--surface-2)]">
+        <span className="eyebrow" style={{ fontSize: '0.6rem' }}>
           {match.round === 'bracket'
             ? match.bracketRound === 0 ? 'Play-in' : `Round ${match.bracketRound}`
             : `RR Round ${match.bracketRound ?? 1}`}
         </span>
         <div className="flex items-center gap-1">
-          <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">
-            Bo{match.bestOf}
-          </span>
+          <span className="badge">Bo{match.bestOf}</span>
           {canSwap && (
             <button
               onClick={() => { setSwapping(!swapping); setSwapP1(match.player1Id); setSwapP2(match.player2Id); }}
-              className="text-blue-500 hover:text-blue-700 px-1.5 py-0.5 rounded hover:bg-blue-50 text-xs transition-colors"
+              className="text-gold hover:text-[var(--gold-bright)] px-1.5 py-0.5 rounded text-xs transition-colors"
               title="Change players"
             >
               ↔
@@ -84,7 +82,7 @@ export default function MatchCard({
           )}
           <button
             onClick={() => onDeleteMatch(match.id)}
-            className="text-red-400 hover:text-red-600 px-1.5 py-0.5 rounded hover:bg-red-50 text-xs transition-colors"
+            className="text-dim hover:text-loss px-1.5 py-0.5 rounded text-xs transition-colors"
             title="Delete match"
           >
             ✕
@@ -94,31 +92,23 @@ export default function MatchCard({
 
       {/* Player swap panel */}
       {swapping && (
-        <div className="px-4 py-3 bg-blue-50 border-b border-blue-200">
-          <p className="text-xs font-semibold text-blue-700 mb-2">Change Players</p>
+        <div className="px-4 py-3 border-b border-[var(--border-gold)] bg-[rgba(232,184,74,0.06)]">
+          <p className="eyebrow mb-2">Change Players</p>
           <div className="space-y-1.5">
-            <select value={swapP1} onChange={e => setSwapP1(e.target.value)}
-              className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-gray-900 bg-white">
+            <select value={swapP1} onChange={e => setSwapP1(e.target.value)} className="select text-sm py-1.5">
               {tournamentPlayers.map(pid => (
                 <option key={pid} value={pid}>{getPlayerName(pid)}</option>
               ))}
             </select>
-            <div className="text-center text-xs text-gray-400 font-bold">vs</div>
-            <select value={swapP2} onChange={e => setSwapP2(e.target.value)}
-              className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-gray-900 bg-white">
+            <div className="text-center text-xs text-dim font-bold">vs</div>
+            <select value={swapP2} onChange={e => setSwapP2(e.target.value)} className="select text-sm py-1.5">
               {tournamentPlayers.map(pid => (
                 <option key={pid} value={pid}>{getPlayerName(pid)}</option>
               ))}
             </select>
             <div className="flex gap-2 pt-1">
-              <button onClick={handleSwapSave}
-                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-xs px-2 py-1.5 rounded font-medium transition-colors">
-                Save
-              </button>
-              <button onClick={() => setSwapping(false)}
-                className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs px-2 py-1.5 rounded font-medium transition-colors">
-                Cancel
-              </button>
+              <button onClick={handleSwapSave} className="btn btn-primary btn-sm flex-1">Save</button>
+              <button onClick={() => setSwapping(false)} className="btn btn-secondary btn-sm flex-1">Cancel</button>
             </div>
           </div>
         </div>
@@ -126,33 +116,33 @@ export default function MatchCard({
 
       {/* Players */}
       <div className="px-4 py-3 space-y-2">
-        <div className={`flex justify-between items-center px-3 py-2 rounded-lg border ${
+        <div className={`flex justify-between items-center px-3 py-2 rounded border ${
           match.winnerId === match.player1Id
-            ? 'bg-green-50 border-green-300 text-green-900'
-            : 'bg-gray-50 border-gray-200 text-gray-900'
+            ? 'bg-[rgba(94,234,154,0.1)] border-[rgba(94,234,154,0.35)]'
+            : 'bg-[var(--bg-elevated)] border-[var(--border)]'
         }`}>
           <span className="font-medium truncate mr-2 text-sm" title={getPlayerName(match.player1Id)}>
             {getPlayerName(match.player1Id)}
           </span>
-          <span className="text-xs font-bold flex-shrink-0 tabular-nums">
+          <span className="text-xs font-bold flex-shrink-0 score text-muted">
             {match.games.filter(g => g.score1 > g.score2).length}W
           </span>
         </div>
 
-        <div className="text-center text-xs text-gray-400 font-semibold">
+        <div className="text-center text-xs text-dim font-mono tracking-widest">
           {match.player2Id === 'BYE' ? 'BYE' : 'VS'}
         </div>
 
         {match.player2Id !== 'BYE' && (
-          <div className={`flex justify-between items-center px-3 py-2 rounded-lg border ${
+          <div className={`flex justify-between items-center px-3 py-2 rounded border ${
             match.winnerId === match.player2Id
-              ? 'bg-green-50 border-green-300 text-green-900'
-              : 'bg-gray-50 border-gray-200 text-gray-900'
+              ? 'bg-[rgba(94,234,154,0.1)] border-[rgba(94,234,154,0.35)]'
+              : 'bg-[var(--bg-elevated)] border-[var(--border)]'
           }`}>
             <span className="font-medium truncate mr-2 text-sm" title={getPlayerName(match.player2Id)}>
               {getPlayerName(match.player2Id)}
             </span>
-            <span className="text-xs font-bold flex-shrink-0 tabular-nums">
+            <span className="text-xs font-bold flex-shrink-0 score text-muted">
               {match.games.filter(g => g.score2 > g.score1).length}W
             </span>
           </div>
@@ -162,8 +152,8 @@ export default function MatchCard({
       {/* Winner badge */}
       {match.winnerId && (
         <div className="px-4 pb-3 text-center">
-          <span className="inline-block bg-amber-100 text-amber-800 border border-amber-300 px-3 py-1 rounded-full text-xs font-bold">
-            🏆 {getPlayerName(match.winnerId)}
+          <span className="badge badge-gold">
+            ★ {getPlayerName(match.winnerId)}
           </span>
         </div>
       )}
@@ -186,18 +176,17 @@ export default function MatchCard({
             onAddGame(match, score1, score2);
             (e.target as HTMLFormElement).reset();
           }}
-          className="px-4 pb-4 pt-2 border-t border-gray-100 space-y-2"
+          className="px-4 pb-4 pt-2 border-t border-[var(--border)] space-y-2"
         >
           <div className="flex gap-2">
             <input name="score1" type="number" min="0" max="50" required placeholder={getPlayerName(match.player1Id).substring(0, 10)}
-              className="flex-1 min-w-0 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-gray-900 placeholder-gray-400 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400" />
-            <span className="flex items-center text-gray-400 font-bold text-sm">—</span>
+              className="input flex-1 min-w-0 py-1.5 text-sm text-center score" />
+            <span className="flex items-center text-dim font-bold text-sm">—</span>
             <input name="score2" type="number" min="0" max="50" required placeholder={getPlayerName(match.player2Id).substring(0, 10)}
-              className="flex-1 min-w-0 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-gray-900 placeholder-gray-400 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+              className="input flex-1 min-w-0 py-1.5 text-sm text-center score" />
           </div>
-          <p className="text-xs text-gray-400 text-center">First to 11, win by 2</p>
-          <button type="submit"
-            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm py-2 rounded-lg font-semibold transition-colors">
+          <p className="text-xs text-dim text-center font-mono">First to 11 · win by 2</p>
+          <button type="submit" className="btn btn-primary btn-sm w-full">
             Record Game
           </button>
         </form>
@@ -205,33 +194,33 @@ export default function MatchCard({
 
       {/* Games history */}
       {match.games.length > 0 && (
-        <div className="px-4 pb-4 pt-2 border-t border-gray-100">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Games</p>
+        <div className="px-4 pb-4 pt-2 border-t border-[var(--border)]">
+          <p className="eyebrow mb-2">Games</p>
           <div className="space-y-1.5">
             {match.games.map(game => (
-              <div key={game.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-2 py-1.5 border border-gray-200">
+              <div key={game.id} className="flex items-center justify-between bg-[var(--bg-elevated)] rounded px-2 py-1.5 border border-[var(--border)]">
                 {editingGame?.id === game.id ? (
                   <div className="flex items-center gap-1.5 flex-1 min-w-0">
                     <input type="number" value={editScore1} onChange={e => setEditScore1(e.target.value)}
-                      className="w-14 border rounded px-1.5 py-0.5 text-sm text-center text-gray-900 bg-white" />
-                    <span className="text-gray-400 text-xs">—</span>
+                      className="input w-14 py-0.5 text-sm text-center score px-1" />
+                    <span className="text-dim text-xs">—</span>
                     <input type="number" value={editScore2} onChange={e => setEditScore2(e.target.value)}
-                      className="w-14 border rounded px-1.5 py-0.5 text-sm text-center text-gray-900 bg-white" />
+                      className="input w-14 py-0.5 text-sm text-center score px-1" />
                     <button onClick={handleSaveGameEdit}
-                      className="text-xs text-green-700 font-semibold hover:underline ml-1">Save</button>
+                      className="text-xs text-win font-semibold hover:underline ml-1">Save</button>
                     <button onClick={cancelEditingGame}
-                      className="text-xs text-gray-500 hover:underline">Cancel</button>
+                      className="text-xs text-muted hover:underline">Cancel</button>
                   </div>
                 ) : (
                   <>
-                    <span className={`text-sm font-semibold tabular-nums ${game.score1 > game.score2 ? 'text-green-700' : 'text-red-600'}`}>
+                    <span className={`text-sm font-semibold score ${game.score1 > game.score2 ? 'text-win' : 'text-loss'}`}>
                       {game.score1}–{game.score2}
                     </span>
                     <div className="flex gap-1">
                       <button onClick={() => startEditingGame(game)}
-                        className="text-blue-400 hover:text-blue-600 text-xs px-1 py-0.5 rounded hover:bg-blue-50">✏️</button>
+                        className="text-dim hover:text-gold text-xs px-1 py-0.5 rounded transition-colors">edit</button>
                       <button onClick={() => onDeleteGame(game.id)}
-                        className="text-red-400 hover:text-red-600 text-xs px-1 py-0.5 rounded hover:bg-red-50">🗑️</button>
+                        className="text-dim hover:text-loss text-xs px-1 py-0.5 rounded transition-colors">del</button>
                     </div>
                   </>
                 )}

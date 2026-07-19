@@ -34,38 +34,38 @@ export default function Leaderboard({ tournament, getPlayerName }: LeaderboardPr
   })();
 
   return (
-    <div className="bg-gray-50 border border-gray-200 rounded-xl overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-200 bg-white">
-        <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wide">Standings</h4>
+    <div className="panel overflow-hidden">
+      <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between">
+        <h4 className="eyebrow" style={{ margin: 0 }}>Standings</h4>
       </div>
-      <table className="min-w-full text-sm">
+      <table className="data-table">
         <thead>
-          <tr className="border-b border-gray-200 bg-gray-50">
-            <th className="text-left px-4 py-2 font-semibold text-gray-500 text-xs uppercase tracking-wide">#</th>
-            <th className="text-left px-4 py-2 font-semibold text-gray-500 text-xs uppercase tracking-wide">Player</th>
-            <th className="text-center px-3 py-2 font-semibold text-gray-500 text-xs uppercase tracking-wide">W</th>
-            <th className="text-center px-3 py-2 font-semibold text-gray-500 text-xs uppercase tracking-wide">L</th>
-            <th className="text-center px-3 py-2 font-semibold text-gray-500 text-xs uppercase tracking-wide">+Pts</th>
-            <th className="text-center px-3 py-2 font-semibold text-gray-500 text-xs uppercase tracking-wide">Win%</th>
+          <tr>
+            <th className="w-10">#</th>
+            <th>Player</th>
+            <th style={{ textAlign: 'center' }}>W</th>
+            <th style={{ textAlign: 'center' }}>L</th>
+            <th style={{ textAlign: 'center' }}>+Pts</th>
+            <th style={{ textAlign: 'center' }}>Win%</th>
           </tr>
         </thead>
         <tbody>
           {standings.map((s, idx) => {
             const pct = s.played > 0 ? Math.round((s.wins / s.played) * 100) : 0;
-            const isLeader = idx < 2; // top 2 highlighted
+            const isLeader = idx < 2;
             return (
-              <tr key={s.id} className={`border-b border-gray-100 last:border-0 ${isLeader ? 'bg-amber-50' : 'bg-white'}`}>
-                <td className="px-4 py-2.5 text-gray-400 font-medium text-xs">{idx + 1}</td>
-                <td className="px-4 py-2.5 font-semibold text-gray-900">
-                  {isLeader && <span className="mr-1.5 text-amber-500">★</span>}
+              <tr key={s.id} className={idx === 0 ? 'rank-1' : idx === 1 ? 'rank-2' : ''}>
+                <td className="text-dim font-mono text-xs">{idx + 1}</td>
+                <td className="font-semibold">
+                  {isLeader && <span className="text-gold mr-1.5">★</span>}
                   {getPlayerName(s.id)}
                 </td>
-                <td className="text-center px-3 py-2.5 font-bold text-green-700">{s.wins}</td>
-                <td className="text-center px-3 py-2.5 font-bold text-red-500">{s.losses}</td>
-                <td className={`text-center px-3 py-2.5 font-bold text-xs ${s.pointDiff > 0 ? 'text-green-600' : s.pointDiff < 0 ? 'text-red-500' : 'text-gray-400'}`}>
+                <td className="text-center text-win font-bold score">{s.wins}</td>
+                <td className="text-center text-loss font-bold score">{s.losses}</td>
+                <td className={`text-center font-mono text-xs font-bold ${s.pointDiff > 0 ? 'text-win' : s.pointDiff < 0 ? 'text-loss' : 'text-dim'}`}>
                   {s.pointDiff > 0 ? `+${s.pointDiff}` : s.pointDiff}
                 </td>
-                <td className="text-center px-3 py-2.5 text-gray-500 text-xs font-medium">{pct}%</td>
+                <td className="text-center text-muted text-xs font-mono">{pct}%</td>
               </tr>
             );
           })}

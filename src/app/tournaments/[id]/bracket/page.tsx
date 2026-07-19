@@ -167,51 +167,49 @@ export default function TournamentBracketPage() {
   };
 
   if (loading) {
-    return <div className="min-h-screen bg-gray-50 flex items-center justify-center text-gray-500">Loading bracket…</div>;
+    return <div className="page flex items-center justify-center text-muted font-mono text-sm">Loading bracket…</div>;
   }
 
   if (!tournament) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="bg-white border-2 border-gray-200 rounded-2xl p-8 text-center">
-          <p className="text-gray-700 font-semibold mb-4">Tournament not found.</p>
-          <Link href="/tournaments/active" className="text-blue-600 font-semibold hover:text-blue-800">← Back to Active Tournaments</Link>
+      <div className="page flex items-center justify-center">
+        <div className="panel p-8 text-center max-w-sm">
+          <p className="font-semibold mb-4">Tournament not found.</p>
+          <Link href="/tournaments/active" className="nav-back">← Back to Active Tournaments</Link>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="container mx-auto px-4 py-8 max-w-7xl space-y-6">
+    <div className="page">
+      <div className="page-inner-wide space-y-6">
         <div className="flex justify-between items-center gap-4">
           <div>
-            <h1 className="text-3xl font-black text-gray-900">{tournament.name} · Bracket</h1>
-            <p className="text-gray-500 mt-1">
-              {bracketStarted ? 'Bracket stage management' : 'Bracket has not started yet'}
+            <p className="eyebrow mb-2">bracket</p>
+            <h1 className="display-lg">{tournament.name}</h1>
+            <p className="text-muted mt-1 text-sm">
+              {bracketStarted ? 'Bracket stage' : 'Bracket has not started yet'}
             </p>
           </div>
-          <Link href="/tournaments/active" className="bg-white hover:bg-gray-50 text-gray-700 px-5 py-2.5 rounded-xl shadow-sm border-2 border-gray-200 transition-colors font-semibold text-sm">
+          <Link href="/tournaments/active" className="btn btn-secondary btn-sm">
             ← Back
           </Link>
         </div>
 
         {!bracketStarted && (
-          <div className="bg-white rounded-2xl shadow-sm border-2 border-gray-200 p-6">
-            <p className="text-sm text-gray-600 mb-4">
+          <div className="panel-raised p-6">
+            <p className="text-sm text-muted mb-4">
               Round-robin stays editable on the active page until you explicitly start the bracket.
             </p>
-            <button
-              onClick={startBracket}
-              className="inline-flex items-center gap-2 bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white px-6 py-3 rounded-xl font-bold text-sm transition-colors border-2 border-purple-700"
-            >
-              🏆 Start Bracket
+            <button onClick={startBracket} className="btn btn-primary">
+              Start Bracket
             </button>
           </div>
         )}
 
         {bracketStarted && (
-          <div className="bg-white rounded-2xl shadow-sm border-2 border-gray-200 p-6 space-y-4">
+          <div className="panel p-6 space-y-4">
             <BracketView
               bracketMatches={bracketMatches}
               getPlayerName={getPlayerName}

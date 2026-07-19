@@ -13,7 +13,6 @@ export default function CelebrationModal({ winner, tournamentName, onClose }: Ce
   const [showModal, setShowModal] = useState(false);
 
   useEffect(() => {
-    // Delay showing modal for dramatic effect
     const timer = setTimeout(() => setShowModal(true), 500);
     return () => clearTimeout(timer);
   }, []);
@@ -23,18 +22,15 @@ export default function CelebrationModal({ winner, tournamentName, onClose }: Ce
   return (
     <>
       <Fireworks />
-      <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-40">
-        <div className="bg-white rounded-lg p-8 max-w-md w-full mx-4 text-center transform animate-bounce">
-          <div className="text-6xl mb-4">🎉</div>
-          <h2 className="text-3xl font-bold text-gray-800 mb-2">Tournament Complete!</h2>
-          <p className="text-lg text-gray-600 mb-4">{tournamentName}</p>
-          <div className="bg-gradient-to-r from-yellow-400 to-yellow-600 text-white px-6 py-3 rounded-full text-xl font-bold mb-6">
-            🏆 Champion: {winner} 🏆
+      <div className="modal-backdrop z-40">
+        <div className="modal max-w-md mx-4 p-10 text-center">
+          <p className="eyebrow mb-4">tournament complete</p>
+          <h2 className="display-lg mb-2">Champion</h2>
+          <p className="text-muted text-sm mb-8">{tournamentName}</p>
+          <div className="panel-gold py-6 px-4 mb-8">
+            <div className="display-md text-gold">{winner}</div>
           </div>
-          <button
-            onClick={onClose}
-            className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold transition-colors"
-          >
+          <button onClick={onClose} className="btn btn-primary btn-lg w-full">
             Continue
           </button>
         </div>
