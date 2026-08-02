@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Match } from '../../../../types/pingpong';
+import { Match, MARKER_PLAYER_ID } from '../../../../types/pingpong';
 import { getMatch, getTournamentIdForMatch, getTournament, setTournament, updateMatchInTournament, removeMatchFromTournament, removeGamesFromHistory, recalculateMatchWinner, saveData } from '../../../../data/data';
 import { cascadeRoundRobinPlayerSwap, cascadeBracketPlayerSwap, cascadeBracketOutcomeChange } from '../../../../lib/tournament';
 
@@ -35,6 +35,11 @@ export async function PUT(
         return NextResponse.json({ error: 'Player 1 and Player 2 must be different' }, { status: 400 });
       }
 
+      if (newP1 === MARKER_PLAYER_ID || (newP2 === MARKER_PLAYER_ID &&
+          (currentMatch.round !== 'roundRobin' || currentMatch.player2Id !== 'BYE' || currentMatch.winnerId !== currentMatch.player1Id))) {
+        return NextResponse.json({ error: 'A marker can only be added to an unplayed round-robin bye' }, { status: 400 });
+      }
+
       // Load the tournament and cascade all changes in memory, then save once
       const tournamentId = await getTournamentIdForMatch(matchId);
       if (!tournamentId) {
@@ -59,6 +64,9 @@ export async function PUT(
 
       if (isRR) {
         tournament.matches = cascadeRoundRobinPlayerSwap(tournament.matches, matchId, newP1, newP2);
+        if (newP2 === MARKER_PLAYER_ID) {
+          tournament.matches = tournament.matches.map(m => m.id === matchId ? { ...m, winnerId: undefined } : m);
+        }
       } else {
         tournament.matches = cascadeBracketPlayerSwap(tournament.matches, matchId, newP1, newP2);
       }

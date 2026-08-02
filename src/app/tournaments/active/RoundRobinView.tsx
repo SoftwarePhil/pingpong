@@ -13,6 +13,7 @@ interface RoundRobinViewProps {
   onDeleteGame: (gameId: string) => void;
   onSaveGameEdit: (gameId: string, score1: number, score2: number) => void;
   onSwapPlayers: (matchId: string, p1: string, p2: string) => void;
+  onAddMarker: (matchId: string) => void;
   onAdvanceRound: (tournament: Tournament) => void;
   onAddRound: (tournament: Tournament) => void;
   onRefreshMatches: (tournament: Tournament) => void;
@@ -26,6 +27,7 @@ export default function RoundRobinView({
   onDeleteGame,
   onSaveGameEdit,
   onSwapPlayers,
+  onAddMarker,
   onAdvanceRound,
   onAddRound,
   onRefreshMatches,
@@ -138,6 +140,7 @@ export default function RoundRobinView({
               onDeleteGame={onDeleteGame}
               onSaveGameEdit={onSaveGameEdit}
               onSwapPlayers={onSwapPlayers}
+              onAddMarker={onAddMarker}
             />
           ))}
           {selectedRoundMatches.length === 0 && (

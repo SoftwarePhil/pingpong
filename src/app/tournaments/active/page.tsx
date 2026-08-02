@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Tournament, Player, Match, Game, BracketConfig } from '../../../types/pingpong';
+import { Tournament, Player, Match, Game, BracketConfig, MARKER_PLAYER_ID } from '../../../types/pingpong';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import RoundRobinView from './RoundRobinView';
@@ -64,6 +64,7 @@ export default function ActiveTournamentsPage() {
 
   const getPlayerName = (id: string) => {
     if (id === 'BYE') return 'BYE';
+    if (id === MARKER_PLAYER_ID) return 'Marker';
     if (id === 'PLAY_IN_WINNER') return 'Play-in Winner';
     if (id === 'TBD') return 'TBD';
     return players.find(p => p.id === id)?.name ?? 'Unknown';
@@ -153,6 +154,15 @@ export default function ActiveTournamentsPage() {
     });
     if (res.ok) { await fetchTournaments(); }
     else { const err = await res.json(); alert(err.error ?? 'Failed to update players'); }
+  };
+
+  const addMarker = async (matchId: string) => {
+    const res = await fetch(`/api/matches/${matchId}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ player2Id: MARKER_PLAYER_ID }),
+    });
+    if (res.ok) await fetchTournaments();
+    else { const err = await res.json(); alert(err.error ?? 'Failed to add marker'); }
   };
 
   const changeMatchBestOf = async (matchId: string, bestOf: number) => {
@@ -696,6 +706,7 @@ export default function ActiveTournamentsPage() {
                           onDeleteGame={deleteGame}
                           onSaveGameEdit={saveGameEdit}
                           onSwapPlayers={swapPlayers}
+                          onAddMarker={addMarker}
                           onAdvanceRound={advanceRound}
                           onAddRound={addRoundRobinRound}
                           onRefreshMatches={refreshMatches}
@@ -821,17 +832,11 @@ export default function ActiveTournamentsPage() {
                         </div>
                       )}
 
-                      {!bracketStarted && allRoundRobinComplete && firstRoundComplete && (
-                        <div className="bg-emerald-50 border-2 border-emerald-200 rounded-xl p-4 flex items-center justify-between gap-3">
-                          <p className="text-sm text-emerald-900 font-semibold">All round robin games are complete. Bracket is ready to start.</p>
-                          <button
-                            onClick={() => startBracket(t)}
-                            className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-bold border border-emerald-700 transition-colors"
-                          >
-                            Start Bracket with Current Preview
-                          </button>
-                        </div>
-                      )}
+                       {!bracketStarted && allRoundRobinComplete && firstRoundComplete && (
+                         <div className="bg-emerald-50 border-2 border-emerald-200 rounded-xl p-4 flex items-center justify-between gap-3">
+                           <p className="text-sm text-emerald-900 font-semibold">All round robin games are complete. Bracket is ready to start.</p>
+                         </div>
+                       )}
 
                       {(bracketStarted || effectivePreviewMatches.length > 0) ? (
                         <div className="bg-white rounded-2xl shadow-sm border-2 border-gray-200 p-6">

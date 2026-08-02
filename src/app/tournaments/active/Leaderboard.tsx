@@ -15,12 +15,14 @@ export default function Leaderboard({ tournament, getPlayerName }: LeaderboardPr
     rrMatches.forEach(m => {
       if (!m.winnerId || m.player2Id === 'BYE') return;
       const loserId = m.player1Id === m.winnerId ? m.player2Id : m.player1Id;
-      stats[m.winnerId].wins++;
-      stats[m.winnerId].played++;
+      if (stats[m.winnerId]) {
+        stats[m.winnerId].wins++;
+        stats[m.winnerId].played++;
+      }
       if (stats[loserId]) { stats[loserId].losses++; stats[loserId].played++; }
       m.games.forEach(g => {
-        stats[m.player1Id].pointDiff += g.score1 - g.score2;
-        stats[m.player2Id].pointDiff += g.score2 - g.score1;
+        if (stats[m.player1Id]) stats[m.player1Id].pointDiff += g.score1 - g.score2;
+        if (stats[m.player2Id]) stats[m.player2Id].pointDiff += g.score2 - g.score1;
       });
     });
 
