@@ -68,6 +68,7 @@ describe('createRoundRobinPairings', () => {
   it('assigns the correct tournamentId to every match', () => {
     const matches = createRoundRobinPairings(['p1', 'p2', 'p3', 'p4'], 'my-tourney', 2);
     expect(matches.every(m => m.tournamentId === 'my-tourney')).toBe(true);
+    expect(matches.every(m => m.createdAt)).toBe(true);
   });
 
   it('assigns the correct bracketRound to every match', () => {

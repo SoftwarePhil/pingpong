@@ -34,6 +34,8 @@ export interface Tournament {
 export interface Match {
   id: string;
   tournamentId: string;
+  /** Creation timestamp for new matches; older matches may not have one. */
+  createdAt?: string;
   player1Id: string;
   player2Id: string;
   round: 'roundRobin' | 'bracket';

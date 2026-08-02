@@ -34,6 +34,7 @@ export async function POST(request: NextRequest) {
     const newMatch: Match = {
       id: Date.now().toString(),
       tournamentId,
+      createdAt: new Date().toISOString(),
       player1Id,
       player2Id,
       round,

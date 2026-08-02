@@ -289,6 +289,7 @@ export function createRoundRobinPairings(players: string[], tournamentId: string
     const newMatch: Match = {
       id: Date.now().toString() + Math.random(),
       tournamentId,
+      createdAt: new Date().toISOString(),
       player1Id: shuffled[i],
       player2Id: shuffled[i + 1],
       round: 'roundRobin',
@@ -304,6 +305,7 @@ export function createRoundRobinPairings(players: string[], tournamentId: string
     const byeMatch: Match = {
       id: Date.now().toString() + Math.random(),
       tournamentId,
+      createdAt: new Date().toISOString(),
       player1Id: byePlayer,
       player2Id: 'BYE',
       round: 'roundRobin',
@@ -366,6 +368,7 @@ export function advanceBracketRound(tournament: Tournament): Match[] {
     const newMatch: Match = {
       id: Date.now().toString() + Math.random(),
       tournamentId: tournament.id,
+      createdAt: new Date().toISOString(),
       player1Id: p1,
       player2Id: p2,
       round: 'bracket',
@@ -419,8 +422,9 @@ function createSeededBracketMatches(
     const p2 = seeding[i + 1] <= n ? players[seeding[i + 1] - 1] : 'BYE';
     const isBye = p2 === 'BYE' || p1 === 'BYE';
     newMatches.push({
-      id: Date.now().toString() + Math.random(),
-      tournamentId: tournament.id,
+       id: Date.now().toString() + Math.random(),
+       tournamentId: tournament.id,
+        createdAt: new Date().toISOString(),
       player1Id: p1,
       player2Id: p2,
       round: 'bracket',
