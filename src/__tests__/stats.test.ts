@@ -1,4 +1,4 @@
-import { computeStats } from '../lib/stats';
+import { computeStats, wilsonLowerBound } from '../lib/stats';
 import { Player, Game } from '../types/pingpong';
 
 function makePlayer(id: string, name: string): Player {
@@ -100,5 +100,10 @@ describe('computeStats', () => {
     const stats = computeStats(players, games);
     // BYE is not in the statsMap, so game is skipped
     expect(stats[0].gamesPlayed).toBe(0);
+  });
+
+  it('uses a conservative ranking score for small samples', () => {
+    expect(wilsonLowerBound(1, 1)).toBeLessThan(wilsonLowerBound(7, 10));
+    expect(wilsonLowerBound(0, 0)).toBe(0);
   });
 });

@@ -7,6 +7,7 @@ import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   BarChart, Bar, Cell,
 } from 'recharts';
+import { wilsonLowerBound } from '../../lib/stats';
 
 type PlayerTab = 'overview' | 'matches' | 'games' | 'h2h';
 
@@ -21,6 +22,7 @@ export default function PlayersPage() {
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
   const [showPlayerReport, setShowPlayerReport] = useState(false);
   const [activePlayerTab, setActivePlayerTab] = useState<PlayerTab>('overview');
+  const [includeRoundRobin, setIncludeRoundRobin] = useState(true);
 
   useEffect(() => {
     fetchPlayers();
@@ -86,7 +88,8 @@ export default function PlayersPage() {
   const getAdvancedStats = (playerId: string) => {
     // All matches for this player (exclude BYE)
     const playerMatches = matches.filter(
-      m => (m.player1Id === playerId || m.player2Id === playerId) && m.player2Id !== 'BYE'
+      m => (m.player1Id === playerId || m.player2Id === playerId) &&
+        m.player2Id !== 'BYE' && (includeRoundRobin || m.round !== 'roundRobin')
     );
 
     // All games embedded in those matches, sorted by date
@@ -97,9 +100,27 @@ export default function PlayersPage() {
 
     // Core game stats
     let gameWins = 0, gameLosses = 0, totalScore = 0, totalOppScore = 0;
+    let closeWins = 0, deuceGames = 0, comebackWins = 0, straightMatchWins = 0;
     let tempWinStreak = 0, tempLossStreak = 0, longestWinStreak = 0, longestLossStreak = 0;
     const h2h: Record<string, { wins: number; losses: number }> = {};
     const winRateOverTime: { game: number; winRate: number; label: string }[] = [];
+
+    playerMatches.forEach(match => {
+      const isP1 = match.player1Id === playerId;
+      const gameResults = match.games.map(g => {
+        const mine = isP1 ? g.score1 : g.score2;
+        const theirs = isP1 ? g.score2 : g.score1;
+        return { mine, theirs, won: mine > theirs };
+      });
+      if (match.winnerId === playerId && gameResults.length > 0) {
+        if (gameResults.filter(g => g.won).length === gameResults.length) straightMatchWins++;
+        if (gameResults[0] && !gameResults[0].won) comebackWins++;
+      }
+      gameResults.forEach(g => {
+        if (g.won && Math.abs(g.mine - g.theirs) === 2 && Math.max(g.mine, g.theirs) >= 10) closeWins++;
+        if (Math.min(g.mine, g.theirs) >= 10) deuceGames++;
+      });
+    });
 
     playerGames.forEach((game, i) => {
       const isP1 = game.player1Id === playerId;
@@ -158,7 +179,8 @@ export default function PlayersPage() {
       .filter(t => t.players.includes(playerId))
       .map(t => {
         const tMatches = (t.matches || []).filter(
-          m => (m.player1Id === playerId || m.player2Id === playerId) && m.player2Id !== 'BYE'
+        m => (m.player1Id === playerId || m.player2Id === playerId) && m.player2Id !== 'BYE'
+            && (includeRoundRobin || m.round !== 'roundRobin')
         );
         const tMatchWins = tMatches.filter(m => m.winnerId === playerId).length;
         const tMatchLosses = tMatches.filter(m => m.winnerId && m.winnerId !== playerId).length;
@@ -208,9 +230,14 @@ export default function PlayersPage() {
       matchWins,
       matchLosses,
       matchWinRate: (matchWins + matchLosses) > 0 ? Math.round((matchWins / (matchWins + matchLosses)) * 100) : 0,
+      rankingScore: wilsonLowerBound(matchWins, matchWins + matchLosses),
       avgScore: playerGames.length > 0 ? (totalScore / playerGames.length).toFixed(1) : '0.0',
       avgOppScore: playerGames.length > 0 ? (totalOppScore / playerGames.length).toFixed(1) : '0.0',
       pointDiff: playerGames.length > 0 ? ((totalScore - totalOppScore) / playerGames.length).toFixed(1) : '0.0',
+      closeWins,
+      deuceGames,
+      comebackWins,
+      straightMatchWins,
       longestWinStreak,
       longestLossStreak,
       currentStreak,
@@ -321,45 +348,41 @@ export default function PlayersPage() {
           </div>
         )}
 
+        {/* Stats filter */}
+        <div className="mt-8 flex items-center justify-between gap-4 bg-white rounded-xl shadow-sm border border-gray-200 px-5 py-4">
+          <div>
+            <h2 className="font-bold text-gray-900">Player rankings</h2>
+            <p className="text-xs text-gray-500 mt-0.5">Rankings use a conservative score so small samples do not dominate.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIncludeRoundRobin(value => !value)}
+            aria-pressed={includeRoundRobin}
+            className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${includeRoundRobin ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-gray-100 border-gray-300 text-gray-700'}`}
+          >
+            {includeRoundRobin ? 'Round robin included' : 'Exclude round robin'}
+          </button>
+        </div>
+
         {/* Leaderboard */}
         {players.length > 0 && (() => {
           const leaderboard = players.map(player => {
-            const pm = matches.filter(
-              m => (m.player1Id === player.id || m.player2Id === player.id) && m.player2Id !== 'BYE'
-            );
-            let matchWins = 0, matchLosses = 0, gameWins = 0, gameLosses = 0;
-            pm.forEach(m => {
-              if (m.winnerId === player.id) matchWins++;
-              else if (m.winnerId) matchLosses++;
-              m.games.forEach(g => {
-                const won = g.player1Id === player.id ? g.score1 > g.score2 : g.score2 > g.score1;
-                if (won) gameWins++; else gameLosses++;
-              });
-            });
-            const totalMatches = matchWins + matchLosses;
-            const totalGames = gameWins + gameLosses;
+            const stats = getAdvancedStats(player.id);
             return {
               player,
-              matchWins,
-              matchLosses,
-              gameWins,
-              gameLosses,
-              matchWinRate: totalMatches > 0 ? Math.round((matchWins / totalMatches) * 100) : 0,
-              gameWinRate: totalGames > 0 ? Math.round((gameWins / totalGames) * 100) : 0,
-              totalMatches,
-              totalGames,
+              ...stats,
             };
           }).sort((a, b) => {
-            if (b.matchWinRate !== a.matchWinRate) return b.matchWinRate - a.matchWinRate;
-            if (b.gameWinRate !== a.gameWinRate) return b.gameWinRate - a.gameWinRate;
-            return b.totalMatches - a.totalMatches;
+            if (b.rankingScore !== a.rankingScore) return b.rankingScore - a.rankingScore;
+            if (b.totalMatches !== a.totalMatches) return b.totalMatches - a.totalMatches;
+            return b.gameWinRate - a.gameWinRate;
           });
 
           return (
             <div className="mt-8 bg-white rounded-xl shadow-lg overflow-hidden border border-gray-200">
               <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-5">
                 <h2 className="text-xl font-bold">🏆 Leaderboard</h2>
-                <p className="text-indigo-200 text-sm mt-0.5">Ranked by match win rate</p>
+                 <p className="text-indigo-200 text-sm mt-0.5">Ranked by wins, win rate, and experience</p>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -370,7 +393,8 @@ export default function PlayersPage() {
                       <th className="px-5 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Matches</th>
                       <th className="px-5 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Match W–L</th>
                       <th className="px-5 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Game W–L</th>
-                      <th className="px-5 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider w-36">Game Win %</th>
+                       <th className="px-5 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider w-36">Game Win %</th>
+                       <th className="px-5 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Point diff</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -417,12 +441,15 @@ export default function PlayersPage() {
                             </span>
                           </div>
                         </td>
+                        <td className={`px-5 py-3.5 text-center font-semibold tabular-nums ${parseFloat(row.pointDiff) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                          {parseFloat(row.pointDiff) >= 0 ? '+' : ''}{row.pointDiff}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-              {leaderboard.every(r => r.totalMatches === 0) && (
+               {leaderboard.every(r => r.totalMatches === 0) && (
                 <div className="text-center py-10 text-gray-400 text-sm">No games played yet — play some matches to see rankings.</div>
               )}
             </div>
@@ -491,6 +518,20 @@ export default function PlayersPage() {
                           <div key={s.label} className={`bg-${s.color}-50 border border-${s.color}-100 rounded-xl p-4 text-center`}>
                             <div className={`text-3xl font-bold text-${s.color}-600 mb-1`}>{s.value}</div>
                             <div className={`text-xs font-medium text-${s.color}-700`}>{s.label}</div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        {[
+                          { label: 'Straight wins', value: stats.straightMatchWins },
+                          { label: 'Comeback wins', value: stats.comebackWins },
+                          { label: 'Close-game wins', value: stats.closeWins },
+                          { label: 'Deuce games', value: stats.deuceGames },
+                        ].map(s => (
+                          <div key={s.label} className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-center">
+                            <div className="text-2xl font-bold text-slate-700">{s.value}</div>
+                            <div className="text-xs font-medium text-slate-500">{s.label}</div>
                           </div>
                         ))}
                       </div>
