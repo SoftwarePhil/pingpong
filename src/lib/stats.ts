@@ -9,6 +9,16 @@ export interface PlayerStats {
   winRate: number;
   totalPoints: number;
   avgPointsPerGame: number;
+  rankingScore: number;
+}
+
+/** Conservative win-rate estimate: small samples stay below well-established records. */
+export function wilsonLowerBound(wins: number, total: number): number {
+  if (total === 0) return 0;
+  const z = 1.96;
+  const p = wins / total;
+  const denominator = 1 + (z * z) / total;
+  return (p + (z * z) / (2 * total) - z * Math.sqrt((p * (1 - p) + (z * z) / (4 * total)) / total)) / denominator;
 }
 
 export function computeStats(players: Player[], games: Game[]): PlayerStats[] {
@@ -23,6 +33,7 @@ export function computeStats(players: Player[], games: Game[]): PlayerStats[] {
       winRate: 0,
       totalPoints: 0,
       avgPointsPerGame: 0,
+      rankingScore: 0,
     };
   });
 
@@ -51,6 +62,7 @@ export function computeStats(players: Player[], games: Game[]): PlayerStats[] {
       ...s,
       winRate: s.gamesPlayed > 0 ? Math.round((s.wins / s.gamesPlayed) * 100) : 0,
       avgPointsPerGame: s.gamesPlayed > 0 ? Math.round(s.totalPoints / s.gamesPlayed) : 0,
+      rankingScore: wilsonLowerBound(s.wins, s.gamesPlayed),
     }))
-    .sort((a, b) => b.winRate - a.winRate || b.wins - a.wins);
+    .sort((a, b) => b.rankingScore - a.rankingScore || b.gamesPlayed - a.gamesPlayed);
 }
