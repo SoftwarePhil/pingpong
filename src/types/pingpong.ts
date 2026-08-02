@@ -43,6 +43,9 @@ export interface Match {
   winnerId?: string;
 }
 
+/** Synthetic opponent used only for round-robin marker games. */
+export const MARKER_PLAYER_ID = 'MARKER';
+
 export type PlayInMode = 'auto' | 'force' | 'none';
 
 export interface BracketConfig {

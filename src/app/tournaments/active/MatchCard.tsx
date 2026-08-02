@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Match, Game } from '../../../types/pingpong';
+import { Match, Game, MARKER_PLAYER_ID } from '../../../types/pingpong';
 
 interface MatchCardProps {
   match: Match;
@@ -12,6 +12,7 @@ interface MatchCardProps {
   onDeleteGame: (gameId: string) => void;
   onSaveGameEdit: (gameId: string, score1: number, score2: number) => void;
   onSwapPlayers: (matchId: string, player1Id: string, player2Id: string) => void;
+  onAddMarker: (matchId: string) => void;
 }
 
 export default function MatchCard({
@@ -23,6 +24,7 @@ export default function MatchCard({
   onDeleteGame,
   onSaveGameEdit,
   onSwapPlayers,
+  onAddMarker,
 }: MatchCardProps) {
   const [editingGame, setEditingGame] = useState<Game | null>(null);
   const [editScore1, setEditScore1] = useState('');
@@ -58,7 +60,8 @@ export default function MatchCard({
     setSwapping(false);
   };
 
-  const canSwap = match.round === 'roundRobin' && match.games.length === 0 && !match.winnerId;
+  const canSwap = match.round === 'roundRobin' && match.games.length === 0 && !match.winnerId && match.player2Id !== MARKER_PLAYER_ID;
+  const isBye = match.player2Id === 'BYE';
 
   return (
     <div className="bg-white border-2 border-gray-200 rounded-xl shadow-sm overflow-hidden">
@@ -80,6 +83,11 @@ export default function MatchCard({
               title="Change players"
             >
               ↔
+            </button>
+          )}
+          {match.round === 'roundRobin' && isBye && (
+            <button onClick={() => onAddMarker(match.id)} className="text-amber-600 hover:text-amber-800 px-1.5 py-0.5 rounded hover:bg-amber-50 text-xs font-semibold transition-colors">
+              Add marker
             </button>
           )}
           <button
@@ -140,10 +148,10 @@ export default function MatchCard({
         </div>
 
         <div className="text-center text-xs text-gray-400 font-semibold">
-          {match.player2Id === 'BYE' ? 'BYE' : 'VS'}
+          {isBye ? 'BYE' : 'VS'}
         </div>
 
-        {match.player2Id !== 'BYE' && (
+        {!isBye && (
           <div className={`flex justify-between items-center px-3 py-2 rounded-lg border ${
             match.winnerId === match.player2Id
               ? 'bg-green-50 border-green-300 text-green-900'
@@ -169,7 +177,7 @@ export default function MatchCard({
       )}
 
       {/* Score entry form */}
-      {match.games.length < match.bestOf && !match.winnerId && match.player2Id !== 'BYE' && (
+      {match.games.length < match.bestOf && !match.winnerId && !isBye && (
         <form
           onSubmit={e => {
             e.preventDefault();

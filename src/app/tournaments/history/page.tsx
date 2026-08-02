@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Tournament, Player, Match, Game } from '../../../types/pingpong';
+import { Tournament, Player, Match, Game, MARKER_PLAYER_ID } from '../../../types/pingpong';
 import Link from 'next/link';
 import BracketView from '../active/BracketView';
 
@@ -51,6 +51,7 @@ function TournamentHistoryContent() {
 
   const getPlayerName = (id: string) => {
     if (id === 'BYE') return 'BYE';
+    if (id === MARKER_PLAYER_ID) return 'Marker';
     const player = players.find(p => p.id === id);
     return player ? player.name : 'Unknown';
   };
@@ -63,8 +64,10 @@ function TournamentHistoryContent() {
 
     (tournament.matches || []).forEach(match => {
       if (match.winnerId && match.player2Id !== 'BYE') {
-        playerStats[match.winnerId].wins++;
-        playerStats[match.winnerId].totalGames++;
+        if (playerStats[match.winnerId]) {
+          playerStats[match.winnerId].wins++;
+          playerStats[match.winnerId].totalGames++;
+        }
         const loserId = match.player1Id === match.winnerId ? match.player2Id : match.player1Id;
         if (loserId && playerStats[loserId]) {
           playerStats[loserId].losses++;
@@ -427,4 +430,3 @@ export default function TournamentHistoryPage() {
     </Suspense>
   );
 }
-

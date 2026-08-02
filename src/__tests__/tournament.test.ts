@@ -1,5 +1,5 @@
 import { createRoundRobinPairings, advanceBracketRound, createBracketMatches, advanceRoundRobinRound } from '../lib/tournament';
-import { Tournament, Match } from '../types/pingpong';
+import { Tournament, Match, MARKER_PLAYER_ID } from '../types/pingpong';
 
 function makeTournament(overrides: Partial<Tournament> = {}): Tournament {
   return {
@@ -47,6 +47,22 @@ describe('createRoundRobinPairings', () => {
     const byeMatch = matches.find(m => m.player2Id === 'BYE');
     expect(byeMatch).toBeDefined();
     expect(byeMatch!.winnerId).toBe(byeMatch!.player1Id);
+  });
+
+  it('keeps marker games out of bracket players while using their result for the real player seed', () => {
+    const tournament = makeTournament({
+      players: ['p1', 'p2', 'p3'],
+      matches: [{
+        id: 'rr-marker', tournamentId: 't1', player1Id: 'p1', player2Id: MARKER_PLAYER_ID,
+        round: 'roundRobin', bracketRound: 1, bestOf: 1, winnerId: 'p1',
+        games: [{ id: 'g1', matchId: 'rr-marker', player1Id: 'p1', player2Id: MARKER_PLAYER_ID, score1: 11, score2: 3, date: '' }],
+      }],
+    });
+
+    const bracketMatches = createBracketMatches(tournament);
+    expect(tournament.playerRanking).not.toContain(MARKER_PLAYER_ID);
+    expect(tournament.playerRanking?.[0]).toBe('p1');
+    expect(bracketMatches.flatMap(m => [m.player1Id, m.player2Id])).not.toContain(MARKER_PLAYER_ID);
   });
 
   it('assigns the correct tournamentId to every match', () => {
