@@ -23,6 +23,8 @@ export default function PlayersPage() {
   const [showPlayerReport, setShowPlayerReport] = useState(false);
   const [activePlayerTab, setActivePlayerTab] = useState<PlayerTab>('overview');
   const [includeRoundRobin, setIncludeRoundRobin] = useState(true);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
   useEffect(() => {
     fetchPlayers();
@@ -85,11 +87,34 @@ export default function PlayersPage() {
     setShowPlayerReport(false);
   };
 
+  const isGameInDateRange = (game: Game) => {
+    if (!dateFrom && !dateTo) return true;
+    const time = new Date(game.date).getTime();
+    if (Number.isNaN(time)) return false;
+    if (dateFrom && time < new Date(`${dateFrom}T00:00:00`).getTime()) return false;
+    if (dateTo && time > new Date(`${dateTo}T23:59:59.999`).getTime()) return false;
+    return true;
+  };
+
+  const matchIsInDateRange = (match: Match) => {
+    if (!dateFrom && !dateTo) return true;
+    if (match.createdAt) return isGameInDateRange({
+      id: `match-${match.id}`,
+      player1Id: match.player1Id,
+      player2Id: match.player2Id,
+      score1: 0,
+      score2: 0,
+      date: match.createdAt,
+    });
+    if (match.games.length === 0) return false;
+    return match.games.some(isGameInDateRange);
+  };
+
   const getAdvancedStats = (playerId: string) => {
     // All matches for this player (exclude BYE)
     const playerMatches = matches.filter(
       m => (m.player1Id === playerId || m.player2Id === playerId) &&
-        m.player2Id !== 'BYE' && (includeRoundRobin || m.round !== 'roundRobin')
+        m.player2Id !== 'BYE' && (includeRoundRobin || m.round !== 'roundRobin') && matchIsInDateRange(m)
     );
 
     // All games embedded in those matches, sorted by date
@@ -179,8 +204,8 @@ export default function PlayersPage() {
       .filter(t => t.players.includes(playerId))
       .map(t => {
         const tMatches = (t.matches || []).filter(
-        m => (m.player1Id === playerId || m.player2Id === playerId) && m.player2Id !== 'BYE'
-            && (includeRoundRobin || m.round !== 'roundRobin')
+          m => (m.player1Id === playerId || m.player2Id === playerId) && m.player2Id !== 'BYE'
+            && (includeRoundRobin || m.round !== 'roundRobin') && matchIsInDateRange(m)
         );
         const tMatchWins = tMatches.filter(m => m.winnerId === playerId).length;
         const tMatchLosses = tMatches.filter(m => m.winnerId && m.winnerId !== playerId).length;
@@ -350,18 +375,33 @@ export default function PlayersPage() {
 
         {/* Stats filter */}
         <div className="mt-8 flex items-center justify-between gap-4 bg-white rounded-xl shadow-sm border border-gray-200 px-5 py-4">
-          <div>
+          <div className="min-w-0">
             <h2 className="font-bold text-gray-900">Player rankings</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Rankings use a conservative score so small samples do not dominate.</p>
+            <p className="text-xs text-gray-500 mt-0.5">Rankings use a conservative score and the selected date range.</p>
           </div>
-          <button
-            type="button"
-            onClick={() => setIncludeRoundRobin(value => !value)}
-            aria-pressed={includeRoundRobin}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${includeRoundRobin ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-gray-100 border-gray-300 text-gray-700'}`}
-          >
-            {includeRoundRobin ? 'Round robin included' : 'Exclude round robin'}
-          </button>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <label className="text-xs font-semibold text-gray-500">
+              From
+              <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="ml-1 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-gray-700 font-normal" />
+            </label>
+            <label className="text-xs font-semibold text-gray-500">
+              To
+              <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="ml-1 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-gray-700 font-normal" />
+            </label>
+            {(dateFrom || dateTo) && (
+              <button type="button" onClick={() => { setDateFrom(''); setDateTo(''); }} className="text-xs font-semibold text-gray-500 hover:text-gray-800 underline px-1">
+                Clear dates
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setIncludeRoundRobin(value => !value)}
+              aria-pressed={includeRoundRobin}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${includeRoundRobin ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-gray-100 border-gray-300 text-gray-700'}`}
+            >
+              {includeRoundRobin ? 'Round robin included' : 'Exclude round robin'}
+            </button>
+          </div>
         </div>
 
         {/* Leaderboard */}
