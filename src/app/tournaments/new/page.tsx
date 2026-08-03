@@ -5,9 +5,11 @@ import { Player, Tournament, Game } from '../../../types/pingpong';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { PlayerSearchSelect } from '../../../components/PlayerSearchSelect';
+import { useAuth } from '../../../components/AuthProvider';
 
 export default function NewTournamentPage() {
   const router = useRouter();
+  const { isAdmin } = useAuth();
   const [players, setPlayers] = useState<Player[]>([]);
   const [games, setGames] = useState<Game[]>([]);
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
@@ -18,6 +20,10 @@ export default function NewTournamentPage() {
   const [finalBestOf, setFinalBestOf] = useState(3);
   const [rrPairingStrategy, setRrPairingStrategy] = useState<'random' | 'top-vs-top'>('top-vs-top');
   const [selectedPlayers, setSelectedPlayers] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!isAdmin) router.replace('/tournaments/active');
+  }, [isAdmin, router]);
 
   useEffect(() => {
     fetchPlayers();
@@ -51,6 +57,8 @@ export default function NewTournamentPage() {
       router.replace('/tournaments/active');
     }
   }, [activeTournaments.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!isAdmin) return null;
 
   const createTournament = async (e: React.FormEvent) => {
     e.preventDefault();

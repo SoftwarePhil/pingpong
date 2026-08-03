@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTournament, setTournament, saveData, registerMatchesIndex, unregisterMatchesIndex } from '../../../../../data/data';
 import { resyncRoundRobinMatches } from '../../../../../lib/tournament';
+import { requireAdmin } from '../../../../../lib/auth';
 
 /**
  * Atomic, on-demand "Refresh Matches" operation — regenerates round-robin
@@ -16,6 +17,8 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   try {
     const { id } = await params;
     const tournament = await getTournament(id);

@@ -1,5 +1,6 @@
 import { PATCH } from '../app/api/tournaments/[id]/players/route';
 import { Tournament } from '../types/pingpong';
+import { adminRequest } from './authTestUtils';
 
 jest.mock('../data/data', () => ({
   getTournament: jest.fn(),
@@ -52,7 +53,7 @@ function makeTournament(overrides: Partial<Tournament> = {}): Tournament {
 }
 
 function makeRequest(body: unknown) {
-  return new Request('http://localhost/api/tournaments/t1/players', {
+  return adminRequest('http://localhost/api/tournaments/t1/players', {
     method: 'PATCH',
     body: JSON.stringify(body),
   });
