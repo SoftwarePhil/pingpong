@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Player } from '../../../types/pingpong';
 import { getPlayers, setPlayers, saveData } from '../../../data/data';
+import { requireAdmin } from '../../../lib/auth';
 
 export async function GET() {
   try {
@@ -13,6 +14,8 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   try {
     const body = await request.json();
     const { name }: { name: string } = body;

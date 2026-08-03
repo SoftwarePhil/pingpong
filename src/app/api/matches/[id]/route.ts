@@ -2,11 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Match, MARKER_PLAYER_ID } from '../../../../types/pingpong';
 import { getMatch, getTournamentIdForMatch, getTournament, setTournament, updateMatchInTournament, removeMatchFromTournament, removeGamesFromHistory, recalculateMatchWinner, saveData } from '../../../../data/data';
 import { cascadeRoundRobinPlayerSwap, cascadeBracketPlayerSwap, cascadeBracketOutcomeChange } from '../../../../lib/tournament';
+import { requireAdmin } from '../../../../lib/auth';
 
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   try {
     const { id: matchId } = await params;
     const updates = await request.json();
@@ -129,6 +132,8 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   try {
     const { id: matchId } = await params;
 

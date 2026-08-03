@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Match } from '../../../types/pingpong';
 import { getAllMatches, getMatchesForTournament, addMatchToTournament, saveData } from '../../../data/data';
+import { requireAdmin } from '../../../lib/auth';
 
 export async function GET(request: NextRequest) {
   try {
@@ -17,6 +18,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   try {
     const body = await request.json();
     const { tournamentId, player1Id, player2Id, round, bracketRound, bestOf, winnerId }: {

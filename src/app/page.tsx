@@ -3,8 +3,10 @@
 import { useEffect, useState } from 'react';
 import Link from "next/link";
 import { Tournament } from "../types/pingpong";
+import { AuthControls, useAuth } from "../components/AuthProvider";
 
 export default function Home() {
+  const { isAdmin } = useAuth();
   const [activeTournament, setActiveTournament] = useState<Tournament | null | undefined>(undefined);
 
   useEffect(() => {
@@ -25,6 +27,7 @@ export default function Home() {
           <div className="text-6xl mb-4">🏓🍺</div>
           <h1 className="text-5xl font-black text-gray-900 mb-3 tracking-tight">pingpong.beer</h1>
           <p className="text-gray-500 text-lg">Weekly ping pong tournaments, tracked.</p>
+          <div className="mt-3"><AuthControls /></div>
         </div>
 
         {/* Primary action */}
@@ -40,7 +43,7 @@ export default function Home() {
                 <div className="text-blue-200 group-hover:text-white text-3xl transition-colors">→</div>
               </div>
             </Link>
-          ) : (
+          ) : isAdmin ? (
             <Link href="/tournaments/new" className="group block bg-blue-600 hover:bg-blue-700 rounded-2xl p-7 transition-all duration-200 shadow-lg hover:shadow-xl border-2 border-blue-700">
               <div className="flex items-center justify-between">
                 <div>
@@ -50,6 +53,11 @@ export default function Home() {
                 </div>
                 <div className="text-blue-200 group-hover:text-white text-3xl transition-colors">→</div>
               </div>
+            </Link>
+          ) : (
+            <Link href="/tournaments/active" className="group block bg-blue-600 hover:bg-blue-700 rounded-2xl p-7 transition-all duration-200 shadow-lg hover:shadow-xl border-2 border-blue-700">
+              <h2 className="text-2xl font-bold text-white mb-1">View Tournaments</h2>
+              <p className="text-blue-100">Follow the current tournament and results</p>
             </Link>
           )}
         </div>
@@ -73,5 +81,4 @@ export default function Home() {
     </div>
   );
 }
-
 

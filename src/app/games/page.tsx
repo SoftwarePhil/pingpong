@@ -3,8 +3,10 @@
 import { useState, useEffect } from 'react';
 import { Player, Game } from '../../types/pingpong';
 import Link from 'next/link';
+import { AuthControls, useAuth } from '../../components/AuthProvider';
 
 export default function GamesPage() {
+  const { isAdmin } = useAuth();
   const [players, setPlayers] = useState<Player[]>([]);
   const [games, setGames] = useState<Game[]>([]);
   const [player1Id, setPlayer1Id] = useState('');
@@ -99,13 +101,14 @@ export default function GamesPage() {
             <Link href="/" className="bg-white hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg shadow-sm border border-gray-200 transition-colors">
               ← Back to Home
             </Link>
-            <button 
+            <AuthControls />
+            {isAdmin && <button
               onClick={() => setShowAddForm(!showAddForm)}
               className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg shadow-sm transition-colors flex items-center space-x-2"
             >
               <span>+</span>
               <span>Add Game</span>
-            </button>
+            </button>}
           </div>
         </div>
 
@@ -249,12 +252,12 @@ export default function GamesPage() {
             <div className="text-6xl mb-4">🎯</div>
             <h3 className="text-xl font-semibold text-gray-900 mb-2">No games recorded yet</h3>
             <p className="text-gray-600 mb-6">Record your first game to get started!</p>
-            <button 
+            {isAdmin && <button
               onClick={() => setShowAddForm(true)}
               className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-lg shadow-sm transition-colors text-lg"
             >
               Record Game
-            </button>
+            </button>}
           </div>
         )}
 

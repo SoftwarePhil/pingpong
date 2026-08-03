@@ -8,10 +8,12 @@ import {
   BarChart, Bar, Cell,
 } from 'recharts';
 import { wilsonLowerBound } from '../../lib/stats';
+import { AuthControls, useAuth } from '../../components/AuthProvider';
 
 type PlayerTab = 'overview' | 'matches' | 'games' | 'h2h';
 
 export default function PlayersPage() {
+  const { isAdmin } = useAuth();
   const [players, setPlayers] = useState<Player[]>([]);
   const [games, setGames] = useState<Game[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
@@ -293,6 +295,7 @@ export default function PlayersPage() {
             <Link href="/" className="bg-white hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg shadow-sm border border-gray-200 transition-colors">
               ← Back to Home
             </Link>
+            <AuthControls />
           </div>
         </div>
 
@@ -320,7 +323,7 @@ export default function PlayersPage() {
           ))}
 
           {/* Add Player card */}
-          {!showAddForm ? (
+           {isAdmin && (!showAddForm ? (
             <div
               onClick={() => { setShowAddForm(true); }}
               className="bg-white rounded-xl shadow-lg p-6 border-2 border-dashed border-gray-300 hover:border-indigo-400 hover:shadow-xl transition-all cursor-pointer flex items-center justify-center"
@@ -330,7 +333,7 @@ export default function PlayersPage() {
                 <p className="text-gray-500 font-medium">Add Player</p>
               </div>
             </div>
-          ) : (
+           ) : (
             <div className="bg-white rounded-xl shadow-lg p-6 border-2 border-indigo-300">
               <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">New Player</p>
               <form onSubmit={addPlayer} className="space-y-3">
@@ -345,7 +348,7 @@ export default function PlayersPage() {
                 />
                 {addPlayerError && (
                   <p className="text-red-600 text-xs mt-1">{addPlayerError}</p>
-                )}
+                  )}
                 <div className="flex gap-2">
                   <button type="submit" className="flex-1 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors">
                     Add
@@ -356,7 +359,7 @@ export default function PlayersPage() {
                 </div>
               </form>
             </div>
-          )}
+           ))}
         </div>
 
         {players.length === 0 && (
@@ -364,12 +367,12 @@ export default function PlayersPage() {
             <div className="text-6xl mb-4">👥</div>
             <h3 className="text-xl font-semibold text-gray-900 mb-2">No players yet</h3>
             <p className="text-gray-600 mb-6">Add your first player to get started!</p>
-            <button 
+            {isAdmin && <button
               onClick={() => setShowAddForm(true)}
               className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-lg shadow-sm transition-colors text-lg"
             >
               Add Player
-            </button>
+            </button>}
           </div>
         )}
 

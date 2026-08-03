@@ -1,5 +1,6 @@
 import { POST } from '../app/api/tournaments/[id]/refresh-matches/route';
 import { Tournament } from '../types/pingpong';
+import { adminRequest } from './authTestUtils';
 
 jest.mock('../data/data', () => ({
   getTournament: jest.fn(),
@@ -46,7 +47,7 @@ function makeTournament(overrides: Partial<Tournament> = {}): Tournament {
 }
 
 function callRefresh(id = 't1') {
-  const request = new Request('http://localhost/api/tournaments/t1/refresh-matches', { method: 'POST' });
+  const request = adminRequest('http://localhost/api/tournaments/t1/refresh-matches', { method: 'POST' });
   return POST(request as never, { params: Promise.resolve({ id }) });
 }
 

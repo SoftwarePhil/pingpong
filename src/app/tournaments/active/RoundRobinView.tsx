@@ -17,6 +17,7 @@ interface RoundRobinViewProps {
   onAdvanceRound: (tournament: Tournament) => void;
   onAddRound: (tournament: Tournament) => void;
   onRefreshMatches: (tournament: Tournament) => void;
+  readOnly?: boolean;
 }
 
 export default function RoundRobinView({
@@ -31,6 +32,7 @@ export default function RoundRobinView({
   onAdvanceRound,
   onAddRound,
   onRefreshMatches,
+  readOnly = false,
 }: RoundRobinViewProps) {
   const allMatches = tournament.matches ?? [];
   const rrMatches  = allMatches.filter(m => m.round === 'roundRobin');
@@ -120,13 +122,13 @@ export default function RoundRobinView({
               </>
             )}
           </div>
-          <button
+          {!readOnly && <button
             onClick={() => onRefreshMatches(tournament)}
             title="Regenerate matches for any active player who hasn't played the current round yet (fixes duplicates/missing pairings). Always applies to the live current round, regardless of which round you're viewing."
             className="text-xs font-semibold text-blue-600 hover:text-blue-800 px-3 py-1.5 rounded-lg border border-blue-200 hover:bg-blue-50 transition-colors"
           >
             🔄 Refresh Matches
-          </button>
+          </button>}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {selectedRoundMatches.map(match => (
@@ -140,7 +142,8 @@ export default function RoundRobinView({
               onDeleteGame={onDeleteGame}
               onSaveGameEdit={onSaveGameEdit}
               onSwapPlayers={onSwapPlayers}
-              onAddMarker={onAddMarker}
+               onAddMarker={onAddMarker}
+               readOnly={readOnly}
             />
           ))}
           {selectedRoundMatches.length === 0 && (
@@ -150,7 +153,7 @@ export default function RoundRobinView({
       </div>
 
       {/* Advance round / add round CTA — only relevant while viewing the live current round */}
-      {isViewingCurrentRound && allCurrentComplete && (
+      {!readOnly && isViewingCurrentRound && allCurrentComplete && (
         <div className="flex justify-center gap-3 pt-2">
           {!isLastRound ? (
             <button

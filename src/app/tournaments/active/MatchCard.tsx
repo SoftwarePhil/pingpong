@@ -13,6 +13,7 @@ interface MatchCardProps {
   onSaveGameEdit: (gameId: string, score1: number, score2: number) => void;
   onSwapPlayers: (matchId: string, player1Id: string, player2Id: string) => void;
   onAddMarker: (matchId: string) => void;
+  readOnly?: boolean;
 }
 
 export default function MatchCard({
@@ -25,6 +26,7 @@ export default function MatchCard({
   onSaveGameEdit,
   onSwapPlayers,
   onAddMarker,
+  readOnly = false,
 }: MatchCardProps) {
   const [editingGame, setEditingGame] = useState<Game | null>(null);
   const [editScore1, setEditScore1] = useState('');
@@ -60,7 +62,7 @@ export default function MatchCard({
     setSwapping(false);
   };
 
-  const canSwap = match.round === 'roundRobin' && match.games.length === 0 && !match.winnerId && match.player2Id !== MARKER_PLAYER_ID;
+  const canSwap = !readOnly && match.round === 'roundRobin' && match.games.length === 0 && !match.winnerId && match.player2Id !== MARKER_PLAYER_ID;
   const isBye = match.player2Id === 'BYE';
 
   return (
@@ -85,18 +87,18 @@ export default function MatchCard({
               ↔
             </button>
           )}
-          {match.round === 'roundRobin' && isBye && (
+          {!readOnly && match.round === 'roundRobin' && isBye && (
             <button onClick={() => onAddMarker(match.id)} className="text-amber-600 hover:text-amber-800 px-1.5 py-0.5 rounded hover:bg-amber-50 text-xs font-semibold transition-colors">
               Add marker
             </button>
           )}
-          <button
+          {!readOnly && <button
             onClick={() => onDeleteMatch(match.id)}
             className="text-red-400 hover:text-red-600 px-1.5 py-0.5 rounded hover:bg-red-50 text-xs transition-colors"
             title="Delete match"
           >
             ✕
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -177,7 +179,7 @@ export default function MatchCard({
       )}
 
       {/* Score entry form */}
-      {match.games.length < match.bestOf && !match.winnerId && !isBye && (
+      {!readOnly && match.games.length < match.bestOf && !match.winnerId && !isBye && (
         <form
           onSubmit={e => {
             e.preventDefault();
@@ -236,10 +238,12 @@ export default function MatchCard({
                       {game.score1}–{game.score2}
                     </span>
                     <div className="flex gap-1">
-                      <button onClick={() => startEditingGame(game)}
-                        className="text-blue-400 hover:text-blue-600 text-xs px-1 py-0.5 rounded hover:bg-blue-50">✏️</button>
-                      <button onClick={() => onDeleteGame(game.id)}
-                        className="text-red-400 hover:text-red-600 text-xs px-1 py-0.5 rounded hover:bg-red-50">🗑️</button>
+                      {!readOnly && <>
+                        <button onClick={() => startEditingGame(game)}
+                          className="text-blue-400 hover:text-blue-600 text-xs px-1 py-0.5 rounded hover:bg-blue-50">✏️</button>
+                        <button onClick={() => onDeleteGame(game.id)}
+                          className="text-red-400 hover:text-red-600 text-xs px-1 py-0.5 rounded hover:bg-red-50">🗑️</button>
+                      </>}
                     </div>
                   </>
                 )}

@@ -3,6 +3,7 @@ import { Game, Match } from '../../../types/pingpong';
 import { getAllGames, addGameToMatch, setTournament, registerMatchesIndex, unregisterMatchesIndex, getMatch, getTournament } from '../../../data/data';
 import { validateScore } from '../../../lib/scoring';
 import { generateBracketSeeding } from '../../../lib/tournament';
+import { requireAdmin } from '../../../lib/auth';
 
 export async function GET() {
   try {
@@ -15,6 +16,8 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   try {
     const body = await request.json();
     const { player1Id, player2Id, score1, score2, matchId }: { player1Id: string; player2Id: string; score1: number; score2: number; matchId?: string } = body;

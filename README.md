@@ -34,9 +34,28 @@ REDIS_URL=redis://:YOUR_REDIS_PASSWORD@localhost:6379
 
 # MongoDB (players + game history)
 MONGODB_URL=mongodb://YOUR_MONGO_USER:YOUR_MONGO_PASSWORD@localhost:27017
+
+# Shared admin password
+ADMIN_PASSWORD=choose-a-strong-password
+
+# Secret used to sign admin sessions
+AUTH_SECRET=choose-a-long-random-secret
 ```
 
 The Docker Compose setup uses `REDIS_PASSWORD` (default `mypassword`) and `MONGO_USERNAME` / `MONGO_PASSWORD` (defaults `admin` / `mypassword`). Make sure the URLs in `.env.local` match.
+
+### Authentication
+
+The app currently uses a simple shared-password model:
+
+- Visitors are `player` users by default and can view tournaments, results, brackets, history, and stats.
+- Players cannot record or edit games, change rosters, configure brackets, create players, or manage tournaments.
+- Admins select **Admin sign in** in the page header and enter the configured `ADMIN_PASSWORD` to unlock the existing management controls.
+- Admin access is stored in a signed, HTTP-only session cookie. Use **Sign out** when finished.
+
+Set `ADMIN_PASSWORD` in `.env.local` before starting the app. Set `AUTH_SECRET` to a long, random value in deployed environments; it is used to sign the admin session cookie. Changing either value invalidates existing admin sessions after the app restarts.
+
+Never commit `.env.local` or share the admin password. The role/session boundary is centralized so the shared password can later be replaced with individual accounts or an external auth provider.
 
 ### Running the Development Server
 

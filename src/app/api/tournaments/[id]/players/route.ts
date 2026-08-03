@@ -9,6 +9,7 @@ import {
   getPlayers,
 } from '../../../../../data/data';
 import { resyncRoundRobinMatches } from '../../../../../lib/tournament';
+import { requireAdmin } from '../../../../../lib/auth';
 
 /** Validates and de-duplicates a request-body field into a clean string[] (ignores non-string entries). */
 function toUniqueStringArray(value: unknown): string[] {
@@ -35,6 +36,8 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   try {
     const { id } = await params;
     const body = await request.json();

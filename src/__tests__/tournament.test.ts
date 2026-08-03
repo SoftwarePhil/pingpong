@@ -388,11 +388,16 @@ describe('advanceBracketRound – positional pairing', () => {
     //   winner(match0) vs winner(match1)
     // i.e. positional order, NOT a re-seeding of [p1,p2] back to [1 vs 2].
 
-    // Give all players 0 wins so ranking is insertion order: p1 > p2 > p3 > p4
+    // Give the top two players deterministic standings so tie-breaking cannot
+    // randomly place p1 and p2 in the same first-round match.
     const tournament = makeTournament({
       players: ['p1', 'p2', 'p3', 'p4'],
       bracketRounds: [{ matchCount: 2, bestOf: 3 }, { matchCount: 1, bestOf: 5 }],
-      matches: [],
+      matches: [
+        makeMatch('rr1', { round: 'roundRobin', player1Id: 'p1', player2Id: 'p3', winnerId: 'p1' }),
+        makeMatch('rr2', { round: 'roundRobin', player1Id: 'p1', player2Id: 'p4', winnerId: 'p1' }),
+        makeMatch('rr3', { round: 'roundRobin', player1Id: 'p2', player2Id: 'p3', winnerId: 'p2' }),
+      ],
     });
     const r1Matches = createBracketMatches(tournament);
     expect(r1Matches).toHaveLength(2);

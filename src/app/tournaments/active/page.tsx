@@ -9,9 +9,11 @@ import BracketView from './BracketView';
 import Leaderboard from './Leaderboard';
 import { createBracketMatches, cascadeBracketR1PlayerSwap, cascadeBracketPlayerSwap } from '../../../lib/tournament';
 import { PlayerSearchSelect } from '../../../components/PlayerSearchSelect';
+import { AuthControls, useAuth } from '../../../components/AuthProvider';
 
 export default function ActiveTournamentsPage() {
   const router = useRouter();
+  const { isAdmin } = useAuth();
   const [tournaments, setTournaments]           = useState<Tournament[]>([]);
   const [players, setPlayers]                   = useState<Player[]>([]);
   const [games, setGames]                       = useState<Game[]>([]);
@@ -463,9 +465,10 @@ export default function ActiveTournamentsPage() {
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-3xl font-black text-gray-900">⚡ Active Tournaments</h1>
-            <p className="text-gray-500 mt-1">Manage ongoing ping pong tournaments</p>
+            <p className="text-gray-500 mt-1">{isAdmin ? 'Manage ongoing ping pong tournaments' : 'Follow ongoing ping pong tournaments'}</p>
           </div>
           <div className="flex gap-3">
+            <AuthControls />
             <Link href="/tournaments" className="bg-white hover:bg-gray-50 text-gray-700 px-5 py-2.5 rounded-xl shadow-sm border-2 border-gray-200 transition-colors font-semibold text-sm">
               ← Back
             </Link>
@@ -589,7 +592,7 @@ export default function ActiveTournamentsPage() {
                     </div>
                     <div className="flex items-center gap-3">
                       {statusBadge(t)}
-                      <div className="relative" ref={openMenuId === t.id ? menuRef : null}>
+                      {isAdmin && <div className="relative" ref={openMenuId === t.id ? menuRef : null}>
                         <button
                           onClick={() => setOpenMenuId(openMenuId === t.id ? null : t.id)}
                           className="text-gray-400 hover:text-white hover:bg-white/10 rounded-lg p-2 transition-colors text-lg leading-none"
@@ -620,7 +623,7 @@ export default function ActiveTournamentsPage() {
                             </button>
                           </div>
                         )}
-                      </div>
+                      </div>}
                     </div>
                   </div>
                 </div>
@@ -659,7 +662,7 @@ export default function ActiveTournamentsPage() {
 
                   {activeTab === 'roundRobin' && (
                     <>
-                      {!bracketStarted && (
+                      {isAdmin && !bracketStarted && (
                         <div>
                           <div className="flex items-center gap-2 mb-3">
                             <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Players</span>
@@ -710,6 +713,7 @@ export default function ActiveTournamentsPage() {
                           onAdvanceRound={advanceRound}
                           onAddRound={addRoundRobinRound}
                           onRefreshMatches={refreshMatches}
+                          readOnly={!isAdmin}
                         />
                       )}
 
@@ -771,7 +775,7 @@ export default function ActiveTournamentsPage() {
 
                   {activeTab === 'bracket' && (
                     <div className="space-y-6">
-                      {!bracketStarted && (
+                      {isAdmin && !bracketStarted && (
                         <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-5 space-y-4">
                           <div>
                             <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider mb-1">Bracket preview — editable</p>
@@ -846,11 +850,11 @@ export default function ActiveTournamentsPage() {
                             tournamentPlayers={t.players}
                             onAddGame={addGameToMatch}
                             onSaveGameEdit={saveGameEdit}
-                            onDeleteGame={bracketStarted ? deleteGame : undefined}
-                            onChangeBestOf={bracketStarted ? changeMatchBestOf : undefined}
-                            onSwapPlayers={bracketStarted ? swapPlayers : async (mid, p1, p2) => { handlePreviewBracketSwap(t.id, mid, p1, p2, effectivePreviewMatches); }}
-                            readOnly={false}
-                            previewMode={!bracketStarted}
+                            onDeleteGame={isAdmin && bracketStarted ? deleteGame : undefined}
+                            onChangeBestOf={isAdmin && bracketStarted ? changeMatchBestOf : undefined}
+                            onSwapPlayers={isAdmin ? (bracketStarted ? swapPlayers : async (mid, p1, p2) => { handlePreviewBracketSwap(t.id, mid, p1, p2, effectivePreviewMatches); }) : undefined}
+                            readOnly={!isAdmin}
+                            previewMode={isAdmin && !bracketStarted}
                           />
                           {!bracketStarted && (
                             <div className="mt-3 flex justify-end">

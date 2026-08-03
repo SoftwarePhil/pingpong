@@ -1,4 +1,5 @@
 import { PUT } from '../app/api/tournaments/route';
+import { adminRequest } from './authTestUtils';
 
 jest.mock('../data/data', () => ({
   getTournaments: jest.fn(),
@@ -76,7 +77,7 @@ describe('tournaments route transitions', () => {
     mockedGetTournament.mockResolvedValue(tournament);
     mockedAdvanceRoundRobinRound.mockReturnValue([makeMatch({ id: 'rr2' })]);
 
-    const request = new Request('http://localhost/api/tournaments', {
+    const request = adminRequest('http://localhost/api/tournaments', {
       method: 'PUT',
       body: JSON.stringify({ id: 't1', action: 'addRoundRobinRound' }),
     });
@@ -99,7 +100,7 @@ describe('tournaments route transitions', () => {
       makeMatch({ id: 'b1', round: 'bracket', bracketRound: 1, bestOf: 3 }),
     ]);
 
-    const request = new Request('http://localhost/api/tournaments', {
+    const request = adminRequest('http://localhost/api/tournaments', {
       method: 'PUT',
       body: JSON.stringify({ id: 't1', action: 'startBracket' }),
     });
@@ -122,7 +123,7 @@ describe('tournaments route transitions', () => {
     const tournament = makeTournament({ status: 'roundRobin' });
     mockedGetTournament.mockResolvedValue(tournament);
 
-    const request = new Request('http://localhost/api/tournaments', {
+    const request = adminRequest('http://localhost/api/tournaments', {
       method: 'PUT',
       body: JSON.stringify({ id: 't1', players: ['p1', 'p2', 'p3'], activePlayers: ['p1', 'p2', 'p3'] }),
     });
@@ -154,7 +155,7 @@ describe('tournaments route transitions', () => {
       mockedGetTournament.mockResolvedValue(tournament);
       mockedAdvanceRoundRobinRound.mockReturnValue([makeMatch({ id: 'rr3', bracketRound: 3 })]);
 
-      const request = new Request('http://localhost/api/tournaments', {
+      const request = adminRequest('http://localhost/api/tournaments', {
         method: 'PUT',
         body: JSON.stringify({ id: 't1', action: 'advanceRound' }),
       });
@@ -176,7 +177,7 @@ describe('tournaments route transitions', () => {
       });
       mockedGetTournament.mockResolvedValue(tournament);
 
-      const request = new Request('http://localhost/api/tournaments', {
+      const request = adminRequest('http://localhost/api/tournaments', {
         method: 'PUT',
         body: JSON.stringify({ id: 't1', action: 'advanceRound' }),
       });
