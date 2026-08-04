@@ -20,6 +20,10 @@ export default function NewTournamentPage() {
   const [finalBestOf, setFinalBestOf] = useState(3);
   const [rrPairingStrategy, setRrPairingStrategy] = useState<'random' | 'top-vs-top'>('top-vs-top');
   const [selectedPlayers, setSelectedPlayers] = useState<string[]>([]);
+  const [showNewPlayerForm, setShowNewPlayerForm] = useState(false);
+  const [newPlayerName, setNewPlayerName] = useState('');
+  const [newPlayerError, setNewPlayerError] = useState<string | null>(null);
+  const [creatingPlayer, setCreatingPlayer] = useState(false);
 
   useEffect(() => {
     if (!isAdmin) router.replace('/tournaments/active');
@@ -35,6 +39,31 @@ export default function NewTournamentPage() {
     const res = await fetch('/api/players');
     const data = await res.json();
     setPlayers(data);
+  };
+
+  const createPlayerAndSelect = async () => {
+    const trimmedName = newPlayerName.trim();
+    if (!trimmedName || creatingPlayer) return;
+
+    setCreatingPlayer(true);
+    setNewPlayerError(null);
+    const res = await fetch('/api/players', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: trimmedName }),
+    });
+
+    if (res.ok) {
+      const created: Player = await res.json();
+      setPlayers(prev => [...prev, created]);
+      setSelectedPlayers(prev => [...prev, created.id]);
+      setNewPlayerName('');
+      setShowNewPlayerForm(false);
+    } else {
+      const error = await res.json();
+      setNewPlayerError(error.error ?? 'Failed to add player');
+    }
+    setCreatingPlayer(false);
   };
 
   const fetchGames = async () => {
@@ -231,11 +260,55 @@ export default function NewTournamentPage() {
             </div>
 
             <div>
-              <label className="block text-lg font-semibold text-gray-800 mb-4">Select Players</label>
-              <PlayerSearchSelect players={players} games={games} selected={selectedPlayers} onChange={setSelectedPlayers} />
-              {players.length === 0 && (
-                <p className="text-gray-600 text-center py-8">No players available. Add some players first!</p>
-              )}
+               <label className="block text-lg font-semibold text-gray-800 mb-4">Select Players</label>
+               <PlayerSearchSelect players={players} games={games} selected={selectedPlayers} onChange={setSelectedPlayers} />
+               <div className="mt-5 pt-4 border-t border-gray-200">
+                 {!showNewPlayerForm ? (
+                   <button
+                     type="button"
+                     onClick={() => { setShowNewPlayerForm(true); setNewPlayerError(null); }}
+                     className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 font-semibold transition-colors"
+                   >
+                     <span className="text-lg leading-none">+</span> Create New Player
+                   </button>
+                 ) : (
+                   <div className="bg-gray-50 rounded-xl p-4 border-2 border-gray-200">
+                     <p className="text-sm font-semibold text-gray-700 mb-3">New Player</p>
+                     <div className="flex gap-2">
+                       <input
+                         type="text"
+                         value={newPlayerName}
+                         onChange={e => { setNewPlayerName(e.target.value); setNewPlayerError(null); }}
+                         onKeyDown={e => { if (e.key === 'Enter' && newPlayerName.trim()) { e.preventDefault(); createPlayerAndSelect(); } }}
+                         placeholder="Player name"
+                         autoFocus
+                         disabled={creatingPlayer}
+                         className="flex-1 px-3 py-2 border-2 border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:border-blue-500 disabled:bg-gray-100"
+                       />
+                       <button
+                         type="button"
+                         onClick={createPlayerAndSelect}
+                         disabled={creatingPlayer || !newPlayerName.trim()}
+                         className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                       >
+                         {creatingPlayer ? 'Adding...' : 'Add'}
+                       </button>
+                       <button
+                         type="button"
+                         onClick={() => { setShowNewPlayerForm(false); setNewPlayerName(''); setNewPlayerError(null); }}
+                         disabled={creatingPlayer}
+                         className="px-4 py-2 border-2 border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-100 font-semibold transition-colors disabled:opacity-50"
+                       >
+                         Cancel
+                       </button>
+                     </div>
+                     {newPlayerError && <p className="mt-2 text-sm text-red-600">{newPlayerError}</p>}
+                   </div>
+                 )}
+               </div>
+               {players.length === 0 && (
+                 <p className="text-gray-600 text-center py-8">No players available. Add some players first!</p>
+               )}
             </div>
 
             <div className="flex justify-end space-x-4 pt-6 border-t-2 border-gray-200">
