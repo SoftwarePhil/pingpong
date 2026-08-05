@@ -4,7 +4,7 @@ Match, player, tournament, and stats tracker for office ping pong. Built with Ne
 
 ## Features
 
-- **Players** — add players, view per-player stats and match history
+- **Players** — add players, manage optional profiles, and view per-player stats and match history
 - **Tournaments** — create round-robin + bracket tournaments, advance rounds, track results
 - **Stats** — leaderboard with win rate, games played, points per game
 - **Live bracket** — bracket view with fireworks celebration on completion
@@ -49,7 +49,7 @@ The Docker Compose setup uses `REDIS_PASSWORD` (default `mypassword`) and `MONGO
 The app currently uses a simple shared-password model:
 
 - Visitors are `player` users by default and can view tournaments, results, brackets, history, and stats.
-- Players cannot record or edit games, change rosters, configure brackets, create players, or manage tournaments.
+- Players cannot record or edit games, change rosters, configure brackets, create players, edit player profiles, or manage tournaments.
 - Admins select **Admin sign in** in the page header and enter the configured `ADMIN_PASSWORD` to unlock the existing management controls.
 - Admin access is stored in a signed, HTTP-only session cookie. Use **Sign out** when finished.
 

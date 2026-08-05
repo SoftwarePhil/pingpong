@@ -26,7 +26,7 @@ Database: `pingpong_{NODE_ENV}` (e.g. `pingpong_production`, `pingpong_test`)
 | Collection | Document shape | Contents |
 |---|---|---|
 | `tournaments` | `{ _id: tournamentId, name, status: 'completed', matches[], … }` | **Completed** tournament documents, moved from Redis on completion |
-| `players` | `{ _id: playerId, name, tournamentIds[] }` | One document per player |
+| `players` | `{ _id: playerId, name, firstName?, lastName?, birthday?, profilePicture?, tournamentIds[] }` | One document per player; profile fields are optional and admin-managed; age is calculated from `birthday` |
 | `games` | `{ _id: gameId, matchId, player1Id, player2Id, score1, score2, date }` | Every game ever played |
 
 ## Data flow

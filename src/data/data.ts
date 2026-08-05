@@ -355,6 +355,10 @@ export async function getPlayers(): Promise<Player[]> {
       id: _id,
       name: player.name,
       tournamentIds: player.tournamentIds ?? [],
+      ...(player.firstName !== undefined && { firstName: player.firstName }),
+      ...(player.lastName !== undefined && { lastName: player.lastName }),
+      ...(player.birthday !== undefined && { birthday: player.birthday }),
+      ...(player.profilePicture !== undefined && { profilePicture: player.profilePicture }),
     }));
   } catch (error) {
     console.error('Error getting players:', error);

@@ -703,6 +703,7 @@ export default function ActiveTournamentsPage() {
                       {!bracketStarted && (
                         <RoundRobinView
                           tournament={t}
+                          players={players}
                           getPlayerName={getPlayerName}
                           onAddGame={addGameToMatch}
                           onDeleteMatch={deleteMatch}
@@ -723,7 +724,7 @@ export default function ActiveTournamentsPage() {
                           (click a round dot), so this summary is only needed post-bracket-start. */}
                       {bracketStarted && (
                         <div className="mt-2 border-t border-gray-200 pt-6 space-y-5">
-                          <Leaderboard tournament={t} getPlayerName={getPlayerName} />
+                           <Leaderboard tournament={t} players={players} getPlayerName={getPlayerName} />
                           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Previous Round Robin Rounds</p>
                           {Array.from(new Set(rrMatches.map(m => m.bracketRound ?? 1))).sort((a, b) => a - b).map(round => {
                             const roundMatches = rrMatches.filter(m => (m.bracketRound ?? 1) === round && m.player2Id !== 'BYE');
@@ -844,10 +845,11 @@ export default function ActiveTournamentsPage() {
 
                       {(bracketStarted || effectivePreviewMatches.length > 0) ? (
                         <div className="bg-white rounded-2xl shadow-sm border-2 border-gray-200 p-6">
-                          <BracketView
-                            bracketMatches={bracketStarted ? bracketMatches : effectivePreviewMatches}
-                            getPlayerName={getPlayerName}
-                            tournamentPlayers={t.players}
+                           <BracketView
+                             bracketMatches={bracketStarted ? bracketMatches : effectivePreviewMatches}
+                             getPlayerName={getPlayerName}
+                             players={players}
+                             tournamentPlayers={t.players}
                             onAddGame={addGameToMatch}
                             onSaveGameEdit={saveGameEdit}
                             onDeleteGame={isAdmin && bracketStarted ? deleteGame : undefined}
@@ -875,7 +877,7 @@ export default function ActiveTournamentsPage() {
                       )}
 
                       <div className="bg-white rounded-2xl shadow-sm border-2 border-gray-200 p-5">
-                        <Leaderboard tournament={t} getPlayerName={getPlayerName} />
+                         <Leaderboard tournament={t} players={players} getPlayerName={getPlayerName} />
                       </div>
 
                       <div className="bg-white rounded-2xl shadow-sm border-2 border-gray-200 p-5">
