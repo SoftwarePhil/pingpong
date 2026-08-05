@@ -5,12 +5,98 @@ import { Player, Game, Match, Tournament } from '../../types/pingpong';
 import Link from 'next/link';
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  BarChart, Bar, Cell,
+  BarChart, Bar,
 } from 'recharts';
 import { wilsonLowerBound } from '../../lib/stats';
 import { AuthControls, useAuth } from '../../components/AuthProvider';
+import { getPlayerAge } from '../../lib/player';
 
 type PlayerTab = 'overview' | 'matches' | 'games' | 'h2h';
+type PlayerForm = {
+  name: string;
+  firstName: string;
+  lastName: string;
+  birthday: string;
+  profilePicture: string;
+};
+
+const emptyPlayerForm = (): PlayerForm => ({
+  name: '',
+  firstName: '',
+  lastName: '',
+  birthday: '',
+  profilePicture: '',
+});
+
+function playerToForm(player: Player): PlayerForm {
+  return {
+    name: player.name,
+    firstName: player.firstName ?? '',
+    lastName: player.lastName ?? '',
+    birthday: player.birthday ?? '',
+    profilePicture: player.profilePicture ?? '',
+  };
+}
+
+function playerInitials(player: Player) {
+  const initials = `${player.firstName?.charAt(0) ?? ''}${player.lastName?.charAt(0) ?? ''}`;
+  return (initials || player.name.charAt(0)).toUpperCase();
+}
+
+function playerProfileSummary(player: Player) {
+  const fullName = [player.firstName, player.lastName].filter(Boolean).join(' ');
+  const age = getPlayerAge(player);
+  return [fullName, age === undefined ? '' : `Age ${age}`].filter(Boolean).join(' · ');
+}
+
+function PlayerAvatar({ player, className }: { player: Player; className: string }) {
+  if (player.profilePicture) {
+    return <img src={player.profilePicture} alt={`${player.name} profile`} className={`${className} rounded-full object-cover`} />;
+  }
+  return (
+    <div className={`${className} bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold`}>
+      {playerInitials(player)}
+    </div>
+  );
+}
+
+function PlayerProfileFields({
+  value,
+  onChange,
+}: {
+  value: PlayerForm;
+  onChange: (value: PlayerForm) => void;
+}) {
+  const setField = (field: keyof PlayerForm, fieldValue: string) => {
+    onChange({ ...value, [field]: fieldValue });
+  };
+  const inputClass = 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-400 bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <label className="text-xs font-semibold text-gray-600">
+        Display name
+        <input type="text" value={value.name} onChange={e => setField('name', e.target.value)} placeholder="Player name" className={`${inputClass} mt-1`} required />
+      </label>
+      <label className="text-xs font-semibold text-gray-600">
+        First name <span className="font-normal text-gray-400">(optional)</span>
+        <input type="text" value={value.firstName} onChange={e => setField('firstName', e.target.value)} className={`${inputClass} mt-1`} />
+      </label>
+      <label className="text-xs font-semibold text-gray-600">
+        Last name <span className="font-normal text-gray-400">(optional)</span>
+        <input type="text" value={value.lastName} onChange={e => setField('lastName', e.target.value)} className={`${inputClass} mt-1`} />
+      </label>
+      <label className="text-xs font-semibold text-gray-600">
+        Birthday <span className="font-normal text-gray-400">(optional)</span>
+        <input type="date" max={new Date().toISOString().slice(0, 10)} value={value.birthday} onChange={e => setField('birthday', e.target.value)} className={`${inputClass} mt-1`} />
+      </label>
+      <label className="text-xs font-semibold text-gray-600 sm:col-span-2">
+        Profile picture URL <span className="font-normal text-gray-400">(optional)</span>
+        <input type="url" value={value.profilePicture} onChange={e => setField('profilePicture', e.target.value)} placeholder="https://example.com/photo.jpg" className={`${inputClass} mt-1`} />
+      </label>
+    </div>
+  );
+}
 
 export default function PlayersPage() {
   const { isAdmin } = useAuth();
@@ -18,11 +104,15 @@ export default function PlayersPage() {
   const [games, setGames] = useState<Game[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
-  const [name, setName] = useState('');
+  const [newPlayer, setNewPlayer] = useState<PlayerForm>(emptyPlayerForm);
   const [showAddForm, setShowAddForm] = useState(false);
   const [addPlayerError, setAddPlayerError] = useState<string | null>(null);
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
   const [showPlayerReport, setShowPlayerReport] = useState(false);
+  const [editingPlayerId, setEditingPlayerId] = useState<string | null>(null);
+  const [editPlayerForm, setEditPlayerForm] = useState<PlayerForm>(emptyPlayerForm);
+  const [editPlayerError, setEditPlayerError] = useState<string | null>(null);
+  const [savingPlayer, setSavingPlayer] = useState(false);
   const [activePlayerTab, setActivePlayerTab] = useState<PlayerTab>('overview');
   const [includeRoundRobin, setIncludeRoundRobin] = useState(true);
   const [dateFrom, setDateFrom] = useState('');
@@ -61,14 +151,14 @@ export default function PlayersPage() {
 
   const addPlayer = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!newPlayer.name.trim()) return;
     const res = await fetch('/api/players', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify(newPlayer),
     });
     if (res.ok) {
-      setName('');
+      setNewPlayer(emptyPlayerForm());
       setAddPlayerError(null);
       setShowAddForm(false);
       fetchPlayers();
@@ -82,11 +172,45 @@ export default function PlayersPage() {
     setSelectedPlayer(player);
     setShowPlayerReport(true);
     setActivePlayerTab('overview');
+    setEditingPlayerId(null);
+    setEditPlayerError(null);
+  };
+
+  const startEditingPlayer = (player: Player) => {
+    setEditingPlayerId(player.id);
+    setEditPlayerForm(playerToForm(player));
+    setEditPlayerError(null);
+  };
+
+  const savePlayer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPlayerId || !editPlayerForm.name.trim() || savingPlayer) return;
+
+    setSavingPlayer(true);
+    setEditPlayerError(null);
+    const res = await fetch(`/api/players/${editingPlayerId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(editPlayerForm),
+    });
+
+    if (res.ok) {
+      const updated: Player = await res.json();
+      setPlayers(prev => prev.map(player => player.id === updated.id ? updated : player));
+      setSelectedPlayer(updated);
+      setEditingPlayerId(null);
+    } else {
+      const error = await res.json();
+      setEditPlayerError(error.error || 'Failed to update player');
+    }
+    setSavingPlayer(false);
   };
 
   const closePlayerReport = () => {
     setSelectedPlayer(null);
     setShowPlayerReport(false);
+    setEditingPlayerId(null);
+    setEditPlayerError(null);
   };
 
   const isGameInDateRange = (game: Game) => {
@@ -308,11 +432,10 @@ export default function PlayersPage() {
               onClick={() => selectPlayer(player)}
             >
               <div className="flex items-center space-x-4">
-                <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-white text-xl font-bold">
-                  {player.name.charAt(0).toUpperCase()}
-                </div>
+                <PlayerAvatar player={player} className="w-12 h-12 text-xl shrink-0" />
                 <div className="flex-1">
                   <h3 className="text-xl font-bold text-gray-900">{player.name}</h3>
+                  {playerProfileSummary(player) && <p className="text-gray-500 text-sm">{playerProfileSummary(player)}</p>}
                   <p className="text-gray-600 text-sm">Player since {new Date(parseInt(player.id)).toLocaleDateString()}</p>
                   <p className="text-indigo-600 text-sm font-medium mt-1 cursor-pointer hover:text-indigo-800">
                     📊 View Details →
@@ -333,30 +456,22 @@ export default function PlayersPage() {
                 <p className="text-gray-500 font-medium">Add Player</p>
               </div>
             </div>
-           ) : (
-            <div className="bg-white rounded-xl shadow-lg p-6 border-2 border-indigo-300">
-              <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">New Player</p>
-              <form onSubmit={addPlayer} className="space-y-3">
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => { setName(e.target.value); setAddPlayerError(null); }}
-                  placeholder="Player name"
-                  className={`w-full border rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-400 bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 ${addPlayerError ? 'border-red-400' : 'border-gray-300'}`}
-                  autoFocus
-                  required
-                />
-                {addPlayerError && (
-                  <p className="text-red-600 text-xs mt-1">{addPlayerError}</p>
-                  )}
+            ) : (
+             <div className="bg-white rounded-xl shadow-lg p-6 border-2 border-indigo-300">
+               <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">New Player</p>
+               <form onSubmit={addPlayer} className="space-y-3">
+                 <PlayerProfileFields value={newPlayer} onChange={value => { setNewPlayer(value); setAddPlayerError(null); }} />
+                 {addPlayerError && (
+                   <p className="text-red-600 text-xs mt-1">{addPlayerError}</p>
+                   )}
                 <div className="flex gap-2">
-                  <button type="submit" className="flex-1 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors">
-                    Add
-                  </button>
-                  <button type="button" onClick={() => { setShowAddForm(false); setName(''); setAddPlayerError(null); }} className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors">
-                    Cancel
-                  </button>
-                </div>
+                   <button type="submit" className="flex-1 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors">
+                     Add
+                   </button>
+                   <button type="button" onClick={() => { setShowAddForm(false); setNewPlayer(emptyPlayerForm()); setAddPlayerError(null); }} className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors">
+                     Cancel
+                   </button>
+                 </div>
               </form>
             </div>
            ))}
@@ -454,9 +569,7 @@ export default function PlayersPage() {
                         </td>
                         <td className="px-5 py-3.5 whitespace-nowrap">
                           <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0">
-                              {row.player.name.charAt(0).toUpperCase()}
-                            </div>
+                            <PlayerAvatar player={row.player} className="w-8 h-8 text-sm shrink-0" />
                             <span className="font-semibold text-gray-900">{row.player.name}</span>
                           </div>
                         </td>
@@ -513,17 +626,23 @@ export default function PlayersPage() {
               <div className="border-b border-gray-200 px-6 pt-5 pb-0 shrink-0">
                 <div className="flex justify-between items-start mb-4">
                   <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-white text-2xl font-bold shrink-0">
-                      {selectedPlayer.name.charAt(0).toUpperCase()}
-                    </div>
+                    <PlayerAvatar player={selectedPlayer} className="w-14 h-14 text-2xl shrink-0" />
                     <div>
                       <h2 className="text-2xl font-bold text-gray-900">{selectedPlayer.name}</h2>
+                      {playerProfileSummary(selectedPlayer) && <p className="text-sm text-gray-600">{playerProfileSummary(selectedPlayer)}</p>}
                       <p className="text-sm text-gray-500">
                         Player since {new Date(parseInt(selectedPlayer.id)).toLocaleDateString()}
                       </p>
                     </div>
                   </div>
-                  <button onClick={closePlayerReport} className="text-gray-400 hover:text-gray-600 text-2xl leading-none mt-1">✕</button>
+                  <div className="flex items-start gap-3">
+                    {isAdmin && !editingPlayerId && (
+                      <button type="button" onClick={() => startEditingPlayer(selectedPlayer)} className="rounded-lg border border-indigo-200 px-3 py-1.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-50">
+                        Edit profile
+                      </button>
+                    )}
+                    <button onClick={closePlayerReport} className="text-gray-400 hover:text-gray-600 text-2xl leading-none mt-1">✕</button>
+                  </div>
                 </div>
                 <div className="flex gap-1">
                   {(['overview', 'matches', 'games', 'h2h'] as const).map(tab => (
@@ -544,6 +663,26 @@ export default function PlayersPage() {
 
               {/* Scrollable content */}
               <div className="overflow-y-auto p-6 grow">
+                {editingPlayerId === selectedPlayer.id && isAdmin && (
+                  <form onSubmit={savePlayer} className="mb-6 rounded-xl border-2 border-indigo-200 bg-indigo-50/40 p-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h3 className="font-bold text-gray-900">Edit player profile</h3>
+                        <p className="text-xs text-gray-500 mt-0.5">Only admins can change these details.</p>
+                      </div>
+                    </div>
+                    <PlayerProfileFields value={editPlayerForm} onChange={value => { setEditPlayerForm(value); setEditPlayerError(null); }} />
+                    {editPlayerError && <p className="mt-3 text-sm text-red-600">{editPlayerError}</p>}
+                    <div className="flex justify-end gap-2 mt-4">
+                      <button type="button" onClick={() => { setEditingPlayerId(null); setEditPlayerError(null); }} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-white">
+                        Cancel
+                      </button>
+                      <button type="submit" disabled={savingPlayer} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">
+                        {savingPlayer ? 'Saving...' : 'Save profile'}
+                      </button>
+                    </div>
+                  </form>
+                )}
                 {(() => {
                   const stats = getAdvancedStats(selectedPlayer.id);
 

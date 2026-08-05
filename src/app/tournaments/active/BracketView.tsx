@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Match } from '../../../types/pingpong';
+import { Match, Player } from '../../../types/pingpong';
 
 // ── Layout constants ─────────────────────────────────────────────────────────
 const CARD_W = 240;  // match card width (px)
@@ -22,6 +22,7 @@ function getPos(rIdx: number, mIdx: number, r1Count: number, hasPlayIn: boolean)
 interface BracketViewProps {
   bracketMatches: Match[];
   getPlayerName: (id: string) => string;
+  players?: Player[];
   tournamentPlayers?: string[];
   onAddGame: (match: Match, score1: number, score2: number) => Promise<void>;
   onSaveGameEdit: (gameId: string, score1: number, score2: number) => Promise<void>;
@@ -33,7 +34,7 @@ interface BracketViewProps {
   previewMode?: boolean;
 }
 
-export default function BracketView({ bracketMatches, getPlayerName, tournamentPlayers = [], onAddGame, onSaveGameEdit, onDeleteGame, onChangeBestOf, onSwapPlayers, readOnly = false, previewMode = false }: BracketViewProps) {
+export default function BracketView({ bracketMatches, getPlayerName, players = [], tournamentPlayers = [], onAddGame, onSaveGameEdit, onDeleteGame, onChangeBestOf, onSwapPlayers, readOnly = false, previewMode = false }: BracketViewProps) {
   const [activeMatchId, setActiveMatchId] = useState<string | null>(null);
   const [score1, setScore1] = useState('');
   const [score2, setScore2] = useState('');
@@ -234,8 +235,9 @@ export default function BracketView({ bracketMatches, getPlayerName, tournamentP
             return (
               <div key={match.id} style={{ position: 'absolute', left: 0, top: yPos, width: CARD_W }}>
                 <BracketCard
-                  match={match}
-                  getPlayerName={getPlayerName}
+                   match={match}
+                   getPlayerName={getPlayerName}
+                   getPlayerProfile={id => players.find(player => player.id === id)}
                   isActive={activeMatchId === match.id}
                   onSelect={() => {
                     const isBye = match.player1Id === 'BYE' || match.player2Id === 'BYE';
@@ -263,8 +265,9 @@ export default function BracketView({ bracketMatches, getPlayerName, tournamentP
               return (
                 <div key={match.id} style={{ position: 'absolute', left: x, top: y, width: CARD_W }}>
                   <BracketCard
-                    match={match}
-                    getPlayerName={getPlayerName}
+                     match={match}
+                     getPlayerName={getPlayerName}
+                     getPlayerProfile={id => players.find(player => player.id === id)}
                     isActive={activeMatchId === match.id}
                     onSelect={() => {
                       const isBye = match.player1Id === 'BYE' || match.player2Id === 'BYE';
@@ -569,6 +572,7 @@ export default function BracketView({ bracketMatches, getPlayerName, tournamentP
 interface BracketCardProps {
   match: Match;
   getPlayerName: (id: string) => string;
+  getPlayerProfile: (id: string) => Player | undefined;
   isActive: boolean;
   onSelect: () => void;
   isFinal?: boolean;
@@ -576,7 +580,7 @@ interface BracketCardProps {
   previewMode?: boolean;
 }
 
-function BracketCard({ match, getPlayerName, isActive, onSelect, isFinal, readOnly = false, previewMode = false }: BracketCardProps) {
+function BracketCard({ match, getPlayerName, getPlayerProfile, isActive, onSelect, isFinal, readOnly = false, previewMode = false }: BracketCardProps) {
   const p1Wins = match.games.filter(g => g.score1 > g.score2).length;
   const p2Wins = match.games.filter(g => g.score2 > g.score1).length;
   const isByeMatch = match.player1Id === 'BYE' || match.player2Id === 'BYE';
@@ -595,6 +599,34 @@ function BracketCard({ match, getPlayerName, isActive, onSelect, isFinal, readOn
     ? 'border-blue-400 shadow-md shadow-blue-100'
     : 'border-gray-200 hover:border-gray-300';
 
+  const renderPlayer = (playerId: string, muted = false) => {
+    if (playerId === 'BYE') return 'BYE';
+    if (playerId === 'PLAY_IN_WINNER') return <em className="text-gray-400 not-italic text-xs">Play-in winner</em>;
+    if (playerId === 'TBD') return <em className="text-gray-400 not-italic text-xs">TBD</em>;
+
+    const player = getPlayerProfile(playerId);
+    const initials = player
+      ? `${player.firstName?.charAt(0) ?? ''}${player.lastName?.charAt(0) ?? ''}`.toUpperCase() || player.name.charAt(0).toUpperCase()
+      : getPlayerName(playerId).charAt(0).toUpperCase();
+
+    return (
+      <div className="flex items-center gap-2 min-w-0">
+        {player?.profilePicture ? (
+          <img
+            src={player.profilePicture}
+            alt={`${player.name} profile`}
+            className="w-6 h-6 rounded-full object-cover shrink-0 border border-gray-200"
+          />
+        ) : (
+          <span className="w-6 h-6 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-[10px] font-bold shrink-0">
+            {initials}
+          </span>
+        )}
+        <span className={muted ? 'truncate text-gray-400' : 'truncate'}>{getPlayerName(playerId)}</span>
+      </div>
+    );
+  };
+
   return (
     <div
       style={{ height: CARD_H }}
@@ -603,15 +635,12 @@ function BracketCard({ match, getPlayerName, isActive, onSelect, isFinal, readOn
     >
       {/* Player 1 row */}
       <div className={`flex-1 flex items-center pl-3 pr-4 border-b border-gray-100 ${match.winnerId === match.player1Id ? 'bg-green-50' : ''}`}>
-        <span className={`truncate text-sm font-semibold flex-1 ${
+        <div className={`text-sm font-semibold flex-1 min-w-0 ${
           match.winnerId === match.player1Id ? 'text-green-800'
           : match.winnerId ? 'text-gray-400' : 'text-gray-800'
         }`}>
-          {match.player1Id === 'BYE' ? 'BYE'
-            : match.player1Id === 'PLAY_IN_WINNER' ? <em className="text-gray-400 not-italic text-xs">Play-in winner</em>
-            : match.player1Id === 'TBD' ? <em className="text-gray-400 not-italic text-xs">TBD</em>
-            : getPlayerName(match.player1Id)}
-        </span>
+          {renderPlayer(match.player1Id, Boolean(match.winnerId && match.winnerId !== match.player1Id))}
+        </div>
         <div className="flex items-center gap-1 flex-shrink-0">
           {match.winnerId === match.player1Id && <span className="text-amber-500 text-xs leading-none">🏆</span>}
           {match.games.length > 0 && (
@@ -622,17 +651,14 @@ function BracketCard({ match, getPlayerName, isActive, onSelect, isFinal, readOn
 
       {/* Player 2 row */}
       <div className={`flex-1 flex items-center pl-3 pr-4 ${match.winnerId === match.player2Id ? 'bg-green-50' : ''}`}>
-        <span className={`truncate text-sm font-semibold flex-1 ${
+        <div className={`text-sm font-semibold flex-1 min-w-0 ${
           match.winnerId === match.player2Id ? 'text-green-800'
           : match.winnerId ? 'text-gray-400'
           : match.player2Id === 'BYE' || match.player2Id === 'PLAY_IN_WINNER' || match.player2Id === 'TBD' ? 'text-gray-400 italic text-xs'
           : 'text-gray-800'
         }`}>
-          {match.player2Id === 'BYE' ? 'BYE'
-           : match.player2Id === 'PLAY_IN_WINNER' ? <em className="not-italic text-xs">Play-in winner</em>
-           : match.player2Id === 'TBD' ? <em className="not-italic text-xs">TBD</em>
-           : getPlayerName(match.player2Id)}
-        </span>
+          {renderPlayer(match.player2Id, Boolean(match.winnerId && match.winnerId !== match.player2Id))}
+        </div>
         <div className="flex items-center gap-1 flex-shrink-0">
           {isActive && !match.winnerId && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />}
           {match.winnerId === match.player2Id && <span className="text-amber-500 text-xs leading-none">🏆</span>}

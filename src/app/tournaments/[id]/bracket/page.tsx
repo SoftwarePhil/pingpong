@@ -215,6 +215,7 @@ export default function TournamentBracketPage() {
             <BracketView
               bracketMatches={bracketMatches}
               getPlayerName={getPlayerName}
+              players={players}
               tournamentPlayers={tournament.players}
               onAddGame={addGameToMatch}
               onSaveGameEdit={saveGameEdit}

@@ -1,6 +1,10 @@
 export interface Player {
   id: string;
   name: string;
+  firstName?: string;
+  lastName?: string;
+  birthday?: string; // ISO calendar date (YYYY-MM-DD)
+  profilePicture?: string;
   tournamentIds: string[]; // Tournaments this player has participated in
 }
 

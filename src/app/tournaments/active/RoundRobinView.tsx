@@ -1,12 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import { Tournament, Match } from '../../../types/pingpong';
+import { Player, Tournament, Match } from '../../../types/pingpong';
 import MatchCard from './MatchCard';
 import Leaderboard from './Leaderboard';
 
 interface RoundRobinViewProps {
   tournament: Tournament;
+  players: Player[];
   getPlayerName: (id: string) => string;
   onAddGame: (match: Match, score1: number, score2: number) => void;
   onDeleteMatch: (matchId: string) => void;
@@ -22,6 +23,7 @@ interface RoundRobinViewProps {
 
 export default function RoundRobinView({
   tournament,
+  players,
   getPlayerName,
   onAddGame,
   onDeleteMatch,
@@ -98,7 +100,7 @@ export default function RoundRobinView({
       </div>
 
       {/* Standings table */}
-      <Leaderboard tournament={tournament} getPlayerName={getPlayerName} />
+      <Leaderboard tournament={tournament} players={players} getPlayerName={getPlayerName} />
 
       {/* Selected round's matches — same fully-editable card view whether it's
           the live current round or a past round selected via the dots above */}

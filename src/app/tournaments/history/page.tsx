@@ -204,6 +204,7 @@ function TournamentHistoryContent() {
                 <BracketView
                   bracketMatches={bracketMatches}
                   getPlayerName={getPlayerName}
+                  players={players}
                   onAddGame={async () => {}}
                   onSaveGameEdit={async () => {}}
                   readOnly
