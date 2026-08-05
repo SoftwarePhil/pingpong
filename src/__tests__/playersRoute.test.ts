@@ -15,9 +15,14 @@ const mockedGetPlayers = getPlayers as jest.MockedFunction<typeof getPlayers>;
 const mockedSetPlayers = setPlayers as jest.MockedFunction<typeof setPlayers>;
 const mockedSaveData = saveData as jest.MockedFunction<typeof saveData>;
 
-describe('GET /api/players', () => {
-  afterEach(() => jest.useRealTimers());
+beforeEach(() => {
+  jest.useFakeTimers();
+  jest.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+});
 
+afterEach(() => jest.useRealTimers());
+
+describe('GET /api/players', () => {
   it('adds a birthday cake to names during their birthday week', async () => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date('2026-08-04T12:00:00.000Z'));
