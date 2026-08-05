@@ -51,7 +51,8 @@ export function isBirthdayWeek(player: Pick<Player, 'birthday'>, today = new Dat
 
 /** Removes the API-only birthday marker from a display name before persistence. */
 export function stripBirthdayCake(name: string): string {
-  return name.replace(/\s*🎂(?:\s*🎂)*\s*$/u, '').trim();
+  const cake = BIRTHDAY_CAKE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return name.replace(new RegExp(`\\s*${cake}(?:\\s*${cake})*\\s*$`, 'u'), '').trim();
 }
 
 /** Decorates a response copy without changing the stored player record. */
