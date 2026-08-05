@@ -1,6 +1,6 @@
-import { POST } from '../app/api/players/route';
+import { GET, POST } from '../app/api/players/route';
 import { PATCH } from '../app/api/players/[id]/route';
-import { getPlayerAge } from '../lib/player';
+import { getPlayerAge, isBirthdayWeek } from '../lib/player';
 import { adminRequest, playerRequest } from './authTestUtils';
 
 jest.mock('../data/data', () => ({
@@ -14,6 +14,51 @@ import { getPlayers, setPlayers, saveData } from '../data/data';
 const mockedGetPlayers = getPlayers as jest.MockedFunction<typeof getPlayers>;
 const mockedSetPlayers = setPlayers as jest.MockedFunction<typeof setPlayers>;
 const mockedSaveData = saveData as jest.MockedFunction<typeof saveData>;
+
+beforeEach(() => {
+  jest.useFakeTimers();
+  jest.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+});
+
+afterEach(() => jest.useRealTimers());
+
+describe('GET /api/players', () => {
+  it('adds a birthday cake to names during their birthday week', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-08-04T12:00:00.000Z'));
+    const player = {
+      id: 'p1',
+      name: 'Birthday Player',
+      birthday: '1990-08-06',
+      tournamentIds: [],
+    };
+    mockedGetPlayers.mockResolvedValue([player]);
+
+    const response = await GET();
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual([{ ...player, name: 'Birthday Player 🎂' }]);
+    expect(player.name).toBe('Birthday Player');
+  });
+
+  it('does not add a birthday cake outside the birthday week', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-08-04T12:00:00.000Z'));
+    const player = {
+      id: 'p1',
+      name: 'Birthday Player',
+      birthday: '1990-08-20',
+      tournamentIds: [],
+    };
+    mockedGetPlayers.mockResolvedValue([player]);
+
+    const response = await GET();
+    const body = await response.json();
+
+    expect(body).toEqual([player]);
+  });
+});
 
 describe('POST /api/players', () => {
   beforeEach(() => jest.clearAllMocks());
@@ -157,5 +202,11 @@ describe('PATCH /api/players/[id]', () => {
   it('calculates age from a birthday', () => {
     expect(getPlayerAge({ birthday: '1995-08-20' }, new Date('2025-08-19T00:00:00.000Z'))).toBe(29);
     expect(getPlayerAge({ birthday: '1995-08-20' }, new Date('2025-08-20T00:00:00.000Z'))).toBe(30);
+  });
+
+  it('detects the Monday-to-Sunday birthday week', () => {
+    expect(isBirthdayWeek({ birthday: '1995-08-06' }, new Date('2025-08-04T00:00:00.000Z'))).toBe(true);
+    expect(isBirthdayWeek({ birthday: '1995-08-06' }, new Date('2025-08-10T00:00:00.000Z'))).toBe(true);
+    expect(isBirthdayWeek({ birthday: '1995-08-06' }, new Date('2025-08-11T00:00:00.000Z'))).toBe(false);
   });
 });

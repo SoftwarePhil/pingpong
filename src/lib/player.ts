@@ -2,6 +2,7 @@ import { Player } from '../types/pingpong';
 
 export type PlayerProfileFields = Pick<Player, 'name' | 'firstName' | 'lastName' | 'birthday' | 'profilePicture'>;
 type OptionalPlayerStringField = 'firstName' | 'lastName' | 'profilePicture';
+export const BIRTHDAY_CAKE = '🎂';
 
 type ParseResult = { fields: Partial<PlayerProfileFields>; error?: string };
 
@@ -18,6 +19,46 @@ function parseBirthday(value: string): Date | null {
 function todayUtc(): Date {
   const now = new Date();
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+}
+
+function dateAtUtc(year: number, month: number, day: number): Date | null {
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+    ? date
+    : null;
+}
+
+/** Returns true during the Monday-to-Sunday calendar week containing a birthday. */
+export function isBirthdayWeek(player: Pick<Player, 'birthday'>, today = new Date()): boolean {
+  if (!player.birthday) return false;
+  const birthday = parseBirthday(player.birthday);
+  if (!birthday) return false;
+
+  const current = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+  const weekStart = new Date(current);
+  weekStart.setUTCDate(current.getUTCDate() - ((current.getUTCDay() + 6) % 7));
+  const weekEnd = new Date(weekStart);
+  weekEnd.setUTCDate(weekStart.getUTCDate() + 6);
+
+  for (const year of [current.getUTCFullYear() - 1, current.getUTCFullYear(), current.getUTCFullYear() + 1]) {
+    // Celebrate Feb 29 birthdays during the week containing Feb 28 in non-leap years.
+    const birthdayDate = dateAtUtc(year, birthday.getUTCMonth() + 1, birthday.getUTCDate())
+      ?? (birthday.getUTCMonth() === 1 && birthday.getUTCDate() === 29 ? dateAtUtc(year, 2, 28) : null);
+    if (birthdayDate && birthdayDate >= weekStart && birthdayDate <= weekEnd) return true;
+  }
+  return false;
+}
+
+/** Removes the API-only birthday marker from a display name before persistence. */
+export function stripBirthdayCake(name: string): string {
+  const cake = BIRTHDAY_CAKE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return name.replace(new RegExp(`\\s*${cake}(?:\\s*${cake})*\\s*$`, 'u'), '').trim();
+}
+
+/** Decorates a response copy without changing the stored player record. */
+export function decoratePlayerName(player: Player, today = new Date()): Player {
+  const name = stripBirthdayCake(player.name);
+  return { ...player, name: isBirthdayWeek(player, today) ? `${name} ${BIRTHDAY_CAKE}` : name };
 }
 
 /** Returns a player's current age, calculated from their birthday. */
@@ -85,7 +126,10 @@ export function parsePlayerProfileFields(body: unknown, requireName = false): Pa
     if (typeof name !== 'string' || name.trim() === '') {
       return { fields: {}, error: 'Name is required' };
     }
-    const trimmedName = name.trim();
+    const trimmedName = stripBirthdayCake(name);
+    if (!trimmedName) {
+      return { fields: {}, error: 'Name is required' };
+    }
     if (trimmedName.length > 200) {
       return { fields: {}, error: 'Name must be 200 characters or fewer' };
     }
