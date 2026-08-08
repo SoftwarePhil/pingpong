@@ -1,31 +1,46 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 
 type Role = 'player' | 'admin';
-type AuthContextValue = { role: Role; isAdmin: boolean; refresh: () => Promise<void> };
+type AuthContextValue = { role: Role; isAdmin: boolean; isLoading: boolean; refresh: () => Promise<void> };
 
-const AuthContext = createContext<AuthContextValue>({ role: 'player', isAdmin: false, refresh: async () => {} });
+const AuthContext = createContext<AuthContextValue>({ role: 'player', isAdmin: false, isLoading: true, refresh: async () => {} });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [role, setRole] = useState<Role>('player');
+  const [isLoading, setIsLoading] = useState(true);
+  const refreshId = useRef(0);
 
   const refresh = async () => {
-    const response = await fetch('/api/auth/session');
-    if (response.ok) setRole((await response.json()).role === 'admin' ? 'admin' : 'player');
+    const currentRefreshId = ++refreshId.current;
+    let nextRole: Role = 'player';
+
+    try {
+      const response = await fetch('/api/auth/session', { cache: 'no-store' });
+      if (response.ok) nextRole = (await response.json()).role === 'admin' ? 'admin' : 'player';
+    } catch {
+      // Treat an unavailable session endpoint as a signed-out state.
+    }
+
+    // An older request must not overwrite a newer login/logout refresh.
+    if (currentRefreshId === refreshId.current) {
+      setRole(nextRole);
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => { refresh(); }, []);
 
-  return <AuthContext.Provider value={{ role, isAdmin: role === 'admin', refresh }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ role, isAdmin: role === 'admin', isLoading, refresh }}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
   return useContext(AuthContext);
 }
 
-export function AuthControls() {
-  const { isAdmin, refresh } = useAuth();
+export function AuthControls({ embedded = false }: { embedded?: boolean } = {}) {
+  const { isAdmin, isLoading, refresh } = useAuth();
   const [open, setOpen] = useState(false);
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -39,16 +54,37 @@ export function AuthControls() {
 
   const logout = async () => { await fetch('/api/auth/logout', { method: 'POST' }); await refresh(); };
 
-  if (isAdmin) return <button onClick={logout} className="text-xs font-semibold text-gray-500 hover:text-gray-900">Admin · Sign out</button>;
+  if (isLoading) {
+    return <span className={embedded ? 'settings-menu__status settings-menu__status--loading' : 'auth-controls__button'}>Checking access...</span>;
+  }
+
+  if (isAdmin) {
+    if (!embedded) return <button onClick={logout} className="auth-controls__button">Admin · Sign out</button>;
+    return (
+      <div className="settings-menu__account">
+        <span className="settings-menu__status">Admin signed in</span>
+        <button onClick={logout} className="settings-menu__action settings-menu__action--danger">Sign out</button>
+      </div>
+    );
+  }
+
   return (
-    <div className="relative">
-      <button onClick={() => setOpen(value => !value)} className="text-xs font-semibold text-gray-500 hover:text-gray-900">Player view · Admin sign in</button>
-      {open && <form onSubmit={login} className="absolute right-0 top-7 z-50 w-64 rounded-xl border border-gray-200 bg-white p-3 shadow-xl">
-        <label className="block text-xs font-semibold text-gray-600 mb-1">Admin password</label>
-        <input autoFocus type="password" value={password} onChange={event => setPassword(event.target.value)} className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm text-slate-900 placeholder:text-slate-300" />
+    <>
+      <button onClick={() => setOpen(value => !value)} className={embedded ? 'settings-menu__action' : 'auth-controls__button'}>
+        {embedded ? 'Sign in as admin' : 'Player view · Admin sign in'}
+      </button>
+      {!embedded && open && <form onSubmit={login} className="auth-controls__popover">
+          <label className="auth-controls__label">Admin password</label>
+          <input autoFocus type="password" value={password} onChange={event => setPassword(event.target.value)} className="form-control w-full rounded-lg px-2 py-1.5 text-sm" />
+          {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+          <button type="submit" className="button button-primary mt-2 w-full rounded-lg px-3 py-1.5 text-sm">Sign in</button>
+        </form>}
+      {embedded && open && <form onSubmit={login} className="settings-menu__login-form">
+        <label className="auth-controls__label">Admin password</label>
+        <input autoFocus type="password" value={password} onChange={event => setPassword(event.target.value)} className="form-control w-full rounded-lg px-2 py-1.5 text-sm" />
         {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
-        <button type="submit" className="mt-2 w-full rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white">Sign in</button>
+        <button type="submit" className="button button-primary mt-2 w-full rounded-lg px-3 py-1.5 text-sm">Sign in</button>
       </form>}
-    </div>
+    </>
   );
 }

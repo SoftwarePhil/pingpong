@@ -70,33 +70,6 @@ export default function RoundRobinView({
           </p>
         </div>
 
-        {/* Round progress dots — click any round to view/edit it below */}
-        <div className="flex gap-2">
-          {Array.from({ length: tournament.roundRobinRounds }, (_, i) => {
-            const roundNum = i + 1;
-            const roundMatches = rrMatches.filter(m => (m.bracketRound ?? 1) === roundNum);
-            const complete = roundMatches.length > 0 && roundMatches.every(m => m.winnerId);
-            const isCurrent  = roundNum === currentRound;
-            const isSelected = roundNum === selectedRound;
-            const reachable = roundNum <= currentRound;
-            return (
-              <button
-                key={roundNum}
-                type="button"
-                disabled={!reachable}
-                onClick={() => setManualRound(roundNum === currentRound ? null : roundNum)}
-                aria-pressed={isSelected}
-                aria-label={`View round ${roundNum}${complete ? ' (complete)' : isCurrent ? ' (current)' : ''}`}
-                title={`Round ${roundNum}${complete ? ' ✓' : ''}${isSelected ? ' — viewing' : ''}`}
-                className={`w-2.5 h-2.5 rounded-full transition-all ${
-                  complete ? 'bg-green-500' : isCurrent ? 'bg-blue-500' : 'bg-gray-200'
-                } ${isSelected ? 'ring-2 ring-offset-1 ring-gray-500 scale-125' : ''} ${
-                  reachable ? 'cursor-pointer hover:opacity-75' : 'cursor-not-allowed'
-                }`}
-              />
-            );
-          })}
-        </div>
       </div>
 
       {/* Standings table */}
@@ -124,13 +97,42 @@ export default function RoundRobinView({
               </>
             )}
           </div>
-          {!readOnly && <button
-            onClick={() => onRefreshMatches(tournament)}
-            title="Regenerate matches for any active player who hasn't played the current round yet (fixes duplicates/missing pairings). Always applies to the live current round, regardless of which round you're viewing."
-            className="text-xs font-semibold text-blue-600 hover:text-blue-800 px-3 py-1.5 rounded-lg border border-blue-200 hover:bg-blue-50 transition-colors"
-          >
-            🔄 Refresh Matches
-          </button>}
+          <div className="flex flex-wrap items-center justify-end gap-4">
+            {/* Round progress dots — click any round to view/edit it below */}
+            <div className="flex gap-2" aria-label="Round selector">
+              {Array.from({ length: tournament.roundRobinRounds }, (_, i) => {
+                const roundNum = i + 1;
+                const roundMatches = rrMatches.filter(m => (m.bracketRound ?? 1) === roundNum);
+                const complete = roundMatches.length > 0 && roundMatches.every(m => m.winnerId);
+                const isCurrent  = roundNum === currentRound;
+                const isSelected = roundNum === selectedRound;
+                const reachable = roundNum <= currentRound;
+                return (
+                  <button
+                    key={roundNum}
+                    type="button"
+                    disabled={!reachable}
+                    onClick={() => setManualRound(roundNum === currentRound ? null : roundNum)}
+                    aria-pressed={isSelected}
+                    aria-label={`View round ${roundNum}${complete ? ' (complete)' : isCurrent ? ' (current)' : ''}`}
+                    title={`Round ${roundNum}${complete ? ' ✓' : ''}${isSelected ? ' — viewing' : ''}`}
+                    className={`w-2.5 h-2.5 rounded-full transition-all ${
+                      complete ? 'bg-green-500' : isCurrent ? 'bg-blue-500' : 'bg-gray-200'
+                    } ${isSelected ? 'ring-2 ring-offset-1 ring-gray-500 scale-125' : ''} ${
+                      reachable ? 'cursor-pointer hover:opacity-75' : 'cursor-not-allowed'
+                    }`}
+                  />
+                );
+              })}
+            </div>
+            {!readOnly && <button
+              onClick={() => onRefreshMatches(tournament)}
+              title="Regenerate matches for any active player who hasn't played the current round yet (fixes duplicates/missing pairings). Always applies to the live current round, regardless of which round you're viewing."
+              className="text-xs font-semibold text-blue-600 hover:text-blue-800 px-3 py-1.5 rounded-lg border border-blue-200 hover:bg-blue-50 transition-colors"
+            >
+              🔄 Refresh Matches
+            </button>}
+          </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {selectedRoundMatches.map(match => (

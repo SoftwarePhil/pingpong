@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import { Player, Game } from '../../types/pingpong';
 import Link from 'next/link';
-import { AuthControls, useAuth } from '../../components/AuthProvider';
+import { useAuth } from '../../components/AuthProvider';
+import { PageHeader } from '../../components/PageHeader';
 
 export default function GamesPage() {
   const { isAdmin } = useAuth();
@@ -89,28 +90,24 @@ export default function GamesPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      <div className="container mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-4xl font-bold text-gray-900 mb-2">🎯 Games</h1>
-            <p className="text-gray-600">Record and view ping pong game results</p>
-          </div>
-          <div className="flex space-x-4">
-            <Link href="/" className="bg-white hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg shadow-sm border border-gray-200 transition-colors">
-              ← Back to Home
-            </Link>
-            <AuthControls />
-            {isAdmin && <button
-              onClick={() => setShowAddForm(!showAddForm)}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg shadow-sm transition-colors flex items-center space-x-2"
-            >
-              <span>+</span>
-              <span>Add Game</span>
-            </button>}
-          </div>
-        </div>
+    <div className="app-shell app-shell--home">
+      <div className="page-container">
+        <PageHeader
+          title="🎯 Games"
+          description="Record and view ping pong game results"
+          actions={
+            <>
+              <Link href="/" className="button button-secondary">← Back to Home</Link>
+              {isAdmin && <button
+                onClick={() => setShowAddForm(!showAddForm)}
+                className="button button-primary"
+              >
+                <span>+</span>
+                <span>Add Game</span>
+              </button>}
+            </>
+          }
+        />
 
         {/* Add Game Form */}
         {showAddForm && (
@@ -123,7 +120,7 @@ export default function GamesPage() {
                   <select 
                     value={player1Id} 
                     onChange={(e) => setPlayer1Id(e.target.value)} 
-                    className="w-full border border-gray-300 rounded-lg px-4 py-3 text-gray-900 bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    className="form-control w-full rounded-lg px-4 py-3"
                     required
                   >
                     <option value="">Select Player 1</option>
@@ -135,7 +132,7 @@ export default function GamesPage() {
                   <select 
                     value={player2Id} 
                     onChange={(e) => setPlayer2Id(e.target.value)} 
-                    className="w-full border border-gray-300 rounded-lg px-4 py-3 text-gray-900 bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    className="form-control w-full rounded-lg px-4 py-3"
                     required
                   >
                     <option value="">Select Player 2</option>
@@ -154,7 +151,7 @@ export default function GamesPage() {
                     value={score1}
                     onChange={(e) => setScore1(e.target.value)}
                     placeholder="Score"
-                    className="w-full border border-gray-300 rounded-lg px-4 py-3 text-gray-900 bg-white placeholder-gray-400 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    className="form-control w-full rounded-lg px-4 py-3"
                     required
                     min="0"
                     max="12"
@@ -169,7 +166,7 @@ export default function GamesPage() {
                     value={score2}
                     onChange={(e) => setScore2(e.target.value)}
                     placeholder="Score"
-                    className="w-full border border-gray-300 rounded-lg px-4 py-3 text-gray-900 bg-white placeholder-gray-400 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    className="form-control w-full rounded-lg px-4 py-3"
                     required
                     min="0"
                     max="12"
@@ -285,7 +282,7 @@ export default function GamesPage() {
                 <div className="text-gray-600">Draws</div>
               </div>
               <div className="text-center">
-                <div className="text-3xl font-bold text-purple-600 mb-2">
+                 <div className="text-3xl font-bold text-indigo-600 mb-2">
                   {Math.round(games.filter(game => !game.matchId).reduce((sum, game) => sum + game.score1 + game.score2, 0) / games.filter(game => !game.matchId).length)}
                 </div>
                 <div className="text-gray-600">Avg Points/Game</div>

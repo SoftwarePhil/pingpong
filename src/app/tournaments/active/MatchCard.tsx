@@ -108,14 +108,14 @@ export default function MatchCard({
           <p className="text-xs font-semibold text-blue-700 mb-2">Change Players</p>
           <div className="space-y-1.5">
             <select value={swapP1} onChange={e => setSwapP1(e.target.value)}
-              className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-gray-900 bg-white">
+               className="form-control w-full rounded px-2 py-1 text-sm">
               {tournamentPlayers.map(pid => (
                 <option key={pid} value={pid}>{getPlayerName(pid)}</option>
               ))}
             </select>
             <div className="text-center text-xs text-gray-400 font-bold">vs</div>
             <select value={swapP2} onChange={e => setSwapP2(e.target.value)}
-              className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-gray-900 bg-white">
+               className="form-control w-full rounded px-2 py-1 text-sm">
               {tournamentPlayers.map(pid => (
                 <option key={pid} value={pid}>{getPlayerName(pid)}</option>
               ))}
@@ -200,10 +200,10 @@ export default function MatchCard({
         >
           <div className="flex gap-2">
             <input name="score1" type="number" min="0" max="50" required placeholder={getPlayerName(match.player1Id).substring(0, 10)}
-              className="flex-1 min-w-0 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-gray-900 placeholder-gray-400 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+               className="form-control flex-1 min-w-0 rounded-lg px-2 py-1.5 text-sm" />
             <span className="flex items-center text-gray-400 font-bold text-sm">—</span>
             <input name="score2" type="number" min="0" max="50" required placeholder={getPlayerName(match.player2Id).substring(0, 10)}
-              className="flex-1 min-w-0 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-gray-900 placeholder-gray-400 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+               className="form-control flex-1 min-w-0 rounded-lg px-2 py-1.5 text-sm" />
           </div>
           <p className="text-xs text-gray-400 text-center">First to 11, win by 2</p>
           <button type="submit"
@@ -223,10 +223,10 @@ export default function MatchCard({
                 {editingGame?.id === game.id ? (
                   <div className="flex items-center gap-1.5 flex-1 min-w-0">
                     <input type="number" value={editScore1} onChange={e => setEditScore1(e.target.value)}
-                      className="w-14 border rounded px-1.5 py-0.5 text-sm text-center text-gray-900 bg-white" />
+                       className="form-control w-14 rounded px-1.5 py-0.5 text-sm text-center" />
                     <span className="text-gray-400 text-xs">—</span>
                     <input type="number" value={editScore2} onChange={e => setEditScore2(e.target.value)}
-                      className="w-14 border rounded px-1.5 py-0.5 text-sm text-center text-gray-900 bg-white" />
+                       className="form-control w-14 rounded px-1.5 py-0.5 text-sm text-center" />
                     <button onClick={handleSaveGameEdit}
                       className="text-xs text-green-700 font-semibold hover:underline ml-1">Save</button>
                     <button onClick={cancelEditingGame}

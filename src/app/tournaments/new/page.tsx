@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { PlayerSearchSelect } from '../../../components/PlayerSearchSelect';
 import { useAuth } from '../../../components/AuthProvider';
+import { PageHeader } from '../../../components/PageHeader';
 
 export default function NewTournamentPage() {
   const router = useRouter();
@@ -130,20 +131,13 @@ export default function NewTournamentPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="container mx-auto px-4 py-8 max-w-4xl">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-4xl font-bold text-gray-900 mb-2">➕ New Tournament</h1>
-            <p className="text-gray-600 text-lg">Create a new ping pong tournament</p>
-          </div>
-          <div className="flex space-x-4">
-            <Link href="/" className="bg-white hover:bg-gray-100 text-gray-800 px-6 py-3 rounded-lg shadow border-2 border-gray-300 transition-colors font-medium">
-              ← Back
-            </Link>
-          </div>
-        </div>
+    <div className="app-shell">
+      <div className="page-container page-container--narrow">
+        <PageHeader
+          title="➕ New Tournament"
+          description="Create a new ping pong tournament"
+          actions={<Link href="/" className="button button-secondary">← Back</Link>}
+        />
 
         {/* Active Tournament Warning */}
         {activeTournaments.length > 0 && (
@@ -183,7 +177,7 @@ export default function NewTournamentPage() {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="e.g., Week 1 Championship"
-                  className="w-full border-2 border-gray-300 rounded-lg px-4 py-3 text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:outline-none text-lg"
+                  className="form-control w-full rounded-lg px-4 py-3 text-lg"
                   required
                 />
               </div>
@@ -192,7 +186,7 @@ export default function NewTournamentPage() {
                 <select
                   value={roundRobinRounds}
                   onChange={(e) => setRoundRobinRounds(parseInt(e.target.value))}
-                  className="w-full border-2 border-gray-300 rounded-lg px-4 py-3 text-gray-900 focus:border-blue-500 focus:outline-none text-lg"
+                  className="form-control w-full rounded-lg px-4 py-3 text-lg"
                 >
                   <option value={3}>3 Rounds</option>
                   <option value={4}>4 Rounds</option>
@@ -283,7 +277,7 @@ export default function NewTournamentPage() {
                          placeholder="Player name"
                          autoFocus
                          disabled={creatingPlayer}
-                         className="flex-1 px-3 py-2 border-2 border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:border-blue-500 disabled:bg-gray-100"
+                          className="form-control flex-1 rounded-lg px-3 py-2 text-sm disabled:bg-gray-100"
                        />
                        <button
                          type="button"

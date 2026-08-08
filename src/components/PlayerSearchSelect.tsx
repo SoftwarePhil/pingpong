@@ -69,7 +69,7 @@ export function PlayerSearchSelect({ players, games, selected, onChange, suggest
           value={query}
           onChange={e => setQuery(e.target.value)}
           placeholder="🔍 Search players to add..."
-          className="w-full border-2 border-gray-300 rounded-lg px-4 py-3 text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:outline-none text-lg"
+          className="form-control w-full rounded-lg px-4 py-3 text-lg"
         />
         {query && (
           <div className="absolute z-10 mt-2 w-full bg-white border-2 border-blue-300 rounded-lg shadow-lg overflow-hidden">
