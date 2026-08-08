@@ -9,7 +9,8 @@ import BracketView from './BracketView';
 import Leaderboard from './Leaderboard';
 import { createBracketMatches, cascadeBracketR1PlayerSwap, cascadeBracketPlayerSwap } from '../../../lib/tournament';
 import { PlayerSearchSelect } from '../../../components/PlayerSearchSelect';
-import { AuthControls, useAuth } from '../../../components/AuthProvider';
+import { useAuth } from '../../../components/AuthProvider';
+import { PageHeader } from '../../../components/PageHeader';
 
 export default function ActiveTournamentsPage() {
   const router = useRouter();
@@ -459,21 +460,18 @@ export default function ActiveTournamentsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="container mx-auto px-4 py-8 max-w-7xl">
+    <div className="app-shell">
+      <div className="page-container page-container--wide">
 
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-3xl font-black text-gray-900">⚡ Active Tournaments</h1>
-            <p className="text-gray-500 mt-1">{isAdmin ? 'Manage ongoing ping pong tournaments' : 'Follow ongoing ping pong tournaments'}</p>
-          </div>
-          <div className="flex gap-3">
-            <AuthControls />
-            <Link href="/tournaments" className="bg-white hover:bg-gray-50 text-gray-700 px-5 py-2.5 rounded-xl shadow-sm border-2 border-gray-200 transition-colors font-semibold text-sm">
-              ← Back
-            </Link>
-          </div>
-        </div>
+        <PageHeader
+          title="⚡ Active Tournaments"
+          description={isAdmin ? 'Manage ongoing ping pong tournaments' : 'Follow ongoing ping pong tournaments'}
+          actions={
+            <>
+              <Link href="/tournaments" className="button button-secondary">← Back</Link>
+            </>
+          }
+        />
 
         {showEditForm && editingTournament && (
           <div className="bg-white rounded-2xl shadow-lg p-8 mb-8 border-2 border-gray-200">
@@ -531,7 +529,7 @@ export default function ActiveTournamentsPage() {
                         onKeyDown={e => { if (e.key === 'Enter' && newPlayerName.trim()) { e.preventDefault(); createPlayerAndSelect(); } }}
                         placeholder="Player name"
                         autoFocus
-                        className="flex-1 px-3 py-2 border-2 border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-500"
+                         className="form-control flex-1 rounded-lg px-3 py-2 text-sm"
                       />
                       <button type="button" onClick={createPlayerAndSelect}
                         className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-semibold transition-colors">

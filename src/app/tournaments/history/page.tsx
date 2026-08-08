@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { Tournament, Player, Match, Game, MARKER_PLAYER_ID } from '../../../types/pingpong';
 import Link from 'next/link';
 import BracketView from '../active/BracketView';
+import { PageHeader } from '../../../components/PageHeader';
 
 type DetailTab = 'overview' | 'matches';
 
@@ -157,30 +158,32 @@ function TournamentHistoryContent() {
     };
 
     return (
-      <div className="min-h-screen bg-gray-50">
-        <div className="container mx-auto px-4 py-8 max-w-5xl">
+      <div className="app-shell">
+        <div className="page-container page-container--narrow">
 
           {/* Header */}
-          <div className="flex justify-between items-start mb-8">
-            <div>
+          <PageHeader
+            title={selectedTournament.name}
+            description={
+              <>
+                {selectedTournament.players.length} players •{' '}
+                {new Date(selectedTournament.startDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+              </>
+            }
+            actions={
               <button
                 onClick={closeDetail}
-                className="text-sm text-gray-500 hover:text-gray-700 mb-3 flex items-center gap-1 transition-colors"
+                className="button button-secondary"
               >
                 ← Back to History
               </button>
-              <h1 className="text-3xl font-bold text-gray-900">{selectedTournament.name}</h1>
-              <p className="text-gray-500 mt-1">
-                {selectedTournament.players.length} players •{' '}
-                {new Date(selectedTournament.startDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
-              </p>
-              {champ && (
-                <div className="mt-3 inline-flex items-center gap-2 bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-1.5 text-sm font-semibold text-yellow-800">
-                  🥇 Champion: {getPlayerName(champ)}
-                </div>
-              )}
+            }
+          />
+          {champ && (
+            <div className="mb-8 inline-flex items-center gap-2 bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-1.5 text-sm font-semibold text-yellow-800">
+              🥇 Champion: {getPlayerName(champ)}
             </div>
-          </div>
+          )}
 
           {/* Tabs */}
           <div className="flex gap-1 mb-6 bg-white rounded-xl shadow-sm border border-gray-200 p-1 w-fit">
@@ -289,30 +292,24 @@ function TournamentHistoryContent() {
 
   // ── List view ────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="container mx-auto px-4 py-8 max-w-5xl">
+    <div className="app-shell">
+      <div className="page-container page-container--narrow">
 
         {/* Header */}
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">🏆 Tournament History</h1>
-            <p className="text-gray-500 mt-1">{completedTournaments.length} completed tournament{completedTournaments.length !== 1 ? 's' : ''}</p>
-          </div>
-          <div className="flex gap-3">
-            <Link href="/" className="bg-white hover:bg-gray-100 text-gray-700 px-4 py-2 rounded-lg shadow-sm border border-gray-300 transition-colors text-sm font-medium">
-              ← Home
-            </Link>
-            {activeTournament ? (
-              <Link href="/tournaments/active" className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-sm text-sm font-medium transition-colors">
-                ⚡ Active Tournament
-              </Link>
-            ) : (
-              <Link href="/tournaments/new" className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-sm text-sm font-medium transition-colors">
-                + New Tournament
-              </Link>
-            )}
-          </div>
-        </div>
+        <PageHeader
+          title="🏆 Tournament History"
+          description={`${completedTournaments.length} completed tournament${completedTournaments.length !== 1 ? 's' : ''}`}
+          actions={
+            <>
+              <Link href="/" className="button button-secondary">← Home</Link>
+              {activeTournament ? (
+                <Link href="/tournaments/active" className="button button-primary">⚡ Active Tournament</Link>
+              ) : (
+                <Link href="/tournaments/new" className="button button-primary">+ New Tournament</Link>
+              )}
+            </>
+          }
+        />
 
         {/* Tournament Cards */}
         {completedTournaments.length === 0 ? (

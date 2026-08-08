@@ -618,7 +618,7 @@ function BracketCard({ match, getPlayerName, getPlayerProfile, isActive, onSelec
             className="w-6 h-6 rounded-full object-cover shrink-0 border border-gray-200"
           />
         ) : (
-          <span className="w-6 h-6 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-[10px] font-bold shrink-0">
+          <span className="w-6 h-6 rounded-full avatar-gradient flex items-center justify-center text-white text-[10px] font-bold shrink-0">
             {initials}
           </span>
         )}

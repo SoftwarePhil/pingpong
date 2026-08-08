@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from "next/link";
 import { Tournament } from "../types/pingpong";
-import { AuthControls, useAuth } from "../components/AuthProvider";
+import { useAuth } from "../components/AuthProvider";
 
 export default function Home() {
   const { isAdmin } = useAuth();
@@ -19,15 +19,14 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      <div className="container mx-auto px-4 py-16 max-w-4xl">
+    <div className="app-shell app-shell--home">
+      <div className="page-container page-container--home">
 
         {/* Header */}
         <div className="text-center mb-14">
           <div className="text-6xl mb-4">🏓🍺</div>
           <h1 className="text-5xl font-black text-gray-900 mb-3 tracking-tight">pingpong.beer</h1>
           <p className="text-gray-500 text-lg">Weekly ping pong tournaments, tracked.</p>
-          <div className="mt-3"><AuthControls /></div>
         </div>
 
         {/* Primary action */}
@@ -81,4 +80,3 @@ export default function Home() {
     </div>
   );
 }
-

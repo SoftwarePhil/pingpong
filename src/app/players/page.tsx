@@ -8,8 +8,9 @@ import {
   BarChart, Bar,
 } from 'recharts';
 import { wilsonLowerBound } from '../../lib/stats';
-import { AuthControls, useAuth } from '../../components/AuthProvider';
+import { useAuth } from '../../components/AuthProvider';
 import { getPlayerAge } from '../../lib/player';
+import { PageHeader } from '../../components/PageHeader';
 
 type PlayerTab = 'overview' | 'matches' | 'games' | 'h2h';
 type PlayerForm = {
@@ -54,7 +55,7 @@ function PlayerAvatar({ player, className }: { player: Player; className: string
     return <img src={player.profilePicture} alt={`${player.name} profile`} className={`${className} rounded-full object-cover`} />;
   }
   return (
-    <div className={`${className} bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold`}>
+    <div className={`${className} avatar-gradient rounded-full flex items-center justify-center text-white font-bold`}>
       {playerInitials(player)}
     </div>
   );
@@ -70,7 +71,7 @@ function PlayerProfileFields({
   const setField = (field: keyof PlayerForm, fieldValue: string) => {
     onChange({ ...value, [field]: fieldValue });
   };
-  const inputClass = 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-400 bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
+  const inputClass = 'form-control w-full rounded-lg px-3 py-2 text-sm';
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -407,21 +408,17 @@ export default function PlayersPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      <div className="container mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-4xl font-bold text-gray-900 mb-2">👥 Players</h1>
-            <p className="text-gray-600">Manage your ping pong players</p>
-          </div>
-          <div className="flex space-x-4">
-            <Link href="/" className="bg-white hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg shadow-sm border border-gray-200 transition-colors">
-              ← Back to Home
-            </Link>
-            <AuthControls />
-          </div>
-        </div>
+    <div className="app-shell app-shell--home">
+      <div className="page-container">
+        <PageHeader
+          title="👥 Players"
+          description="Manage your ping pong players"
+          actions={
+            <>
+              <Link href="/" className="button button-secondary">← Back to Home</Link>
+            </>
+          }
+        />
 
         {/* Players Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -538,7 +535,7 @@ export default function PlayersPage() {
 
           return (
             <div className="mt-8 bg-white rounded-xl shadow-lg overflow-hidden border border-gray-200">
-              <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-5">
+              <div className="brand-gradient text-white px-6 py-5">
                 <h2 className="text-xl font-bold">🏆 Leaderboard</h2>
                  <p className="text-indigo-200 text-sm mt-0.5">Ranked by wins, win rate, and experience</p>
               </div>
@@ -588,7 +585,7 @@ export default function PlayersPage() {
                           <div className="flex items-center gap-2">
                             <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
                               <div
-                                className="h-full bg-gradient-to-r from-indigo-500 to-purple-600 rounded-full transition-all"
+                                className="h-full brand-gradient rounded-full transition-all"
                                 style={{ width: `${row.gameWinRate}%` }}
                               />
                             </div>
