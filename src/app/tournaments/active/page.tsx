@@ -37,6 +37,8 @@ export default function ActiveTournamentsPage() {
   // Allows users to reassign byes and R1 players via the same swap UI as the live bracket.
   // Keyed by tournament id. When present, the bracket tab uses these matches for the preview.
   const [bracketPreviewById, setBracketPreviewById] = useState<Record<string, Match[]>>({});
+  // Third-place selection is a preview-only setting until the bracket is started.
+  const [thirdPlacePreviewById, setThirdPlacePreviewById] = useState<Record<string, boolean>>({});
 
 
   useEffect(() => {
@@ -230,12 +232,18 @@ export default function ActiveTournamentsPage() {
     // If the user configured the bracket in preview, send the exact matches we previewed
     // so the committed bracket matches what they set up (byes, play-in participants, etc.).
     const previewMatches = bracketPreviewById[tournament.id];
+    const thirdPlaceMatch = thirdPlacePreviewById[tournament.id] ?? tournament.bracketConfig?.thirdPlaceMatch === true;
     const body: { id: string; action: string; initialBracketMatches?: Match[]; bracketConfig?: BracketConfig } = { id: tournament.id, action: 'startBracket' };
     if (previewMatches && previewMatches.length > 0) {
       body.initialBracketMatches = previewMatches;
       // Also send a derived config so the stored tournament remembers the high-level choice (play-in or not)
       const hasPlayIn = previewMatches.some((m: Match) => (m.bracketRound ?? 0) === 0);
-      body.bracketConfig = { playInMode: hasPlayIn ? 'force' : 'none' };
+      body.bracketConfig = {
+        playInMode: hasPlayIn ? 'force' : 'none',
+        thirdPlaceMatch,
+      };
+    } else if (thirdPlacePreviewById[tournament.id] !== undefined) {
+      body.bracketConfig = { thirdPlaceMatch };
     }
 
     const res = await fetch('/api/tournaments', {
@@ -246,6 +254,11 @@ export default function ActiveTournamentsPage() {
     if (res.ok) {
       // Clear the preview override once it has been committed
       setBracketPreviewById(prev => {
+        const next = { ...prev };
+        delete next[tournament.id];
+        return next;
+      });
+      setThirdPlacePreviewById(prev => {
         const next = { ...prev };
         delete next[tournament.id];
         return next;
@@ -572,6 +585,7 @@ export default function ActiveTournamentsPage() {
             // Use locally edited preview if the user has made configuration changes in the bracket tab preview.
             const previewMatches = bracketPreviewById[t.id];
             const effectivePreviewMatches = !bracketStarted && previewMatches && previewMatches.length > 0 ? previewMatches : baseProjected;
+            const thirdPlaceEnabled = thirdPlacePreviewById[t.id] ?? t.bracketConfig?.thirdPlaceMatch === true;
             const tournamentGames = games
               .filter(g => g.matchId && tm.some(m => m.id === g.matchId))
               .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -778,7 +792,7 @@ export default function ActiveTournamentsPage() {
                         <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-5 space-y-4">
                           <div>
                             <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider mb-1">Bracket preview — editable</p>
-                            <p className="text-sm text-blue-900">Click matches in the bracket below (especially byes or the play-in) to reassign players or choose who gets byes. Use the controls to add or remove the play-in round.</p>
+                             <p className="text-sm text-blue-900">Click matches in the bracket below (especially byes or the play-in) to reassign players or choose who gets byes. Use the controls to add or remove the play-in round and choose whether to play for third place.</p>
                           </div>
 
                           {/* Play-in round controls for add/remove */}
@@ -811,9 +825,22 @@ export default function ActiveTournamentsPage() {
                               </button>
                             </div>
                             <p className="text-[10px] text-blue-600 mt-1.5">Changing this will regenerate the bracket structure for the preview using the current RR standings.</p>
-                          </div>
+                           </div>
 
-                          <div className="flex flex-wrap items-center gap-3">
+                           <label className="flex items-start gap-3 bg-white/70 border border-blue-200 rounded-lg p-3 cursor-pointer">
+                             <input
+                               type="checkbox"
+                               checked={thirdPlaceEnabled}
+                               onChange={e => setThirdPlacePreviewById(prev => ({ ...prev, [t.id]: e.target.checked }))}
+                               className="mt-0.5 h-4 w-4 accent-blue-600"
+                             />
+                             <span>
+                               <span className="block text-sm font-bold text-blue-900">Play a third-place game</span>
+                               <span className="block text-xs text-blue-700 mt-0.5">Create a match for the semifinal losers after both semifinals are complete.</span>
+                             </span>
+                           </label>
+
+                           <div className="flex flex-wrap items-center gap-3">
                             <button
                               onClick={() => startBracket(t)}
                               disabled={!firstRoundComplete}
@@ -855,6 +882,7 @@ export default function ActiveTournamentsPage() {
                             onSwapPlayers={isAdmin ? (bracketStarted ? swapPlayers : async (mid, p1, p2) => { handlePreviewBracketSwap(t.id, mid, p1, p2, effectivePreviewMatches); }) : undefined}
                             readOnly={!isAdmin}
                             previewMode={isAdmin && !bracketStarted}
+                             showThirdPlace={thirdPlaceEnabled || bracketMatches.some(m => m.isThirdPlace)}
                           />
                           {!bracketStarted && (
                             <div className="mt-3 flex justify-end">
@@ -887,7 +915,9 @@ export default function ActiveTournamentsPage() {
                             {tournamentGames.map(game => {
                               const match = tm.find(m => m.id === game.matchId);
                               const roundLabel = match?.round === 'bracket'
-                                ? match.bracketRound === 0
+                                ? match.isThirdPlace
+                                  ? 'Third place'
+                                  : match.bracketRound === 0
                                   ? 'Bracket Play-in'
                                   : `Bracket R${match?.bracketRound ?? 1}`
                                 : `RR R${match?.bracketRound ?? 1}`;

@@ -89,7 +89,7 @@ function TournamentHistoryContent() {
     const bracketMatches = (tournament.matches || []).filter(m => m.round === 'bracket');
     if (bracketMatches.length === 0) return null;
     const maxRound = Math.max(...bracketMatches.map(m => m.bracketRound || 0));
-    const finalMatch = bracketMatches.find(m => m.bracketRound === maxRound);
+    const finalMatch = bracketMatches.find(m => m.bracketRound === maxRound && !m.isThirdPlace);
     return finalMatch?.winnerId ?? null;
   };
 
@@ -210,6 +210,7 @@ function TournamentHistoryContent() {
                   players={players}
                   onAddGame={async () => {}}
                   onSaveGameEdit={async () => {}}
+                  showThirdPlace={selectedTournament.bracketConfig?.thirdPlaceMatch === true || bracketMatches.some(m => m.isThirdPlace)}
                   readOnly
                 />
               ) : (
@@ -274,7 +275,13 @@ function TournamentHistoryContent() {
                   <div className="space-y-4">
                     {Array.from(new Set(brMatches.map(m => m.bracketRound || 0))).sort((a, b) => a - b).map(round => (
                       <div key={round}>
-                        <div className="text-xs text-gray-400 font-medium mb-2 ml-1">Round {round}</div>
+                        <div className="text-xs text-gray-400 font-medium mb-2 ml-1">
+                          {brMatches.some(m => (m.bracketRound || 0) === round && m.isThirdPlace)
+                            ? brMatches.some(m => (m.bracketRound || 0) === round && !m.isThirdPlace)
+                              ? 'Final and third place'
+                              : 'Third place'
+                            : `Round ${round}`}
+                        </div>
                         <div className="space-y-2">{brMatches.filter(m => (m.bracketRound || 0) === round).map(renderMatch)}</div>
                       </div>
                     ))}

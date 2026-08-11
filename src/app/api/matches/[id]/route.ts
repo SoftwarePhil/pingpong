@@ -71,6 +71,17 @@ export async function PUT(
           tournament.matches = tournament.matches.map(m => m.id === matchId ? { ...m, winnerId: undefined } : m);
         }
       } else {
+        const hasLinkedThirdPlace = tournament.matches.some(m =>
+          m.round === 'bracket' &&
+          m.isThirdPlace &&
+          m.bracketRound === currentMatch.bracketRound
+        );
+        if (currentMatch.isThirdPlace || hasLinkedThirdPlace) {
+          return NextResponse.json(
+            { error: 'Final and third-place participants are fixed after the semifinals' },
+            { status: 400 }
+          );
+        }
         tournament.matches = cascadeBracketPlayerSwap(tournament.matches, matchId, newP1, newP2);
       }
 

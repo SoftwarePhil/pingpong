@@ -96,6 +96,7 @@ describe('Hybrid data layer — environment isolation', () => {
       startDate: new Date().toISOString(),
       status: 'completed',
       roundRobinRounds: 1,
+      rrBestOf: 1,
       bracketRounds: [],
       players: [],
     });
@@ -126,6 +127,7 @@ describe('Hybrid data layer — environment isolation', () => {
       startDate: new Date().toISOString(),
       status: 'roundRobin',
       roundRobinRounds: 1,
+      rrBestOf: 1,
       bracketRounds: [],
       players: [],
     });
