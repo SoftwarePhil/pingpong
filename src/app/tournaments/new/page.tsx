@@ -19,6 +19,7 @@ export default function NewTournamentPage() {
   const [rrBestOf, setRrBestOf] = useState(1);
   const [semiBestOf, setSemiBestOf] = useState(3);
   const [finalBestOf, setFinalBestOf] = useState(3);
+  const [thirdPlaceMatch, setThirdPlaceMatch] = useState(false);
   const [rrPairingStrategy, setRrPairingStrategy] = useState<'random' | 'top-vs-top'>('top-vs-top');
   const [selectedPlayers, setSelectedPlayers] = useState<string[]>([]);
   const [showNewPlayerForm, setShowNewPlayerForm] = useState(false);
@@ -117,6 +118,7 @@ export default function NewTournamentPage() {
         bracketRounds,
         rrBestOf,
         rrPairingStrategy,
+        thirdPlaceMatch,
         players: [...new Set(selectedPlayers)],
       }),
     });
@@ -227,6 +229,19 @@ export default function NewTournamentPage() {
                 ))}
               </div>
             </div>
+
+            <label className="flex items-start gap-3 rounded-lg border-2 border-gray-200 bg-gray-50 p-4 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={thirdPlaceMatch}
+                onChange={e => setThirdPlaceMatch(e.target.checked)}
+                className="mt-1 h-4 w-4 accent-blue-600"
+              />
+              <span>
+                <span className="block text-base font-semibold text-gray-800">Play a third-place match</span>
+                <span className="block text-sm text-gray-500 mt-1">Create it after the semifinals so the semifinal losers can play for third place.</span>
+              </span>
+            </label>
 
             {/* Round Robin Pairing Strategy */}
             <div>

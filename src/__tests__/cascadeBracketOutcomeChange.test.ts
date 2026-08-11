@@ -100,6 +100,23 @@ describe('cascadeBracketOutcomeChange', () => {
     expect(result).toEqual(matches);
   });
 
+  it('updates the third-place slot when a semifinal winner changes', () => {
+    const matches = [
+      makeMatch('semi-a', { bracketRound: 1, player1Id: 'p1', player2Id: 'p2', winnerId: 'p1' }),
+      makeMatch('semi-b', { bracketRound: 1, player1Id: 'p3', player2Id: 'p4', winnerId: 'p3' }),
+      makeMatch('final', { bracketRound: 2, player1Id: 'p1', player2Id: 'p3' }),
+      makeMatch('third', { bracketRound: 2, player1Id: 'p2', player2Id: 'p4', isThirdPlace: true }),
+    ];
+
+    const corrected = matches.map(m => m.id === 'semi-a' ? { ...m, winnerId: 'p2' } : m);
+    const { matches: result } = cascadeBracketOutcomeChange(corrected, 'semi-a');
+    const final = result.find(m => m.id === 'final')!;
+    const third = result.find(m => m.id === 'third')!;
+
+    expect([final.player1Id, final.player2Id]).toEqual(['p2', 'p3']);
+    expect([third.player1Id, third.player2Id]).toEqual(['p1', 'p4']);
+  });
+
   it('does not mutate the input array', () => {
     const matches = [
       makeMatch('r1a', { bracketRound: 1, player1Id: 'p1', player2Id: 'p2', winnerId: 'p2' }),

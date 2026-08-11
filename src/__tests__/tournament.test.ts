@@ -305,6 +305,49 @@ describe('advanceBracketRound', () => {
     expect(newMatches[0].bestOf).toBe(7);
   });
 
+  it('creates an optional third-place match alongside the final after the semifinals', () => {
+    const tournament = makeTournament({
+      status: 'bracket',
+      bracketConfig: { thirdPlaceMatch: true },
+      bracketRounds: [{ matchCount: 1, bestOf: 5 }, { matchCount: 2, bestOf: 3 }],
+      matches: [
+        makeMatch('semi-a', { bracketRound: 1, player1Id: 'p1', player2Id: 'p4', winnerId: 'p1' }),
+        makeMatch('semi-b', { bracketRound: 1, player1Id: 'p3', player2Id: 'p2', winnerId: 'p2' }),
+      ],
+    });
+
+    const next = advanceBracketRound(tournament);
+    expect(next).toHaveLength(2);
+
+    const final = next.find(match => !match.isThirdPlace)!;
+    expect([final.player1Id, final.player2Id]).toEqual(['p1', 'p2']);
+    expect(final.bracketRound).toBe(2);
+    expect(final.bestOf).toBe(5);
+
+    const thirdPlace = next.find(match => match.isThirdPlace)!;
+    expect([thirdPlace.player1Id, thirdPlace.player2Id]).toEqual(['p4', 'p3']);
+    expect(thirdPlace.bracketRound).toBe(2);
+    expect(thirdPlace.bestOf).toBe(3);
+  });
+
+  it('does not complete the tournament until an optional third-place match is won', () => {
+    const tournament = makeTournament({
+      status: 'bracket',
+      bracketConfig: { thirdPlaceMatch: true },
+      matches: [
+        makeMatch('final', { bracketRound: 2, player1Id: 'p1', player2Id: 'p2', winnerId: 'p1' }),
+        makeMatch('third', { bracketRound: 2, player1Id: 'p3', player2Id: 'p4', isThirdPlace: true }),
+      ],
+    });
+
+    expect(advanceBracketRound(tournament)).toEqual([]);
+    expect(tournament.status).toBe('bracket');
+
+    tournament.matches![1].winnerId = 'p3';
+    expect(advanceBracketRound(tournament)).toEqual([]);
+    expect(tournament.status).toBe('completed');
+  });
+
   it('excludes play-in matches (bracketRound === 0) from advancement logic', () => {
     const tournament = makeTournament({
       bracketRounds: [{ matchCount: 1, bestOf: 3 }, { matchCount: 2, bestOf: 3 }],

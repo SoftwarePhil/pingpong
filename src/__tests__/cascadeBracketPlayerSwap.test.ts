@@ -177,4 +177,16 @@ describe('cascadeBracketPlayerSwap', () => {
     expect(m2.player1Id).toBe('p1');
     expect(m2.player2Id).toBe('p4');
   });
+
+  it('does not allow swaps after a third-place match has been created for the round', () => {
+    const matches = [
+      makeMatch('final', { bracketRound: 2, player1Id: 'p1', player2Id: 'p2' }),
+      makeMatch('third', { bracketRound: 2, player1Id: 'p3', player2Id: 'p4', isThirdPlace: true }),
+    ];
+
+    expect(() => cascadeBracketPlayerSwap(matches, 'final', 'p1', 'p3'))
+      .toThrow('Final and third-place participants are fixed after the semifinals');
+    expect(() => cascadeBracketPlayerSwap(matches, 'third', 'p3', 'p4'))
+      .toThrow('Final and third-place participants are fixed after the semifinals');
+  });
 });

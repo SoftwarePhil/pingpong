@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
   if (denied) return denied;
   try {
     const body = await request.json();
-    const { name, roundRobinRounds, bracketRounds, players, rrBestOf, rrPairingStrategy }: { name: string; roundRobinRounds: number; bracketRounds: { matchCount: number; bestOf: number }[]; players: string[]; rrBestOf: number; rrPairingStrategy?: 'random' | 'top-vs-top' } = body;
+    const { name, roundRobinRounds, bracketRounds, players, rrBestOf, rrPairingStrategy, thirdPlaceMatch }: { name: string; roundRobinRounds: number; bracketRounds: { matchCount: number; bestOf: number }[]; players: string[]; rrBestOf: number; rrPairingStrategy?: 'random' | 'top-vs-top'; thirdPlaceMatch?: boolean } = body;
     const uniquePlayers = [...new Set(players)];
     if (!name || !roundRobinRounds || !bracketRounds || !uniquePlayers || uniquePlayers.length < 2) {
       return NextResponse.json({ error: 'Invalid data' }, { status: 400 });
@@ -41,6 +41,7 @@ export async function POST(request: NextRequest) {
       rrPairingStrategy: rrPairingStrategy ?? 'random',
       bracketRounds,
       players: uniquePlayers,
+      bracketConfig: { thirdPlaceMatch: thirdPlaceMatch === true },
       matches: [], // Will be populated with embedded matches
     };
 
@@ -152,8 +153,29 @@ if (action === 'advanceRound') {
         await saveData();
       } else if (bracketStarted && tournament.status !== 'completed') {
         // Advance bracket round
+        const standardBracketMatches = (tournament.matches ?? []).filter(m =>
+          m.round === 'bracket' &&
+          !m.isThirdPlace &&
+          (m.bracketRound ?? 0) > 0
+        );
+        const currentBracketRound = standardBracketMatches.length > 0
+          ? Math.max(...standardBracketMatches.map(m => m.bracketRound ?? 1))
+          : 0;
+        const currentBracketMatches = standardBracketMatches.filter(m =>
+          (m.bracketRound ?? 1) === currentBracketRound
+        );
+        if (!currentBracketMatches.length || !currentBracketMatches.every(m => m.winnerId)) {
+          return NextResponse.json({ error: 'Current bracket round is not complete' }, { status: 400 });
+        }
+
         const newBracketMatches = advanceBracketRound(tournament);
-        if (newBracketMatches.length === 0 && (tournament.status as string) !== 'completed') {
+        const thirdPlacePending =
+          (tournament.matches ?? []).some(m =>
+            m.isThirdPlace &&
+            (m.bracketRound ?? 0) === currentBracketRound &&
+            !m.winnerId
+          );
+        if (newBracketMatches.length === 0 && (tournament.status as string) !== 'completed' && !thirdPlacePending) {
           return NextResponse.json({ error: 'Cannot advance bracket round' }, { status: 400 });
         }
 
@@ -207,7 +229,7 @@ if (action === 'advanceRound') {
       const initialBracketMatches: Match[] | undefined = (body as { initialBracketMatches?: Match[] }).initialBracketMatches;
       const incomingConfig = (body as { bracketConfig?: BracketConfig }).bracketConfig;
       if (incomingConfig) {
-        tournament.bracketConfig = incomingConfig;
+        tournament.bracketConfig = { ...(tournament.bracketConfig ?? {}), ...incomingConfig };
       }
       let newBracketMatches: Match[];
 
@@ -215,6 +237,7 @@ if (action === 'advanceRound') {
         // Basic validation: only unplayed bracket matches for round 0 (play-in) or 1+
         const invalid = initialBracketMatches.some(m =>
           m.round !== 'bracket' ||
+          m.isThirdPlace ||
           (m.games && m.games.length > 0) ||
           (m.winnerId && m.player1Id !== 'BYE' && m.player2Id !== 'BYE' && (m.bracketRound ?? 0) > 0)
         );

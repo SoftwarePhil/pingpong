@@ -217,7 +217,8 @@ export default function TournamentBracketPage() {
               onDeleteGame={deleteGame}
               onChangeBestOf={changeMatchBestOf}
               onSwapPlayers={swapPlayers}
-            />
+              showThirdPlace={tournament.bracketConfig?.thirdPlaceMatch === true || bracketMatches.some(m => m.isThirdPlace)}
+             />
           </div>
         )}
       </div>

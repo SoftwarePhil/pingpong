@@ -9,6 +9,22 @@ const CARD_H = 76;   // match card height — fixed so SVG lines stay aligned
 const R1_GAP = 32;   // vertical gap between cards in round 1
 const COL_GAP = 80;  // horizontal gap between round columns
 
+type DisplayMatch = Match & { isPlaceholder?: boolean };
+
+function makeBracketPlaceholder(tournamentId: string, bracketRound: number, index: number, kind = 'standard'): DisplayMatch {
+  return {
+    id: `bracket-placeholder-${kind}-r${bracketRound}-${index}`,
+    tournamentId,
+    player1Id: 'TBD',
+    player2Id: 'TBD',
+    round: 'bracket',
+    bracketRound,
+    bestOf: 1,
+    games: [],
+    isPlaceholder: true,
+  };
+}
+
 /** Calculate absolute {x, y} for match `mIdx` (0-based) in round column `rIdx` (0-based main-bracket index). */
 function getPos(rIdx: number, mIdx: number, r1Count: number, hasPlayIn: boolean) {
   const unitH = CARD_H + R1_GAP;
@@ -32,9 +48,11 @@ interface BracketViewProps {
   readOnly?: boolean;
   /** When true, the bracket is a preview before starting. Allows player/bye configuration via swaps but suppresses game recording. */
   previewMode?: boolean;
+  /** Render a third-place slot, including before the placement match exists. */
+  showThirdPlace?: boolean;
 }
 
-export default function BracketView({ bracketMatches, getPlayerName, players = [], tournamentPlayers = [], onAddGame, onSaveGameEdit, onDeleteGame, onChangeBestOf, onSwapPlayers, readOnly = false, previewMode = false }: BracketViewProps) {
+export default function BracketView({ bracketMatches, getPlayerName, players = [], tournamentPlayers = [], onAddGame, onSaveGameEdit, onDeleteGame, onChangeBestOf, onSwapPlayers, readOnly = false, previewMode = false, showThirdPlace = false }: BracketViewProps) {
   const [activeMatchId, setActiveMatchId] = useState<string | null>(null);
   const [score1, setScore1] = useState('');
   const [score2, setScore2] = useState('');
@@ -46,20 +64,67 @@ export default function BracketView({ bracketMatches, getPlayerName, players = [
   const [swapP2, setSwapP2] = useState('');
 
   const playInMatches = bracketMatches.filter(m => (m.bracketRound ?? 0) === 0);
-  const mainMatches   = bracketMatches.filter(m => (m.bracketRound ?? 0) > 0);
-  const mainRounds    = [...new Set(mainMatches.map(m => m.bracketRound!))].sort((a, b) => a - b);
+  const mainMatches   = bracketMatches.filter(m => (m.bracketRound ?? 0) > 0 && !m.isThirdPlace);
+  const actualThirdPlaceMatch = bracketMatches.find(m => m.isThirdPlace);
   const hasPlayIn     = playInMatches.length > 0;
 
-  if (mainRounds.length === 0 && !hasPlayIn) {
+  if (mainMatches.length === 0 && !hasPlayIn) {
     return <div className="text-center py-16 text-gray-400 text-sm">No bracket matches yet.</div>;
   }
 
-  const r1Matches = mainMatches.filter(m => m.bracketRound === mainRounds[0]);
-  const r1Count   = r1Matches.length;
+  // Bracket rounds are created lazily by the API. Fill in the missing standard
+  // rounds locally so the visual bracket always shows the complete structure.
+  const actualRoundNumbers = mainMatches.map(m => m.bracketRound ?? 1);
+  const firstRoundNumber = actualRoundNumbers.length > 0 ? Math.min(...actualRoundNumbers) : 1;
+  const actualR1Matches = mainMatches.filter(m => (m.bracketRound ?? 1) === firstRoundNumber);
+  const bracketPlayerIds = new Set(
+    mainMatches.flatMap(m => [m.player1Id, m.player2Id]).filter(id => id !== 'BYE')
+  );
+  const canHaveSemifinals = actualR1Matches.length >= 4 || (
+    actualR1Matches.length === 2 &&
+    actualR1Matches.every(m => m.player1Id !== 'BYE' && m.player2Id !== 'BYE')
+  );
+  const hasThirdPlace = showThirdPlace && (
+    Boolean(actualThirdPlaceMatch) || (bracketPlayerIds.size >= 4 && canHaveSemifinals)
+  );
+  const inferredR1Count = Math.max(
+    actualR1Matches.length,
+    actualRoundNumbers.length > 0 ? Math.pow(2, Math.max(...actualRoundNumbers) - firstRoundNumber) : 1,
+    1,
+  );
+  const r1Count = inferredR1Count;
+  const roundCount = Math.max(
+    Math.ceil(Math.log2(r1Count)) + 1,
+    actualRoundNumbers.length > 0 ? Math.max(...actualRoundNumbers) - firstRoundNumber + 1 : 1,
+  );
+  const mainRounds = Array.from({ length: roundCount }, (_, index) => firstRoundNumber + index);
+  const roundMatchesByIndex: DisplayMatch[][] = mainRounds.map((roundNumber, roundIndex) => {
+    const actualMatches = mainMatches.filter(m => (m.bracketRound ?? 1) === roundNumber);
+    const expectedCount = Math.max(1, Math.ceil(r1Count / Math.pow(2, roundIndex)));
+    return Array.from({ length: expectedCount }, (_, matchIndex) =>
+      actualMatches[matchIndex] ?? makeBracketPlaceholder(
+        bracketMatches[0]?.tournamentId ?? '',
+        roundNumber,
+        matchIndex,
+      )
+    );
+  });
+  const r1Matches = roundMatchesByIndex[0] ?? [];
   const unitH     = CARD_H + R1_GAP;
   const totalH    = Math.max(r1Count * unitH, CARD_H + 40);
   const xOffset   = hasPlayIn ? CARD_W + COL_GAP : 0;
   const totalW    = xOffset + mainRounds.length * (CARD_W + COL_GAP) - COL_GAP + 2;
+
+  const finalRoundIndex = mainRounds.length - 1;
+  const finalPosition = getPos(finalRoundIndex, 0, r1Count, hasPlayIn);
+  const thirdPlaceDisplay: DisplayMatch | null = hasThirdPlace
+    ? actualThirdPlaceMatch ?? makeBracketPlaceholder(
+        bracketMatches[0]?.tournamentId ?? '',
+        mainRounds[finalRoundIndex] ?? 1,
+        0,
+        'third-place',
+      )
+    : null;
 
   // ── SVG connector paths ───────────────────────────────────────────────────
   const connectors: { d: string; key: string }[] = [];
@@ -78,7 +143,7 @@ export default function BracketView({ bracketMatches, getPlayerName, players = [
 
   // Main bracket: pairs in round r feed into round r+1
   for (let r = 0; r < mainRounds.length - 1; r++) {
-    const rMatches = mainMatches.filter(m => m.bracketRound === mainRounds[r]);
+    const rMatches = roundMatchesByIndex[r];
     for (let i = 0; i < Math.floor(rMatches.length / 2); i++) {
       const topPos  = getPos(r, i * 2,     r1Count, hasPlayIn);
       const botPos  = getPos(r, i * 2 + 1, r1Count, hasPlayIn);
@@ -111,6 +176,8 @@ export default function BracketView({ bracketMatches, getPlayerName, players = [
   const seriesComplete = !!activeMatch && activeMatch.games.length >= activeMatch.bestOf;
   const canSwapActiveMatch = ( !readOnly || previewMode ) && onSwapPlayers && activeMatch &&
     activeMatch.round === 'bracket' &&
+    !activeMatch.isThirdPlace &&
+    !bracketMatches.some(m => m.isThirdPlace && m.bracketRound === activeMatch.bracketRound) &&
     activeMatch.games.length === 0 &&
     // Allow swap on bye matches (they have winnerId set automatically but no real games)
     (!activeMatch.winnerId || isByeActiveMatch) &&
@@ -169,7 +236,8 @@ export default function BracketView({ bracketMatches, getPlayerName, players = [
   };
 
   const getRoundLabel = (rNum: number) => {
-    const count = mainMatches.filter(m => m.bracketRound === rNum).length;
+    const roundIndex = mainRounds.indexOf(rNum);
+    const count = roundMatchesByIndex[roundIndex]?.length ?? 0;
     if (count === 1) return '🏆 Final';
     if (count === 2) return 'Semifinal';
     if (count === 4) return 'Quarterfinal';
@@ -205,8 +273,8 @@ export default function BracketView({ bracketMatches, getPlayerName, players = [
         )}
         {mainRounds.map((rNum, idx) => (
           <div key={rNum} style={{ width: CARD_W + COL_GAP, flexShrink: 0 }}>
-            <p className={`text-center text-xs font-bold uppercase tracking-widest ${mainMatches.filter(m => m.bracketRound === rNum).length === 1 ? 'text-amber-600' : 'text-gray-400'}`}>
-              {hasPlayIn && idx === 0 && mainMatches.filter(m => m.bracketRound === rNum).length === 4
+            <p className={`text-center text-xs font-bold uppercase tracking-widest ${roundMatchesByIndex[idx]?.length === 1 ? 'text-amber-600' : 'text-gray-400'}`}>
+              {hasPlayIn && idx === 0 && roundMatchesByIndex[idx]?.length === 4
                 ? 'Main R1 (no byes)'
                 : getRoundLabel(rNum)}
             </p>
@@ -258,17 +326,18 @@ export default function BracketView({ bracketMatches, getPlayerName, players = [
 
           {/* Main bracket matches */}
           {mainRounds.map((rNum, rIdx) => {
-            const roundMatches = mainMatches.filter(m => m.bracketRound === rNum);
-            const isFinalRound = mainMatches.filter(m => m.bracketRound === rNum).length === 1;
+            const roundMatches = roundMatchesByIndex[rIdx] ?? [];
+            const isFinalRound = rIdx === finalRoundIndex;
             return roundMatches.map((match, mIdx) => {
               const { x, y } = getPos(rIdx, mIdx, r1Count, hasPlayIn);
               return (
                 <div key={match.id} style={{ position: 'absolute', left: x, top: y, width: CARD_W }}>
-                  <BracketCard
-                     match={match}
-                     getPlayerName={getPlayerName}
-                     getPlayerProfile={id => players.find(player => player.id === id)}
-                    isActive={activeMatchId === match.id}
+                   <BracketCard
+                      match={match}
+                      getPlayerName={getPlayerName}
+                      getPlayerProfile={id => players.find(player => player.id === id)}
+                     isPlaceholder={match.isPlaceholder}
+                     isActive={activeMatchId === match.id}
                     onSelect={() => {
                       const isBye = match.player1Id === 'BYE' || match.player2Id === 'BYE';
                       setSwapMode(isBye);
@@ -281,14 +350,41 @@ export default function BracketView({ bracketMatches, getPlayerName, players = [
                     }}
                     isFinal={isFinalRound}
                     readOnly={readOnly}
-                    previewMode={previewMode}
-                  />
+                     previewMode={previewMode}
+                   />
                 </div>
               );
             });
           })}
+
         </div>
       </div>
+
+      {/* The optional placement match is intentionally separate from the
+          elimination bracket. It appears below the bracket without connectors. */}
+      {thirdPlaceDisplay && (
+        <div className="overflow-x-auto pt-2">
+          <div style={{ width: totalW }}>
+            <div style={{ marginLeft: finalPosition.x, width: CARD_W }}>
+            <p className="text-center text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Third place</p>
+            <BracketCard
+              match={thirdPlaceDisplay}
+              getPlayerName={getPlayerName}
+              getPlayerProfile={id => players.find(player => player.id === id)}
+              isPlaceholder={thirdPlaceDisplay.isPlaceholder}
+              isActive={activeMatchId === thirdPlaceDisplay.id}
+              onSelect={() => {
+                const isBye = thirdPlaceDisplay.player1Id === 'BYE' || thirdPlaceDisplay.player2Id === 'BYE';
+                setSwapMode(isBye);
+                setActiveMatchId(prev => prev === thirdPlaceDisplay.id ? null : thirdPlaceDisplay.id);
+              }}
+              readOnly={readOnly}
+              previewMode={previewMode}
+            />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Score entry / Config panel — appears below the bracket when a match is selected */}
       {activeMatch && ( !readOnly || previewMode ) && (
@@ -578,22 +674,27 @@ interface BracketCardProps {
   isFinal?: boolean;
   readOnly?: boolean;
   previewMode?: boolean;
+  isPlaceholder?: boolean;
 }
 
-function BracketCard({ match, getPlayerName, getPlayerProfile, isActive, onSelect, isFinal, readOnly = false, previewMode = false }: BracketCardProps) {
+function BracketCard({ match, getPlayerName, getPlayerProfile, isActive, onSelect, isFinal, readOnly = false, previewMode = false, isPlaceholder = false }: BracketCardProps) {
   const p1Wins = match.games.filter(g => g.score1 > g.score2).length;
   const p2Wins = match.games.filter(g => g.score2 > g.score1).length;
   const isByeMatch = match.player1Id === 'BYE' || match.player2Id === 'BYE';
-  const canInteract = (readOnly && !previewMode)
-    ? match.games.length > 0
-    : ((!match.winnerId && !isByeMatch) ||                  // regular unplayed match
-        (!!match.winnerId && match.games.length > 0) ||     // completed match (view scores)
-        (isByeMatch && (!readOnly || previewMode)) ||       // bye match (swap player) — allow in preview for config
-        previewMode)                                        // in preview allow selecting unplayed for config
-      && match.player1Id !== 'PLAY_IN_WINNER' && match.player2Id !== 'PLAY_IN_WINNER'
-      && match.player1Id !== 'TBD' && match.player2Id !== 'TBD';
+  const canInteract = !isPlaceholder && (
+    (readOnly && !previewMode)
+      ? match.games.length > 0
+      : ((!match.winnerId && !isByeMatch) ||                  // regular unplayed match
+          (!!match.winnerId && match.games.length > 0) ||     // completed match (view scores)
+          (isByeMatch && (!readOnly || previewMode)) ||       // bye match (swap player) — allow in preview for config
+          previewMode)                                        // in preview allow selecting unplayed for config
+        && match.player1Id !== 'PLAY_IN_WINNER' && match.player2Id !== 'PLAY_IN_WINNER'
+        && match.player1Id !== 'TBD' && match.player2Id !== 'TBD'
+  );
 
-  const ring = isFinal && match.winnerId
+  const ring = isPlaceholder
+    ? 'border-dashed border-gray-200 bg-gray-50'
+    : isFinal && match.winnerId
     ? 'border-amber-400 shadow-lg shadow-amber-100'
     : isActive
     ? 'border-blue-400 shadow-md shadow-blue-100'

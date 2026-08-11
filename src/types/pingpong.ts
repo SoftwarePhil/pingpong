@@ -47,6 +47,8 @@ export interface Match {
   bestOf: number;
   games: Game[];
   winnerId?: string;
+  /** True for the optional placement match between semifinal losers. */
+  isThirdPlace?: boolean;
 }
 
 /** Synthetic opponent used only for round-robin marker games. */
@@ -57,4 +59,5 @@ export type PlayInMode = 'auto' | 'force' | 'none';
 export interface BracketConfig {
   playInMode?: PlayInMode;
   byePlayerIds?: string[];
+  thirdPlaceMatch?: boolean;
 }

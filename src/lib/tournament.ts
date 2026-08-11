@@ -50,31 +50,77 @@ export function cascadeBracketOutcomeChange(
     const roundNum = match.bracketRound ?? 0;
     if (roundNum <= 0) break; // Play-in propagation is handled separately
 
-    const roundMatches = result.filter(m => m.round === 'bracket' && (m.bracketRound ?? 0) === roundNum);
+    const roundMatches = result.filter(m =>
+      m.round === 'bracket' &&
+      !m.isThirdPlace &&
+      (m.bracketRound ?? 0) === roundNum
+    );
     const posInRound = roundMatches.findIndex(m => m.id === match.id);
     if (posInRound === -1) break;
 
-    const nextRoundMatches = result.filter(m => m.round === 'bracket' && (m.bracketRound ?? 0) === roundNum + 1);
+    const nextRoundMatches = result.filter(m =>
+      m.round === 'bracket' &&
+      !m.isThirdPlace &&
+      (m.bracketRound ?? 0) === roundNum + 1
+    );
     const nextMatch = nextRoundMatches[Math.floor(posInRound / 2)];
     if (!nextMatch) break; // Next round hasn't been created yet — nothing to reconcile
 
     const isTopSlot = posInRound % 2 === 0;
     const expectedSlot = match.winnerId ?? TBD_PLACEHOLDER;
     const currentSlot = isTopSlot ? nextMatch.player1Id : nextMatch.player2Id;
-    if (currentSlot === expectedSlot) break; // Already consistent — nothing to propagate
 
-    let updatedNext: Match = {
-      ...nextMatch,
-      ...(isTopSlot ? { player1Id: expectedSlot } : { player2Id: expectedSlot }),
-    };
+    // A third-place match receives the losers from the two semifinal matches,
+    // so reconcile its corresponding slot alongside the final's winner slot.
+    const thirdPlaceMatch = result.find(m =>
+      m.round === 'bracket' &&
+      m.isThirdPlace &&
+      (m.bracketRound ?? 0) === roundNum + 1
+    );
+    const expectedThirdPlaceSlot = match.winnerId
+      ? (match.winnerId === match.player1Id ? match.player2Id : match.player1Id)
+      : TBD_PLACEHOLDER;
+    const currentThirdPlaceSlot = thirdPlaceMatch
+      ? (isTopSlot ? thirdPlaceMatch.player1Id : thirdPlaceMatch.player2Id)
+      : expectedThirdPlaceSlot;
+    const nextSlotChanged = currentSlot !== expectedSlot;
+    const thirdPlaceSlotChanged = currentThirdPlaceSlot !== expectedThirdPlaceSlot;
 
-    // Games already recorded against the stale participant are no longer valid.
-    if (updatedNext.games.length > 0 || updatedNext.winnerId) {
-      invalidatedGameIds.push(...updatedNext.games.map(g => g.id));
-      updatedNext = { ...updatedNext, games: [], winnerId: undefined };
+    if (!nextSlotChanged && !thirdPlaceSlotChanged) {
+      break; // Already consistent — nothing to propagate
     }
 
-    result = result.map(m => (m.id === nextMatch.id ? updatedNext : m));
+    if (nextSlotChanged) {
+      let updatedNext: Match = {
+        ...nextMatch,
+        ...(isTopSlot ? { player1Id: expectedSlot } : { player2Id: expectedSlot }),
+      };
+
+      // Games already recorded against the stale participant are no longer valid.
+      if (updatedNext.games.length > 0 || updatedNext.winnerId) {
+        invalidatedGameIds.push(...updatedNext.games.map(g => g.id));
+        updatedNext = { ...updatedNext, games: [], winnerId: undefined };
+      }
+
+      result = result.map(m => (m.id === nextMatch.id ? updatedNext : m));
+    }
+
+    if (thirdPlaceMatch && thirdPlaceSlotChanged) {
+      let updatedThirdPlace: Match = {
+        ...thirdPlaceMatch,
+        ...(isTopSlot
+          ? { player1Id: expectedThirdPlaceSlot }
+          : { player2Id: expectedThirdPlaceSlot }),
+      };
+
+      if (updatedThirdPlace.games.length > 0 || updatedThirdPlace.winnerId) {
+        invalidatedGameIds.push(...updatedThirdPlace.games.map(g => g.id));
+        updatedThirdPlace = { ...updatedThirdPlace, games: [], winnerId: undefined };
+      }
+
+      result = result.map(m => (m.id === thirdPlaceMatch.id ? updatedThirdPlace : m));
+    }
+
     currentId = nextMatch.id;
   }
 
@@ -231,6 +277,19 @@ export function cascadeBracketPlayerSwap(
   if (target.games.length > 0) throw new Error('Cannot change players after games have been played');
   if (newPlayer1Id === newPlayer2Id) throw new Error('Player 1 and Player 2 must be different');
 
+  // Once semifinal losers have been assigned, the final and placement match
+  // are linked outcomes and must not exchange participants.
+  if (
+    target.isThirdPlace ||
+    matches.some(m =>
+      m.round === 'bracket' &&
+      m.isThirdPlace &&
+      m.bracketRound === target.bracketRound
+    )
+  ) {
+    throw new Error('Final and third-place participants are fixed after the semifinals');
+  }
+
   const oldPlayers = [target.player1Id, target.player2Id].filter(p => p !== 'BYE' && p !== 'PLAY_IN_WINNER');
   const newPlayers = [newPlayer1Id, newPlayer2Id].filter(p => p !== 'BYE' && p !== 'PLAY_IN_WINNER');
   const displaced = oldPlayers.filter(p => !newPlayers.includes(p));
@@ -328,7 +387,7 @@ export function advanceBracketRound(tournament: Tournament): Match[] {
   // when their game is recorded. Including them here would treat the play-in winner
   // as an extra Round 1 winner, causing a phantom bye in Round 2.
   const bracketMatches = (tournament.matches ?? []).filter(
-    m => m.round === 'bracket' && (m.bracketRound ?? 0) > 0
+    m => m.round === 'bracket' && !m.isThirdPlace && (m.bracketRound ?? 0) > 0
   );
   if (bracketMatches.length === 0) {
     return []; // No bracket matches exist
@@ -349,8 +408,17 @@ export function advanceBracketRound(tournament: Tournament): Match[] {
   const winners = currentRoundMatches.map(m => m.winnerId).filter(id => id) as string[];
 
   if (winners.length < 2) {
-    // Tournament completed
-    tournament.status = 'completed';
+    const thirdPlaceMatch = (tournament.matches ?? []).find(m =>
+      m.round === 'bracket' &&
+      m.isThirdPlace &&
+      (m.bracketRound ?? 0) === currentRound
+    );
+
+    // Keep the tournament active until an enabled third-place match is also
+    // complete, otherwise a final played first would hide that match.
+    if (!thirdPlaceMatch || thirdPlaceMatch.winnerId) {
+      tournament.status = 'completed';
+    }
     return [];
   }
 
@@ -378,6 +446,34 @@ export function advanceBracketRound(tournament: Tournament): Match[] {
       ...(isBye ? { winnerId: p1 === 'BYE' ? p2 : p1 } : {}),
     };
     newMatches.push(newMatch);
+  }
+
+  // The semifinal round is the only round with exactly two standard matches.
+  // Create the placement match at the same time as the final, using the
+  // semifinal losers as its participants.
+  if (
+    tournament.bracketConfig?.thirdPlaceMatch &&
+    currentRoundMatches.length === 2 &&
+    winners.length === 2 &&
+    currentRoundMatches.every(m => m.player1Id !== 'BYE' && m.player2Id !== 'BYE') &&
+    !(tournament.matches ?? []).some(m => m.isThirdPlace)
+  ) {
+    const semifinalLosers = currentRoundMatches.map(match =>
+      match.winnerId === match.player1Id ? match.player2Id : match.player1Id
+    );
+    const thirdPlaceBestOf = getBestOfForMatchCount(tournament, currentRoundMatches.length);
+    newMatches.push({
+      id: Date.now().toString() + Math.random(),
+      tournamentId: tournament.id,
+      createdAt: new Date().toISOString(),
+      player1Id: semifinalLosers[0],
+      player2Id: semifinalLosers[1],
+      round: 'bracket',
+      bracketRound: currentRound + 1,
+      bestOf: thirdPlaceBestOf,
+      games: [],
+      isThirdPlace: true,
+    });
   }
 
   return newMatches;

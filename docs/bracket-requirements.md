@@ -41,6 +41,13 @@ Adding/removing players is its **own atomic operation**, deliberately separate f
 
 ## Phase 2 — Single-Elimination Bracket
 
+### Optional Third-Place Match
+- A tournament may enable `bracketConfig.thirdPlaceMatch` when it is created.
+- After both semifinal matches are complete, advancement creates the final and one `isThirdPlace` match together.
+- The placement match is seeded with the two semifinal losers and uses the semifinal best-of format.
+- The tournament remains active until both the final and the third-place match are complete.
+- If a semifinal result is corrected, the final winner slot and corresponding third-place loser slot are corrected together; any invalidated placement games are removed from history.
+
 ### Seeding
 - Players are ranked by round-robin wins (descending). Ties are broken by point differential, then randomly.
 - Only active players enter the bracket.
@@ -95,13 +102,14 @@ A `bracketConfig` object (stored on the `Tournament`) controls play-in behavior:
 - Seed 1 at top of its half, seed 2 at bottom of its half (bottom-half reversal at creation).
 - Unplayed matches (play-in, BYE, and regular) are clickable in preview for reassignment or in live bracket for swaps. The cascade logic preserves a valid per-round matching.
 - Legacy data with round-0 play-ins continues to use the special column + placeholder substitution path. New brackets use the same rendering when a play-in prelim is chosen.
+- Future standard-round matches are rendered as non-interactive `TBD` cards before the API creates them. When enabled, the third-place card is rendered in a separate section below the main bracket, without connector lines, and remains non-interactive until the semifinal losers are known.
 
 ### Bracket Advancement (`advanceBracketRound`)
-- All bracket matches with `bracketRound > 0` are considered (play-in matches at `bracketRound: 0` are excluded).
+- Standard bracket matches with `bracketRound > 0` are considered; play-in matches at `bracketRound: 0` and `isThirdPlace` matches are excluded from winner advancement.
 - Winners are collected from the just-completed round **in positional order** (the order they are stored, which matches the visual display order).
 - No re-sorting or re-seeding is applied — the initial bracket already encoded all seeding protection at creation time.
 - Adjacent pairs of winners advance into the same next-round match: winner[0] vs winner[1], winner[2] vs winner[3], etc.
-- The process repeats until only one winner remains (tournament completed).
+- The process repeats until only one winner remains. If enabled, the tournament is completed only after the separate `isThirdPlace` match also has a winner.
 
 ### Preview / Live Editing Before "Start Bracket"
 In the Active Tournament "Bracket" tab (before the bracket stage has started):
