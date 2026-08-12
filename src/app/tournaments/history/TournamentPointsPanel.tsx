@@ -74,7 +74,8 @@ export default function TournamentPointsPanel({
     result = calculateTournamentPoints(selectedTournaments, pointValues, doubleLastTournament);
   }
 
-  const getPlayerName = (playerId: string) => players.find(player => player.id === playerId)?.name ?? 'Unknown';
+  const playersById = new Map(players.map(player => [player.id, player.name]));
+  const getPlayerName = (playerId: string) => playersById.get(playerId) ?? 'Unknown';
   const winner = result?.winnerId
     ? result.leaderboard.find(entry => entry.playerId === result!.winnerId)
     : null;
