@@ -6,6 +6,8 @@ import { Tournament, Player, Match, Game, MARKER_PLAYER_ID } from '../../../type
 import Link from 'next/link';
 import BracketView from '../active/BracketView';
 import { PageHeader } from '../../../components/PageHeader';
+import TournamentPointsPanel from './TournamentPointsPanel';
+import { getTournamentDateKey } from '../../../lib/tournamentPoints';
 
 type DetailTab = 'overview' | 'matches';
 
@@ -15,6 +17,8 @@ function TournamentHistoryContent() {
   const [games, setGames] = useState<Game[]>([]);
   const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null);
   const [activeTab, setActiveTab] = useState<DetailTab>('overview');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
   const searchParams = useSearchParams();
 
   useEffect(() => {
@@ -101,6 +105,14 @@ function TournamentHistoryContent() {
   const completedTournaments = [...tournaments]
     .filter(t => t.status === 'completed')
     .sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
+
+  const dateRangeError = fromDate && toDate && fromDate > toDate;
+  const visibleTournaments = dateRangeError
+    ? []
+    : completedTournaments.filter(tournament => {
+      const date = getTournamentDateKey(tournament.startDate);
+      return date && (!fromDate || date >= fromDate) && (!toDate || date <= toDate);
+    });
 
   const activeTournament = tournaments.find(t => t.status !== 'completed') ?? null;
 
@@ -305,7 +317,7 @@ function TournamentHistoryContent() {
         {/* Header */}
         <PageHeader
           title="🏆 Tournament History"
-          description={`${completedTournaments.length} completed tournament${completedTournaments.length !== 1 ? 's' : ''}`}
+          description={`${visibleTournaments.length} completed tournament${visibleTournaments.length !== 1 ? 's' : ''}`}
           actions={
             <>
               <Link href="/" className="button button-secondary">← Home</Link>
@@ -318,6 +330,17 @@ function TournamentHistoryContent() {
           }
         />
 
+        {completedTournaments.length > 0 && (
+          <TournamentPointsPanel
+            tournaments={completedTournaments}
+            players={players}
+            fromDate={fromDate}
+            toDate={toDate}
+            onFromDateChange={setFromDate}
+            onToDateChange={setToDate}
+          />
+        )}
+
         {/* Tournament Cards */}
         {completedTournaments.length === 0 ? (
           <div className="text-center py-20 bg-white rounded-xl shadow border border-gray-200">
@@ -328,9 +351,22 @@ function TournamentHistoryContent() {
               {activeTournament ? '⚡ Active Tournament' : '+ New Tournament'}
             </Link>
           </div>
+        ) : visibleTournaments.length === 0 ? (
+          <div className="text-center py-16 bg-white rounded-xl shadow border border-gray-200">
+            <div className="text-5xl mb-4">📅</div>
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">No tournaments in this date range</h3>
+            <p className="text-gray-500 mb-6">Adjust the dates above to see completed tournaments.</p>
+            <button
+              type="button"
+              onClick={() => { setFromDate(''); setToDate(''); }}
+              className="button button-secondary"
+            >
+              Clear date range
+            </button>
+          </div>
         ) : (
           <div className="space-y-4">
-            {completedTournaments.map((tournament, idx) => {
+            {visibleTournaments.map((tournament, idx) => {
               const standings = getPlayerStandings(tournament);
               const champion = getChampion(tournament);
               const tournamentGames = getTournamentGames(tournament);
