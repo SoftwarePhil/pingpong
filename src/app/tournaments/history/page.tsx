@@ -108,7 +108,7 @@ function TournamentHistoryContent() {
 
   const dateRangeError = fromDate && toDate && fromDate > toDate;
   const visibleTournaments = dateRangeError
-    ? []
+    ? completedTournaments
     : completedTournaments.filter(tournament => {
       const date = getTournamentDateKey(tournament.startDate);
       return date && (!fromDate || date >= fromDate) && (!toDate || date <= toDate);
