@@ -178,6 +178,41 @@
   box-shadow: none;
 }
 
+.tournament-points-panel {
+  border-color: color-mix(in srgb, var(--brand) 45%, var(--border));
+}
+
+.tournament-points-panel__header {
+  background: linear-gradient(115deg, var(--brand-soft), color-mix(in srgb, var(--brand) 10%, var(--surface-1)));
+  border-color: var(--border);
+}
+
+.tournament-points-panel__summary {
+  background: color-mix(in srgb, var(--surface-1) 72%, var(--brand-soft));
+  border-color: color-mix(in srgb, var(--brand) 24%, var(--border));
+}
+
+.tournament-points-panel__winner {
+  background: linear-gradient(115deg,
+    color-mix(in srgb, var(--warning) 10%, var(--surface-1)),
+    color-mix(in srgb, var(--warning) 24%, var(--surface-1))
+  );
+  border-color: color-mix(in srgb, var(--warning) 55%, var(--border));
+}
+
+.tournament-points-panel__winner-label,
+.tournament-points-panel__winner-score {
+  color: var(--warning);
+}
+
+.tournament-points-panel__winner-name {
+  color: var(--foreground);
+}
+
+.tournament-points-panel__leaderboard-row--winner {
+  background: color-mix(in srgb, var(--warning) 18%, var(--surface-1));
+}
+
 .form-control {
   background: var(--surface-1);
   border: 1px solid var(--border-strong);
