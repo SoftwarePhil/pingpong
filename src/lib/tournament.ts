@@ -512,7 +512,7 @@ export function createThirdPlaceMatch(tournament: Tournament): Match | null {
     match.winnerId === match.player1Id ? match.player2Id : match.player1Id
   );
   if (
-    semifinalLosers.some(id => id === 'BYE' || id === 'TBD' || id === 'PLAY_IN_WINNER') ||
+    semifinalLosers.some(id => id === 'BYE' || id === TBD_PLACEHOLDER || id === 'PLAY_IN_WINNER') ||
     semifinalLosers[0] === semifinalLosers[1]
   ) {
     return null;
