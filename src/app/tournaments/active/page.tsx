@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import RoundRobinView from './RoundRobinView';
 import BracketView from './BracketView';
 import Leaderboard from './Leaderboard';
-import { createBracketMatches, cascadeBracketR1PlayerSwap, cascadeBracketPlayerSwap } from '../../../lib/tournament';
+import { createBracketMatches, cascadeBracketR1PlayerSwap, cascadeBracketPlayerSwap, getCompletedSemifinalMatches } from '../../../lib/tournament';
 import { PlayerSearchSelect } from '../../../components/PlayerSearchSelect';
 import { useAuth } from '../../../components/AuthProvider';
 import { PageHeader } from '../../../components/PageHeader';
@@ -183,6 +183,20 @@ export default function ActiveTournamentsPage() {
     } else {
       const err = await res.json();
       alert(err.error ?? 'Failed to change number of games');
+    }
+  };
+
+  const addThirdPlaceMatch = async (tournament: Tournament) => {
+    const res = await fetch('/api/tournaments', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: tournament.id, action: 'addThirdPlaceMatch' }),
+    });
+    if (res.ok) {
+      await fetchTournaments();
+    } else {
+      const err = await res.json();
+      alert(err.error ?? 'Failed to add third-place game');
     }
   };
 
@@ -577,6 +591,11 @@ export default function ActiveTournamentsPage() {
             const tm = t.matches ?? [];
             const bracketMatches = tm.filter(m => m.round === 'bracket');
             const bracketStarted = Boolean(t.bracketStartedAt || bracketMatches.length > 0 || t.status === 'bracket');
+            const canAddThirdPlace = isAdmin &&
+              bracketStarted &&
+              t.status !== 'completed' &&
+              !bracketMatches.some(m => m.isThirdPlace) &&
+              getCompletedSemifinalMatches(t).length === 2;
             const activeTab = activeTabByTournament[t.id] ?? (bracketStarted ? 'bracket' : 'roundRobin');
             const rrMatches = tm.filter(m => m.round === 'roundRobin');
             const firstRoundMatches = rrMatches.filter(m => (m.bracketRound ?? 1) === 1);
@@ -865,6 +884,21 @@ export default function ActiveTournamentsPage() {
                        {!bracketStarted && allRoundRobinComplete && firstRoundComplete && (
                          <div className="bg-emerald-50 border-2 border-emerald-200 rounded-xl p-4 flex items-center justify-between gap-3">
                            <p className="text-sm text-emerald-900 font-semibold">All round robin games are complete. Bracket is ready to start.</p>
+                         </div>
+                       )}
+
+                       {canAddThirdPlace && (
+                         <div className="bg-amber-50 border-2 border-amber-200 rounded-xl p-4 flex flex-wrap items-center justify-between gap-3">
+                           <div>
+                             <p className="text-sm text-amber-900 font-bold">Semifinals are complete</p>
+                             <p className="text-xs text-amber-800 mt-0.5">Add a game between the two semifinal losers for third place.</p>
+                           </div>
+                           <button
+                             onClick={() => addThirdPlaceMatch(t)}
+                             className="inline-flex items-center gap-2 bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors border-2 border-amber-700"
+                           >
+                             + Add third-place game
+                           </button>
                          </div>
                        )}
 

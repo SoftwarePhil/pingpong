@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Tournament, Match, BracketConfig } from '../../../types/pingpong';
 import { getTournaments, saveData, setTournament, getTournament, deleteTournament, registerMatchesIndex, unregisterMatchesIndex, syncTournamentPlayers } from '../../../data/data';
-import { createRoundRobinPairings, advanceBracketRound, createBracketMatches, advanceRoundRobinRound, resyncRoundRobinMatches } from '../../../lib/tournament';
+import { createRoundRobinPairings, advanceBracketRound, createBracketMatches, advanceRoundRobinRound, resyncRoundRobinMatches, createThirdPlaceMatch } from '../../../lib/tournament';
 import { requireAdmin } from '../../../lib/auth';
 
 export async function GET() {
@@ -73,7 +73,7 @@ export async function PUT(request: NextRequest) {
     const { id, status, action, rrPairingStrategy }: {
       id: string;
       status?: 'roundRobin' | 'bracket' | 'completed';
-      action?: 'advanceRound' | 'addRoundRobinRound' | 'startBracket';
+      action?: 'advanceRound' | 'addRoundRobinRound' | 'startBracket' | 'addThirdPlaceMatch';
       rrPairingStrategy?: 'random' | 'top-vs-top';
     } = body;
     // Note: adding/removing players is handled by its own atomic endpoint —
@@ -111,6 +111,28 @@ export async function PUT(request: NextRequest) {
         await registerMatchesIndex(addedMatches);
       }
 
+      await setTournament(tournament);
+      await saveData();
+      return NextResponse.json(tournament);
+    }
+
+    if (action === 'addThirdPlaceMatch') {
+      if (!bracketStarted || tournament.status === 'completed') {
+        return NextResponse.json({ error: 'The third-place game can only be added during the bracket stage' }, { status: 400 });
+      }
+      if ((tournament.matches ?? []).some(m => m.round === 'bracket' && m.isThirdPlace)) {
+        return NextResponse.json({ error: 'A third-place game already exists' }, { status: 400 });
+      }
+
+      const thirdPlaceMatch = createThirdPlaceMatch(tournament);
+      if (!thirdPlaceMatch) {
+        return NextResponse.json({ error: 'Both semifinal matches must be complete before adding the third-place game' }, { status: 400 });
+      }
+
+      tournament.bracketConfig = { ...(tournament.bracketConfig ?? {}), thirdPlaceMatch: true };
+      if (!tournament.matches) tournament.matches = [];
+      tournament.matches.push(thirdPlaceMatch);
+      await registerMatchesIndex([thirdPlaceMatch]);
       await setTournament(tournament);
       await saveData();
       return NextResponse.json(tournament);

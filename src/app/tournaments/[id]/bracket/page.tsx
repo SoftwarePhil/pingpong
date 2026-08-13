@@ -6,6 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import BracketView from '../../active/BracketView';
 import { Tournament, Player, Match } from '../../../../types/pingpong';
 import { PageHeader } from '../../../../components/PageHeader';
+import { getCompletedSemifinalMatches } from '../../../../lib/tournament';
 
 export default function TournamentBracketPage() {
   const params = useParams<{ id: string }>();
@@ -46,6 +47,14 @@ export default function TournamentBracketPage() {
   const bracketMatches = useMemo(
     () => (tournament?.matches ?? []).filter(m => m.round === 'bracket'),
     [tournament]
+  );
+
+  const canAddThirdPlace = Boolean(
+    tournament &&
+    bracketStarted &&
+    tournament.status !== 'completed' &&
+    !bracketMatches.some(m => m.isThirdPlace) &&
+    getCompletedSemifinalMatches(tournament).length === 2
   );
 
   const checkBracketAdvancement = async (id: string) => {
@@ -152,6 +161,21 @@ export default function TournamentBracketPage() {
     }
   };
 
+  const addThirdPlaceMatch = async () => {
+    if (!tournament) return;
+    const res = await fetch('/api/tournaments', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: tournament.id, action: 'addThirdPlaceMatch' }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      alert(err.error ?? 'Failed to add third-place game');
+      return;
+    }
+    await fetchData();
+  };
+
   const startBracket = async () => {
     if (!tournament) return;
     const res = await fetch('/api/tournaments', {
@@ -207,6 +231,20 @@ export default function TournamentBracketPage() {
 
         {bracketStarted && (
           <div className="bg-white rounded-2xl shadow-sm border-2 border-gray-200 p-6 space-y-4">
+            {canAddThirdPlace && (
+              <div className="bg-amber-50 border-2 border-amber-200 rounded-xl p-4 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm text-amber-900 font-bold">Semifinals are complete</p>
+                  <p className="text-xs text-amber-800 mt-0.5">Add a game between the two semifinal losers for third place.</p>
+                </div>
+                <button
+                  onClick={addThirdPlaceMatch}
+                  className="inline-flex items-center gap-2 bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors border-2 border-amber-700"
+                >
+                  + Add third-place game
+                </button>
+              </div>
+            )}
             <BracketView
               bracketMatches={bracketMatches}
               getPlayerName={getPlayerName}
