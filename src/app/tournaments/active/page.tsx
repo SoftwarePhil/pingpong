@@ -591,7 +591,8 @@ export default function ActiveTournamentsPage() {
             const tm = t.matches ?? [];
             const bracketMatches = tm.filter(m => m.round === 'bracket');
             const bracketStarted = Boolean(t.bracketStartedAt || bracketMatches.length > 0 || t.status === 'bracket');
-            const canAddThirdPlace = bracketStarted &&
+            const canAddThirdPlace = isAdmin &&
+              bracketStarted &&
               t.status !== 'completed' &&
               !bracketMatches.some(m => m.isThirdPlace) &&
               getCompletedSemifinalMatches(t).length === 2;
