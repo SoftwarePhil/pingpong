@@ -340,6 +340,7 @@ body {
   background-color: var(--surface-3);
   border-color: var(--border);
   color: var(--text-subtle);
+  opacity: 1;
 }
 
 [data-theme="dark"] [class~="hover:bg-white"]:hover,
