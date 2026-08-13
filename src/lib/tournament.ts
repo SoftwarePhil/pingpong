@@ -458,25 +458,79 @@ export function advanceBracketRound(tournament: Tournament): Match[] {
     currentRoundMatches.every(m => m.player1Id !== 'BYE' && m.player2Id !== 'BYE') &&
     !(tournament.matches ?? []).some(m => m.isThirdPlace)
   ) {
-    const semifinalLosers = currentRoundMatches.map(match =>
-      match.winnerId === match.player1Id ? match.player2Id : match.player1Id
-    );
-    const thirdPlaceBestOf = getBestOfForMatchCount(tournament, currentRoundMatches.length);
-    newMatches.push({
-      id: Date.now().toString() + Math.random(),
-      tournamentId: tournament.id,
-      createdAt: new Date().toISOString(),
-      player1Id: semifinalLosers[0],
-      player2Id: semifinalLosers[1],
-      round: 'bracket',
-      bracketRound: currentRound + 1,
-      bestOf: thirdPlaceBestOf,
-      games: [],
-      isThirdPlace: true,
-    });
+    const thirdPlaceMatch = createThirdPlaceMatch(tournament);
+    if (thirdPlaceMatch) newMatches.push(thirdPlaceMatch);
   }
 
   return newMatches;
+}
+
+/**
+ * Finds the latest completed two-match bracket round, which is the semifinal
+ * round for a standard single-elimination bracket.
+ */
+export function getCompletedSemifinalMatches(tournament: Tournament): Match[] {
+  const standardMatches = (tournament.matches ?? []).filter(m =>
+    m.round === 'bracket' &&
+    !m.isThirdPlace &&
+    (m.bracketRound ?? 0) > 0
+  );
+  const rounds = [...new Set(standardMatches.map(m => m.bracketRound ?? 1))]
+    .sort((a, b) => b - a);
+
+  for (const round of rounds) {
+    const matches = standardMatches.filter(m => (m.bracketRound ?? 1) === round);
+    if (
+      matches.length === 2 &&
+      matches.every(m =>
+        Boolean(m.winnerId) &&
+        m.player1Id !== 'BYE' &&
+        m.player2Id !== 'BYE' &&
+        m.winnerId !== 'BYE'
+      )
+    ) {
+      return matches;
+    }
+  }
+
+  return [];
+}
+
+/**
+ * Creates the placement match from completed semifinal losers. Returns null
+ * when the match already exists or the semifinals are not ready.
+ */
+export function createThirdPlaceMatch(tournament: Tournament): Match | null {
+  if ((tournament.matches ?? []).some(m => m.round === 'bracket' && m.isThirdPlace)) {
+    return null;
+  }
+
+  const semifinalMatches = getCompletedSemifinalMatches(tournament);
+  if (semifinalMatches.length !== 2) return null;
+
+  const semifinalLosers = semifinalMatches.map(match =>
+    match.winnerId === match.player1Id ? match.player2Id : match.player1Id
+  );
+  if (
+    semifinalLosers.some(id => id === 'BYE' || id === 'TBD' || id === 'PLAY_IN_WINNER') ||
+    semifinalLosers[0] === semifinalLosers[1]
+  ) {
+    return null;
+  }
+
+  const semifinalRound = semifinalMatches[0].bracketRound ?? 1;
+  return {
+    id: Date.now().toString() + Math.random(),
+    tournamentId: tournament.id,
+    createdAt: new Date().toISOString(),
+    player1Id: semifinalLosers[0],
+    player2Id: semifinalLosers[1],
+    round: 'bracket',
+    bracketRound: semifinalRound + 1,
+    bestOf: getBestOfForMatchCount(tournament, semifinalMatches.length),
+    games: [],
+    isThirdPlace: true,
+  };
 }
 
 /**

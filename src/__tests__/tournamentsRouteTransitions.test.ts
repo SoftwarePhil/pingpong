@@ -17,6 +17,7 @@ jest.mock('../lib/tournament', () => ({
   advanceBracketRound: jest.fn(),
   createBracketMatches: jest.fn(),
   advanceRoundRobinRound: jest.fn(),
+  createThirdPlaceMatch: jest.fn(),
 }));
 
 import {
@@ -25,7 +26,7 @@ import {
   saveData,
   registerMatchesIndex,
 } from '../data/data';
-import { advanceRoundRobinRound, createBracketMatches } from '../lib/tournament';
+import { advanceRoundRobinRound, createBracketMatches, createThirdPlaceMatch } from '../lib/tournament';
 import { Tournament, Match } from '../types/pingpong';
 
 const mockedGetTournament = getTournament as jest.MockedFunction<typeof getTournament>;
@@ -34,6 +35,7 @@ const mockedSaveData = saveData as jest.MockedFunction<typeof saveData>;
 const mockedRegisterMatchesIndex = registerMatchesIndex as jest.MockedFunction<typeof registerMatchesIndex>;
 const mockedAdvanceRoundRobinRound = advanceRoundRobinRound as jest.MockedFunction<typeof advanceRoundRobinRound>;
 const mockedCreateBracketMatches = createBracketMatches as jest.MockedFunction<typeof createBracketMatches>;
+const mockedCreateThirdPlaceMatch = createThirdPlaceMatch as jest.MockedFunction<typeof createThirdPlaceMatch>;
 
 function makeTournament(overrides: Partial<Tournament> = {}): Tournament {
   return {
@@ -112,6 +114,42 @@ describe('tournaments route transitions', () => {
     expect(body.bracketStartedAt).toBeTruthy();
     expect(mockedCreateBracketMatches).toHaveBeenCalledTimes(1);
     expect(mockedRegisterMatchesIndex).toHaveBeenCalledTimes(1);
+  });
+
+  it('adds a third-place match after both semifinals are complete', async () => {
+    const tournament = makeTournament({
+      status: 'bracket',
+      bracketStartedAt: new Date().toISOString(),
+      matches: [
+        makeMatch({ id: 'semi-a', round: 'bracket', bracketRound: 1, player1Id: 'p1', player2Id: 'p2', winnerId: 'p1' }),
+        makeMatch({ id: 'semi-b', round: 'bracket', bracketRound: 1, player1Id: 'p3', player2Id: 'p4', winnerId: 'p3' }),
+        makeMatch({ id: 'final', round: 'bracket', bracketRound: 2, player1Id: 'p1', player2Id: 'p3' }),
+      ],
+    });
+    const thirdPlace = makeMatch({
+      id: 'third',
+      round: 'bracket',
+      bracketRound: 2,
+      player1Id: 'p2',
+      player2Id: 'p4',
+      isThirdPlace: true,
+    });
+    mockedGetTournament.mockResolvedValue(tournament);
+    mockedCreateThirdPlaceMatch.mockReturnValue(thirdPlace);
+
+    const request = adminRequest('http://localhost/api/tournaments', {
+      method: 'PUT',
+      body: JSON.stringify({ id: 't1', action: 'addThirdPlaceMatch' }),
+    });
+    const response = await PUT(request as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.bracketConfig.thirdPlaceMatch).toBe(true);
+    expect(body.matches).toContainEqual(thirdPlace);
+    expect(mockedCreateThirdPlaceMatch).toHaveBeenCalledWith(tournament);
+    expect(mockedRegisterMatchesIndex).toHaveBeenCalledWith([thirdPlace]);
+    expect(mockedSetTournament).toHaveBeenCalledTimes(1);
   });
 
   it('ignores legacy players/activePlayers fields — roster edits now live on their own endpoint', async () => {

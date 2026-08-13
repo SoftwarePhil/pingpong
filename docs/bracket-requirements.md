@@ -44,6 +44,7 @@ Adding/removing players is its **own atomic operation**, deliberately separate f
 ### Optional Third-Place Match
 - A tournament may enable `bracketConfig.thirdPlaceMatch` when it is created.
 - After both semifinal matches are complete, advancement creates the final and one `isThirdPlace` match together.
+- If the option was not enabled initially, the host can use `action=addThirdPlaceMatch` after both semifinals complete and before the tournament is completed.
 - The placement match is seeded with the two semifinal losers and uses the semifinal best-of format.
 - The tournament remains active until both the final and the third-place match are complete.
 - If a semifinal result is corrected, the final winner slot and corresponding third-place loser slot are corrected together; any invalidated placement games are removed from history.
