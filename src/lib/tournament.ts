@@ -602,7 +602,7 @@ export function generateBracketSeeding(n: number): number[] {
   return result;
 }
 
-/** Returns the number of preliminary matches needed to reach a power-of-two field. */
+/** Returns the number of preliminary matches needed; returns 1 when the field is already a power of two (force mode). */
 function getPlayInMatchCount(playerCount: number): number {
   const lowerPowerOfTwo = Math.pow(2, Math.floor(Math.log2(playerCount)));
   return playerCount === lowerPowerOfTwo ? 1 : playerCount - lowerPowerOfTwo;
