@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Game, Match } from '../../../types/pingpong';
 import { getAllGames, addGameToMatch, setTournament, registerMatchesIndex, unregisterMatchesIndex, getMatch, getTournament } from '../../../data/data';
 import { validateScore } from '../../../lib/scoring';
-import { generateBracketSeeding } from '../../../lib/tournament';
+import { replacePlayInWinnerSlot } from '../../../lib/tournament';
 import { requireAdmin } from '../../../lib/auth';
 
 export async function GET() {
@@ -65,35 +65,18 @@ export async function POST(request: NextRequest) {
       }
 
       // Handle play-in match completion (bracketRound === 0 is the play-in round).
-      // Patch ONLY the specific R1 match that still has the 'PLAY_IN_WINNER' placeholder
-      // by replacing the placeholder with the actual winnerId on the correct side.
-      // This preserves any custom player swaps/reassignments the user made in the preview
-      // for the *other* R1 matches. No full re-seed or removal of other matches.
+      // Replace only the R1 slot fed by this specific preliminary match. This
+      // also supports brackets with multiple indexed play-in placeholders.
       const { match, tournament } = result;
-      const hasPlayInPrelim = (tournament.matches ?? []).some(
-        m => m.round === 'bracket' && (m.bracketRound ?? 0) === 0
-      );
-      if (match.winnerId && match.bracketRound === 0 && hasPlayInPrelim) {
-        const matches = tournament.matches ?? [];
-        const r1MatchIdx = matches.findIndex(
-          m => m.round === 'bracket' &&
-               (m.bracketRound ?? 0) === 1 &&
-               (m.player1Id === 'PLAY_IN_WINNER' || m.player2Id === 'PLAY_IN_WINNER')
+      if (match.winnerId && match.bracketRound === 0) {
+        const updatedMatches = replacePlayInWinnerSlot(
+          tournament.matches ?? [],
+          match.id,
+          match.winnerId,
         );
-        if (r1MatchIdx !== -1) {
-          const r1Match = { ...matches[r1MatchIdx] };
-          if (r1Match.player1Id === 'PLAY_IN_WINNER') {
-            r1Match.player1Id = match.winnerId;
-          } else if (r1Match.player2Id === 'PLAY_IN_WINNER') {
-            r1Match.player2Id = match.winnerId;
-          }
-          // Keep all other fields (bestOf, id, games:[], etc.) as they were from preview/custom creation.
-          // Clear any stale winnerId if present (shouldn't be for unplayed).
-          r1Match.winnerId = undefined;
-          matches[r1MatchIdx] = r1Match;
-          tournament.matches = matches;
+        if (updatedMatches !== tournament.matches) {
+          tournament.matches = updatedMatches;
           await setTournament(tournament);
-          // No need to touch match index for an in-place player swap on unplayed match.
         }
       }
     }

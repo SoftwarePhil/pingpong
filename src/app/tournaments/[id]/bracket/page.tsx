@@ -6,7 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import BracketView from '../../active/BracketView';
 import { Tournament, Player, Match } from '../../../../types/pingpong';
 import { PageHeader } from '../../../../components/PageHeader';
-import { getCompletedSemifinalMatches } from '../../../../lib/tournament';
+import { getCompletedSemifinalMatches, isPlayInWinnerPlaceholder } from '../../../../lib/tournament';
 
 export default function TournamentBracketPage() {
   const params = useParams<{ id: string }>();
@@ -33,7 +33,7 @@ export default function TournamentBracketPage() {
 
   const getPlayerName = (id: string) => {
     if (id === 'BYE') return 'BYE';
-    if (id === 'PLAY_IN_WINNER') return 'Play-in Winner';
+    if (isPlayInWinnerPlaceholder(id)) return 'Play-in Winner';
     if (id === 'TBD') return 'TBD';
     return players.find(p => p.id === id)?.name ?? 'Unknown';
   };

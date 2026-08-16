@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import RoundRobinView from './RoundRobinView';
 import BracketView from './BracketView';
 import Leaderboard from './Leaderboard';
-import { createBracketMatches, cascadeBracketR1PlayerSwap, cascadeBracketPlayerSwap, getCompletedSemifinalMatches } from '../../../lib/tournament';
+import { createBracketMatches, cascadeBracketR1PlayerSwap, cascadeBracketPlayerSwap, getCompletedSemifinalMatches, isPlayInWinnerPlaceholder } from '../../../lib/tournament';
 import { PlayerSearchSelect } from '../../../components/PlayerSearchSelect';
 import { useAuth } from '../../../components/AuthProvider';
 import { PageHeader } from '../../../components/PageHeader';
@@ -70,7 +70,7 @@ export default function ActiveTournamentsPage() {
   const getPlayerName = (id: string) => {
     if (id === 'BYE') return 'BYE';
     if (id === MARKER_PLAYER_ID) return 'Marker';
-    if (id === 'PLAY_IN_WINNER') return 'Play-in Winner';
+    if (isPlayInWinnerPlaceholder(id)) return 'Play-in Winner';
     if (id === 'TBD') return 'TBD';
     return players.find(p => p.id === id)?.name ?? 'Unknown';
   };
@@ -157,7 +157,9 @@ export default function ActiveTournamentsPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ player1Id, player2Id }),
     });
-    if (res.ok) { await fetchTournaments(); }
+    if (res.ok) {
+      await fetchTournaments();
+    }
     else { const err = await res.json(); alert(err.error ?? 'Failed to update players'); }
   };
 
@@ -212,7 +214,11 @@ export default function ActiveTournamentsPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(isActive ? { remove: [playerId] } : { add: [playerId] }),
     });
-    if (res.ok) { await fetchTournaments(); }
+    if (res.ok) {
+      const updatedTournament: Tournament = await res.json();
+      regenerateBracketPreview(updatedTournament);
+      await fetchTournaments();
+    }
     else { const err = await res.json(); alert(err.error ?? 'Failed to update player'); }
   };
 
@@ -326,28 +332,51 @@ export default function ActiveTournamentsPage() {
     });
   };
 
+  const generateBracketPreview = (tournament: Tournament, mode: 'auto' | 'force' | 'none') => {
+    const rrMatches = (tournament.matches ?? []).filter(m => m.round === 'roundRobin');
+    const clone: Tournament = {
+      ...tournament,
+      players: [...tournament.players],
+      activePlayers: tournament.activePlayers ? [...tournament.activePlayers] : undefined,
+      bracketRounds: tournament.bracketRounds.map(r => ({ ...r })),
+      matches: rrMatches.map(m => ({
+        ...m,
+        games: m.games.map(g => ({ ...g })),
+      })),
+      playerRanking: undefined,
+      bracketConfig: {
+        ...(tournament.bracketConfig || {}),
+        playInMode: mode,
+      },
+    };
+
+    return createBracketMatches(clone, true);
+  };
+
+  const regenerateBracketPreview = (tournament: Tournament) => {
+    try {
+      const mode = tournament.bracketConfig?.playInMode ?? 'auto';
+      const generated = generateBracketPreview(tournament, mode);
+      setBracketPreviewById(prev => {
+        const next = { ...prev };
+        if (generated.length > 0) next[tournament.id] = generated;
+        else delete next[tournament.id];
+        return next;
+      });
+    } catch (e) {
+      console.error(e);
+      setBracketPreviewById(prev => {
+        const next = { ...prev };
+        delete next[tournament.id];
+        return next;
+      });
+    }
+  };
+
   // Regenerate the preview bracket using a specific play-in mode (for "add or remove play-in round").
-  // We clone the tournament, set bracketConfig, and run the real creation logic.
   const applyPlayInModeToPreview = (tournament: Tournament, mode: 'auto' | 'force' | 'none') => {
     try {
-      const rrMatches = (tournament.matches ?? []).filter(m => m.round === 'roundRobin');
-      const clone: Tournament = {
-        ...tournament,
-        players: [...tournament.players],
-        activePlayers: tournament.activePlayers ? [...tournament.activePlayers] : undefined,
-        bracketRounds: tournament.bracketRounds.map(r => ({ ...r })),
-        matches: rrMatches.map(m => ({
-          ...m,
-          games: m.games.map(g => ({ ...g })),
-        })),
-        playerRanking: undefined,
-        bracketConfig: {
-          ...(tournament.bracketConfig || {}),
-          playInMode: mode,
-        },
-      };
-
-      const generated = createBracketMatches(clone, true);
+      const generated = generateBracketPreview(tournament, mode);
       if (generated.length > 0) {
         setBracketPreviewById(prev => ({ ...prev, [tournament.id]: generated }));
       } else {
@@ -382,7 +411,12 @@ export default function ActiveTournamentsPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ add, remove }),
     });
-    if (res.ok) { closeForm(); fetchTournaments(); }
+    if (res.ok) {
+      const updatedTournament: Tournament = await res.json();
+      regenerateBracketPreview(updatedTournament);
+      closeForm();
+      await fetchTournaments();
+    }
     else { const err = await res.json(); alert(err.error ?? 'Failed to update tournament'); }
   };
 
@@ -755,7 +789,7 @@ export default function ActiveTournamentsPage() {
                           (click a round dot), so this summary is only needed post-bracket-start. */}
                       {bracketStarted && (
                         <div className="mt-2 border-t border-gray-200 pt-6 space-y-5">
-                           <Leaderboard tournament={t} players={players} getPlayerName={getPlayerName} />
+                           <Leaderboard tournament={t} players={players} getPlayerName={getPlayerName} bracketMatches={bracketMatches} />
                           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Previous Round Robin Rounds</p>
                           {Array.from(new Set(rrMatches.map(m => m.bracketRound ?? 1))).sort((a, b) => a - b).map(round => {
                             const roundMatches = rrMatches.filter(m => (m.bracketRound ?? 1) === round && m.player2Id !== 'BYE');
@@ -937,7 +971,12 @@ export default function ActiveTournamentsPage() {
                       )}
 
                       <div className="bg-white rounded-2xl shadow-sm border-2 border-gray-200 p-5">
-                         <Leaderboard tournament={t} players={players} getPlayerName={getPlayerName} />
+                         <Leaderboard
+                           tournament={t}
+                           players={players}
+                           getPlayerName={getPlayerName}
+                           bracketMatches={bracketStarted ? bracketMatches : effectivePreviewMatches}
+                         />
                       </div>
 
                       <div className="bg-white rounded-2xl shadow-sm border-2 border-gray-200 p-5">

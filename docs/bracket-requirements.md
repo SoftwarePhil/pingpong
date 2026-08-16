@@ -5,8 +5,9 @@
 Tournaments run in two phases: **Round Robin** followed by a **Single-Elimination Bracket**. The bracket seeds players by their round-robin performance. 
 
 The play-in is configurable via preview controls and `bracketConfig.playInMode`:
-- When a play-in is present (auto for odd counts, or forced), a preliminary play-in match (bracketRound 0) is created between the two lowest seeds. The main bracket is then generated on the reduced set of (activeCount-1) players (top seeds + a `PLAY_IN_WINNER` placeholder slot). This produces a clean power-of-2 main bracket whose first round ("round 1" after the play-in) has no extra BYEs for the advancers.
-- For 9 players + play-in: 1 play-in round + 4 matches in the main bracket R1 (8-player power-of-2 bracket; the 7 top seeds + play-in winner all play real matches in the round of 8).
+- When a play-in is present (auto for odd counts, or forced), enough preliminary play-in matches (bracketRound 0) are created to reduce the field to the next lower power of two. The main bracket is then generated from the direct entrants plus one indexed placeholder per qualifier. This produces a clean power-of-2 main bracket whose first round ("round 1" after the play-in) has no extra BYEs for the advancers.
+- For 9 players + play-in: 1 play-in match + 4 matches in the main bracket R1 (8-player power-of-2 bracket; the 7 top seeds + play-in winner all play real matches in the round of 8).
+- For 10 players + play-in: 2 play-in matches + 4 matches in the main bracket R1 (8-player power-of-2 bracket; 6 direct entrants + 2 play-in winners, with no main-R1 byes).
 - When play-in is removed for an odd count ('none'), the full n is used → power-of-2 R1 will contain BYEs for the top/excess players in round 1.
 
 This document reflects the current implemented behavior (prelim play-in + reduced main when play-in present), the preview-time configurability (add/force/remove play-in, explicit bye assignment), and the rationale.
@@ -51,12 +52,14 @@ Adding/removing players is its **own atomic operation**, deliberately separate f
 
 ### Seeding
 - Players are ranked by round-robin wins (descending). Ties are broken by point differential, then randomly.
+- If no round-robin games have been played, the active player pool is shuffled for random seeding.
+- Once any round-robin game exists, active players with no recorded games are placed after every player who has played; played players are ranked by wins and point differential.
 - Only active players enter the bracket.
 - The ranking is stored on the tournament as `playerRanking` (best first).
 
 ### Bracket Generation
-- We always generate for the **full** count of active players `n` (no early reduction).
-- `n` is rounded up to the next power of 2 for R1 slot count.
+- Without a play-in, we generate for the **full** count of active players `n` and round up to the next power of 2 for R1 slot count.
+- With a play-in, the field is reduced by preliminary qualifiers to the largest power of 2 below `n` (or by one forced qualifier when `n` is already a power of 2).
 - `generateBracketSeeding(n)` (recursive interleave) produces standard protection:
   - Example for `n = 8`: `[1,8, 4,5, 2,7, 3,6]`
   - Guarantees seeds 1 and 2 meet only in the final, 1-4 only in semis, etc.
@@ -67,16 +70,16 @@ Adding/removing players is its **own atomic operation**, deliberately separate f
 A `bracketConfig` object (stored on the `Tournament`) controls play-in behavior:
 
 - `playInMode`: `'auto' | 'force' | 'none'`
-  - `'auto'` (default): for odd active count, create a preliminary play-in match (bracketRound 0) between the two lowest seeds. Then create the main bracket on the reduced (activeCount-1) players (top seeds + `PLAY_IN_WINNER` placeholder). For 9 players this yields 1 play-in + 4 clean matches in the main bracket's first round (8-player power-of-2; all 8 advancers play real matches, no extra BYEs in main R1).
-  - `'force'`: same as auto but force the preliminary play-in even on an even count. The main bracket is reduced to (n-1) slots (may introduce BYEs inside the main R1 if n-1 is not itself a power of 2).
+  - `'auto'` (default): for odd active count, create enough preliminary play-in matches to reach the lower power of two. For 9 players this yields 1 play-in + 4 clean matches in the main bracket's first round; for 7 players it yields 3 play-ins + 2 clean matches.
+  - `'force'`: same reduction rule, but force at least one preliminary match even on a power-of-two field. For example, 10 players yields 2 play-ins and an 8-player main bracket; 8 players yields 1 play-in and a 7-player (8-slot) main bracket with one BYE in R1.
   - `'none'`: for odd count, do *not* create a play-in. Seed the full n → power-of-2 R1 will contain BYEs for the top/excess players in round 1 (the "remove play-in / use bye instead" behavior).
 
 - `byePlayerIds` (optional): explicit list of players who must receive a R1 bye. After initial seeding, a cascade re-pairing (same logic used in live swaps) moves the desired players into bye slots and displaces others. This works in preview and is respected on "Start Bracket".
 
 **Rationale for prelim play-in + reduced main (when play-in present):**
-- For odd counts (or forced), the user expects "1 play-in round and then 4 matches" (for 9 players): a preliminary qualifier + a clean power-of-2 main bracket whose first round has the advancers (including the play-in winner) all playing real matches, without padding BYEs inside the main R1.
+- For odd counts (or forced), qualifiers are added until the main bracket is a clean power of two. For 9 players this is "1 play-in and then 4 matches"; for 10 players it is "2 play-ins and then 4 matches". The main bracket's first round has all advancers playing real matches, without padding BYEs inside the main R1.
 - Top seeds play their first match in the main bracket's R1 (round of 8 for 9 players) rather than getting a "bye from round of 16".
-- The `PLAY_IN_WINNER` placeholder + lazy substitution on play-in completion allows the full bracket diagram (including the feeding from play-in into the correct R1 slot) to be visible and editable in preview even before the play-in game is played.
+- Indexed `PLAY_IN_WINNER` placeholders + lazy substitution on play-in completion allow the full bracket diagram (including every feeder into its correct R1 slot) to be visible and editable in preview even before the play-in games are played.
 - "Remove play-in" (none on odd) produces the larger R1 with BYEs for the top players, which is the configurable alternative.
 - Preview controls (`+ Add / Force play-in round`, `− Remove play-in (use bye instead)`, `Auto`) + click-to-reassign (including on the play-in card and bye cards) and "Start Bracket with Current Preview" give safe experimentation before commit.
 - Legacy round-0 play-ins continue to work.
@@ -88,16 +91,16 @@ A `bracketConfig` object (stored on the `Tournament`) controls play-in behavior:
 - Explicit `byePlayerIds` (from preview) can override which players receive the BYEs (post-seeding cascade re-pairing).
 - Bye matches carry `winnerId` immediately and are eligible for player swaps (both before and after "Start Bracket").
 
-### Play-In Match (Odd Count or Forced) — Preliminary + Reduced Main
-- When `shouldPlayIn` (auto for odd, or force): create a preliminary play-in match as **bracketRound 0** between the two lowest seeds.
-- Then (if creating main bracket) generate the main bracket R1 on the reduced list of (activeCount-1) players: the top (n-2) seeds + a `PLAY_IN_WINNER` placeholder.
-- The main R1 is therefore a clean power-of-2 bracket (for 9 players: 8 slots → 4 matches, no padding BYEs in main R1). All advancers (top seeds + the eventual play-in winner) play real matches in the main bracket's first round.
-- The placeholder is later substituted with the real winner when the play-in game is recorded (see games route substitution logic). This allows the diagram and preview to show the feeding from play-in into the correct R1 slot even before the play-in is played.
+### Play-In Matches (Odd Count or Forced) — Preliminary + Reduced Main
+- When `shouldPlayIn` (auto for odd, or force), create the minimum number of preliminary matches as **bracketRound 0**, pairing the lowest seeds.
+- Then (if creating the main bracket) generate R1 from the direct entrants plus one indexed `PLAY_IN_WINNER` placeholder per qualifier.
+- The main R1 is a clean power-of-2 bracket (for 9 players: 8 slots → 4 matches; for 10 players: 8 slots → 4 matches). All advancers play real matches in the main bracket's first round.
+- Each placeholder is later substituted with its matching play-in winner when that game is recorded, allowing every feeder and R1 slot to be shown in preview.
 - When `playInMode = 'none'` on odd: no preliminary; full n seeding is used (BYEs appear in R1 for the top/excess players).
 - For force on even count: still create the prelim play-in + main on (n-1) slots (the resulting main R1 may contain BYEs if n-1 is not a power of 2).
 
 ### Visual Layout (BracketView)
-- When a play-in (round 0) is present, it renders in a dedicated left "Play-in" column, with a connector line feeding into the specific R1 match slot that contains the `PLAY_IN_WINNER` placeholder (or the real name after substitution).
+- When play-ins (round 0) are present, they render in a dedicated left "Play-in" column, with one connector per play-in feeding its indexed R1 placeholder (or the real name after substitution).
 - The main bracket R1 (the reduced power-of-2 matches) renders in the next column(s). For 9 players + play-in this is 4 real matches (8 advancers, no BYE cards in main R1).
 - When no play-in (full n), R1 renders as the power-of-2 size with BYE cards for the top/excess players.
 - Seed 1 at top of its half, seed 2 at bottom of its half (bottom-half reversal at creation).

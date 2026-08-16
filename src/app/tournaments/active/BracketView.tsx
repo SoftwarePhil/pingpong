@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Match, Player } from '../../../types/pingpong';
+import { getPlayInWinnerPlaceholder, isPlayInWinnerPlaceholder } from '../../../lib/tournament';
 
 // ── Layout constants ─────────────────────────────────────────────────────────
 const CARD_W = 240;  // match card width (px)
@@ -129,16 +130,18 @@ export default function BracketView({ bracketMatches, getPlayerName, players = [
   // ── SVG connector paths ───────────────────────────────────────────────────
   const connectors: { d: string; key: string }[] = [];
 
-  // Play-in → the R1 match containing PLAY_IN_WINNER
+  // Each play-in feeds its own placeholder slot in R1.
   if (hasPlayIn) {
-    const r1TargetIdx = r1Matches.findIndex(
-      m => m.player1Id === 'PLAY_IN_WINNER' || m.player2Id === 'PLAY_IN_WINNER'
-    );
-    if (r1TargetIdx !== -1) {
+    playInMatches.forEach((_, playInIndex) => {
+      const placeholder = getPlayInWinnerPlaceholder(playInIndex, playInMatches.length);
+      const r1TargetIdx = r1Matches.findIndex(
+        m => m.player1Id === placeholder || m.player2Id === placeholder
+      );
+      if (r1TargetIdx === -1) return;
       const targetPos = getPos(0, r1TargetIdx, r1Count, hasPlayIn);
       const cy = targetPos.y + CARD_H / 2;
-      connectors.push({ key: 'playin', d: `M ${CARD_W} ${cy} H ${targetPos.x}` });
-    }
+      connectors.push({ key: `playin-${playInIndex}`, d: `M ${CARD_W} ${cy} H ${targetPos.x}` });
+    });
   }
 
   // Main bracket: pairs in round r feed into round r+1
@@ -181,7 +184,7 @@ export default function BracketView({ bracketMatches, getPlayerName, players = [
     activeMatch.games.length === 0 &&
     // Allow swap on bye matches (they have winnerId set automatically but no real games)
     (!activeMatch.winnerId || isByeActiveMatch) &&
-    activeMatch.player1Id !== 'PLAY_IN_WINNER' && activeMatch.player2Id !== 'PLAY_IN_WINNER' &&
+    !isPlayInWinnerPlaceholder(activeMatch.player1Id) && !isPlayInWinnerPlaceholder(activeMatch.player2Id) &&
     activeMatch.player1Id !== 'TBD' && activeMatch.player2Id !== 'TBD';
 
   // Players eligible for swap: all players in unplayed same-round matches (including bye matches).
@@ -197,7 +200,7 @@ export default function BracketView({ bracketMatches, getPlayerName, players = [
     );
     return sameRoundUnplayed
       .flatMap(m => [m.player1Id, m.player2Id])
-      .filter((pid, idx, arr) => arr.indexOf(pid) === idx && pid !== 'PLAY_IN_WINNER' && pid !== 'BYE' && pid !== 'TBD');
+      .filter((pid, idx, arr) => arr.indexOf(pid) === idx && !isPlayInWinnerPlaceholder(pid) && pid !== 'BYE' && pid !== 'TBD');
   })();
 
   const handleRecord = async () => {
@@ -298,8 +301,14 @@ export default function BracketView({ bracketMatches, getPlayerName, players = [
 
           {/* Play-in matches */}
           {hasPlayIn && playInMatches.map(match => {
-            const r1TargetIdx = r1Matches.findIndex(m => m.player1Id === 'PLAY_IN_WINNER' || m.player2Id === 'PLAY_IN_WINNER');
-            const yPos = r1TargetIdx !== -1 ? getPos(0, r1TargetIdx, r1Count, hasPlayIn).y : 0;
+            const playInIndex = playInMatches.findIndex(m => m.id === match.id);
+            const placeholder = getPlayInWinnerPlaceholder(playInIndex, playInMatches.length);
+            const r1TargetIdx = r1Matches.findIndex(
+              m => m.player1Id === placeholder || m.player2Id === placeholder
+            );
+            const yPos = r1TargetIdx !== -1
+              ? getPos(0, r1TargetIdx, r1Count, hasPlayIn).y
+              : playInIndex * unitH;
             return (
               <div key={match.id} style={{ position: 'absolute', left: 0, top: yPos, width: CARD_W }}>
                 <BracketCard
@@ -688,7 +697,7 @@ function BracketCard({ match, getPlayerName, getPlayerProfile, isActive, onSelec
           (!!match.winnerId && match.games.length > 0) ||     // completed match (view scores)
           (isByeMatch && (!readOnly || previewMode)) ||       // bye match (swap player) — allow in preview for config
           previewMode)                                        // in preview allow selecting unplayed for config
-        && match.player1Id !== 'PLAY_IN_WINNER' && match.player2Id !== 'PLAY_IN_WINNER'
+        && !isPlayInWinnerPlaceholder(match.player1Id) && !isPlayInWinnerPlaceholder(match.player2Id)
         && match.player1Id !== 'TBD' && match.player2Id !== 'TBD'
   );
 
@@ -702,7 +711,7 @@ function BracketCard({ match, getPlayerName, getPlayerProfile, isActive, onSelec
 
   const renderPlayer = (playerId: string, muted = false) => {
     if (playerId === 'BYE') return 'BYE';
-    if (playerId === 'PLAY_IN_WINNER') return <em className="text-gray-400 not-italic text-xs">Play-in winner</em>;
+    if (isPlayInWinnerPlaceholder(playerId)) return <em className="text-gray-400 not-italic text-xs">Play-in winner</em>;
     if (playerId === 'TBD') return <em className="text-gray-400 not-italic text-xs">TBD</em>;
 
     const player = getPlayerProfile(playerId);
@@ -755,7 +764,7 @@ function BracketCard({ match, getPlayerName, getPlayerProfile, isActive, onSelec
         <div className={`text-sm font-semibold flex-1 min-w-0 ${
           match.winnerId === match.player2Id ? 'text-green-800'
           : match.winnerId ? 'text-gray-400'
-          : match.player2Id === 'BYE' || match.player2Id === 'PLAY_IN_WINNER' || match.player2Id === 'TBD' ? 'text-gray-400 italic text-xs'
+          : match.player2Id === 'BYE' || isPlayInWinnerPlaceholder(match.player2Id) || match.player2Id === 'TBD' ? 'text-gray-400 italic text-xs'
           : 'text-gray-800'
         }`}>
           {renderPlayer(match.player2Id, Boolean(match.winnerId && match.winnerId !== match.player2Id))}
