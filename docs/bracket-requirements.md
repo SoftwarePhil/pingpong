@@ -71,7 +71,7 @@ A `bracketConfig` object (stored on the `Tournament`) controls play-in behavior:
 
 - `playInMode`: `'auto' | 'force' | 'none'`
   - `'auto'` (default): for odd active count, create enough preliminary play-in matches to reach the lower power of two. For 9 players this yields 1 play-in + 4 clean matches in the main bracket's first round; for 7 players it yields 3 play-ins + 2 clean matches.
-  - `'force'`: same reduction rule, but force at least one preliminary match even on a power-of-two field. For example, 10 players yields 2 play-ins and an 8-player main bracket; 8 players yields 1 play-in and a 4-player main bracket with one bye.
+  - `'force'`: same reduction rule, but force at least one preliminary match even on a power-of-two field. For example, 10 players yields 2 play-ins and an 8-player main bracket; 8 players yields 1 play-in and a 7-player (8-slot) main bracket with one BYE in R1.
   - `'none'`: for odd count, do *not* create a play-in. Seed the full n → power-of-2 R1 will contain BYEs for the top/excess players in round 1 (the "remove play-in / use bye instead" behavior).
 
 - `byePlayerIds` (optional): explicit list of players who must receive a R1 bye. After initial seeding, a cascade re-pairing (same logic used in live swaps) moves the desired players into bye slots and displaces others. This works in preview and is respected on "Start Bracket".
