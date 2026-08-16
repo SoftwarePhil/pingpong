@@ -1,4 +1,4 @@
-import { createRoundRobinPairings, advanceBracketRound, createBracketMatches, advanceRoundRobinRound } from '../lib/tournament';
+import { createRoundRobinPairings, advanceBracketRound, createBracketMatches, advanceRoundRobinRound, replacePlayInWinnerSlot } from '../lib/tournament';
 import { Tournament, Match, MARKER_PLAYER_ID } from '../types/pingpong';
 
 function makeTournament(overrides: Partial<Tournament> = {}): Tournament {
@@ -186,6 +186,52 @@ describe('createBracketMatches', () => {
     expect(hasPlaceholder).toBe(true);
   });
 
+  it('creates enough play-ins to fill the lower power-of-two bracket', () => {
+    const tournament = makeTournament({
+      players: ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8', 'p9', 'p10'],
+      bracketConfig: { playInMode: 'force' },
+      matches: [],
+    });
+
+    const matches = createBracketMatches(tournament);
+    const playIns = matches.filter(m => m.bracketRound === 0);
+    const mainR1 = matches.filter(m => m.bracketRound === 1);
+    const placeholders = mainR1
+      .flatMap(m => [m.player1Id, m.player2Id])
+      .filter(id => id.startsWith('PLAY_IN_WINNER'));
+
+    expect(playIns).toHaveLength(2);
+    expect(mainR1).toHaveLength(4);
+    expect(mainR1.some(m => m.player1Id === 'BYE' || m.player2Id === 'BYE')).toBe(false);
+    expect(new Set(placeholders)).toEqual(new Set(['PLAY_IN_WINNER_1', 'PLAY_IN_WINNER_2']));
+  });
+
+  it('uses multiple play-ins for odd fields larger than one above a power of two', () => {
+    const tournament = makeTournament({
+      players: ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7'],
+      matches: [],
+    });
+
+    const matches = createBracketMatches(tournament);
+    expect(matches.filter(m => m.bracketRound === 0)).toHaveLength(3);
+    expect(matches.filter(m => m.bracketRound === 1)).toHaveLength(2);
+    expect(matches.filter(m => m.player1Id === 'BYE' || m.player2Id === 'BYE')).toHaveLength(0);
+  });
+
+  it('routes each play-in winner to its matching main-bracket placeholder', () => {
+    const matches = [
+      makeMatch('play-in-1', { bracketRound: 0, player1Id: 'p7', player2Id: 'p8' }),
+      makeMatch('play-in-2', { bracketRound: 0, player1Id: 'p9', player2Id: 'p10' }),
+      makeMatch('r1-a', { bracketRound: 1, player1Id: 'p1', player2Id: 'PLAY_IN_WINNER_2' }),
+      makeMatch('r1-b', { bracketRound: 1, player1Id: 'PLAY_IN_WINNER_1', player2Id: 'p2' }),
+    ];
+
+    const updated = replacePlayInWinnerSlot(matches, 'play-in-2', 'p10');
+
+    expect(updated.find(m => m.id === 'r1-a')?.player2Id).toBe('p10');
+    expect(updated.find(m => m.id === 'r1-b')?.player1Id).toBe('PLAY_IN_WINNER_1');
+  });
+
   it('returns empty array when bracket matches already exist', () => {
     const tournament = makeTournament({
       matches: [makeMatch('existing', { round: 'bracket', bracketRound: 1 })],
@@ -197,8 +243,14 @@ describe('createBracketMatches', () => {
   it('ranks players by round-robin wins before creating brackets', () => {
     const tournament = makeTournament({
       matches: [
-        makeMatch('m1', { round: 'roundRobin', bracketRound: 1, player1Id: 'p1', player2Id: 'p2', winnerId: 'p1' }),
-        makeMatch('m2', { round: 'roundRobin', bracketRound: 1, player1Id: 'p3', player2Id: 'p4', winnerId: 'p4' }),
+        makeMatch('m1', {
+          round: 'roundRobin', bracketRound: 1, player1Id: 'p1', player2Id: 'p2', winnerId: 'p1',
+          games: [{ id: 'g1', matchId: 'm1', player1Id: 'p1', player2Id: 'p2', score1: 11, score2: 5, date: '' }],
+        }),
+        makeMatch('m2', {
+          round: 'roundRobin', bracketRound: 1, player1Id: 'p3', player2Id: 'p4', winnerId: 'p4',
+          games: [{ id: 'g2', matchId: 'm2', player1Id: 'p3', player2Id: 'p4', score1: 5, score2: 11, date: '' }],
+        }),
       ],
     });
     createBracketMatches(tournament);
@@ -208,6 +260,48 @@ describe('createBracketMatches', () => {
     const top2 = tournament.playerRanking!.slice(0, 2);
     expect(top2).toContain('p1');
     expect(top2).toContain('p4');
+  });
+
+  it('seeds an active player with no round-robin games after players who have played', () => {
+    const tournament = makeTournament({
+      matches: [
+        makeMatch('m1', {
+          round: 'roundRobin',
+          player1Id: 'p1',
+          player2Id: 'p2',
+          winnerId: 'p1',
+          games: [{ id: 'g1', matchId: 'm1', player1Id: 'p1', player2Id: 'p2', score1: 11, score2: 5, date: '' }],
+        }),
+        makeMatch('m2', {
+          round: 'roundRobin',
+          player1Id: 'p1',
+          player2Id: 'p3',
+          winnerId: 'p3',
+          games: [{ id: 'g2', matchId: 'm2', player1Id: 'p1', player2Id: 'p3', score1: 7, score2: 11, date: '' }],
+        }),
+      ],
+    });
+
+    createBracketMatches(tournament);
+
+    expect(tournament.playerRanking).toBeDefined();
+    expect(tournament.playerRanking!.at(-1)).toBe('p4');
+  });
+
+  it('randomizes the bracket ranking when no round-robin games exist', () => {
+    const firstRandom = jest.spyOn(Math, 'random').mockReturnValue(0);
+    const firstTournament = makeTournament({ matches: [] });
+    createBracketMatches(firstTournament);
+    const firstRanking = firstTournament.playerRanking;
+    firstRandom.mockRestore();
+
+    const secondRandom = jest.spyOn(Math, 'random').mockReturnValue(0.99);
+    const secondTournament = makeTournament({ matches: [] });
+    createBracketMatches(secondTournament);
+    const secondRanking = secondTournament.playerRanking;
+    secondRandom.mockRestore();
+
+    expect(firstRanking).not.toEqual(secondRanking);
   });
 
   it('uses point differential as tiebreaker when wins are equal', () => {
@@ -437,9 +531,18 @@ describe('advanceBracketRound – positional pairing', () => {
       players: ['p1', 'p2', 'p3', 'p4'],
       bracketRounds: [{ matchCount: 2, bestOf: 3 }, { matchCount: 1, bestOf: 5 }],
       matches: [
-        makeMatch('rr1', { round: 'roundRobin', player1Id: 'p1', player2Id: 'p3', winnerId: 'p1' }),
-        makeMatch('rr2', { round: 'roundRobin', player1Id: 'p1', player2Id: 'p4', winnerId: 'p1' }),
-        makeMatch('rr3', { round: 'roundRobin', player1Id: 'p2', player2Id: 'p3', winnerId: 'p2' }),
+        makeMatch('rr1', {
+          round: 'roundRobin', player1Id: 'p1', player2Id: 'p3', winnerId: 'p1',
+          games: [{ id: 'g1', matchId: 'rr1', player1Id: 'p1', player2Id: 'p3', score1: 11, score2: 5, date: '' }],
+        }),
+        makeMatch('rr2', {
+          round: 'roundRobin', player1Id: 'p1', player2Id: 'p4', winnerId: 'p1',
+          games: [{ id: 'g2', matchId: 'rr2', player1Id: 'p1', player2Id: 'p4', score1: 11, score2: 5, date: '' }],
+        }),
+        makeMatch('rr3', {
+          round: 'roundRobin', player1Id: 'p2', player2Id: 'p3', winnerId: 'p2',
+          games: [{ id: 'g3', matchId: 'rr3', player1Id: 'p2', player2Id: 'p3', score1: 11, score2: 5, date: '' }],
+        }),
       ],
     });
     const r1Matches = createBracketMatches(tournament);
@@ -621,8 +724,14 @@ describe('activePlayers', () => {
         players: ['p1', 'p2', 'p3', 'p4'],
         activePlayers: ['p1', 'p2', 'p3'],
         matches: [
-          makeMatch('m1', { round: 'roundRobin', bracketRound: 1, player1Id: 'p3', player2Id: 'p1', winnerId: 'p3' }),
-          makeMatch('m2', { round: 'roundRobin', bracketRound: 1, player1Id: 'p4', player2Id: 'p2', winnerId: 'p4' }),
+          makeMatch('m1', {
+            round: 'roundRobin', bracketRound: 1, player1Id: 'p3', player2Id: 'p1', winnerId: 'p3',
+            games: [{ id: 'g1', matchId: 'm1', player1Id: 'p3', player2Id: 'p1', score1: 11, score2: 5, date: '' }],
+          }),
+          makeMatch('m2', {
+            round: 'roundRobin', bracketRound: 1, player1Id: 'p4', player2Id: 'p2', winnerId: 'p4',
+            games: [{ id: 'g2', matchId: 'm2', player1Id: 'p4', player2Id: 'p2', score1: 11, score2: 5, date: '' }],
+          }),
         ],
       });
       createBracketMatches(tournament);

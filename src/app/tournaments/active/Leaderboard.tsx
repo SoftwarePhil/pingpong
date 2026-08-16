@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { Player, Tournament } from '../../../types/pingpong';
+import { MARKER_PLAYER_ID, Match, Player, Tournament } from '../../../types/pingpong';
 import { getPlayerAge } from '../../../lib/player';
+import { isPlayInWinnerPlaceholder } from '../../../lib/tournament';
 
 interface LeaderboardProps {
   tournament: Tournament;
   players: Player[];
   getPlayerName: (id: string) => string;
+  bracketMatches?: Match[];
 }
 
 function playerInitials(player: Player) {
@@ -22,13 +24,24 @@ function formatBirthday(birthday: string) {
   });
 }
 
-export default function Leaderboard({ tournament, players, getPlayerName }: LeaderboardProps) {
+export default function Leaderboard({ tournament, players, getPlayerName, bracketMatches = [] }: LeaderboardProps) {
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const rrMatches = (tournament.matches ?? []).filter(m => m.round === 'roundRobin');
+  const isRealPlayer = (id: string) =>
+    id !== 'BYE' &&
+    id !== 'TBD' &&
+    id !== MARKER_PLAYER_ID &&
+    !isPlayInWinnerPlaceholder(id);
+  const displayedPlayerIds = [...new Set([
+    ...tournament.players,
+    ...(tournament.activePlayers ?? []),
+    ...(tournament.playerRanking ?? []),
+    ...bracketMatches.flatMap(match => [match.player1Id, match.player2Id]),
+  ])].filter(isRealPlayer);
 
   const standings = (() => {
     const stats: Record<string, { wins: number; losses: number; played: number; pointDiff: number }> = {};
-    tournament.players.forEach(p => { stats[p] = { wins: 0, losses: 0, played: 0, pointDiff: 0 }; });
+    displayedPlayerIds.forEach(p => { stats[p] = { wins: 0, losses: 0, played: 0, pointDiff: 0 }; });
 
     rrMatches.forEach(m => {
       if (!m.winnerId || m.player2Id === 'BYE') return;
@@ -44,7 +57,7 @@ export default function Leaderboard({ tournament, players, getPlayerName }: Lead
       });
     });
 
-    return tournament.players
+    return displayedPlayerIds
       .map(id => ({ id, ...stats[id] }))
       .sort((a, b) => {
         if (b.wins !== a.wins) return b.wins - a.wins;

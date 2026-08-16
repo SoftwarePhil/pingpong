@@ -1,4 +1,5 @@
 import { Match, Tournament } from '../types/pingpong';
+import { isPlayInWinnerPlaceholder } from './tournament';
 
 export interface TournamentPointValues {
   firstPlacePoints: number;
@@ -47,10 +48,10 @@ export function getTournamentDateKey(startDate: string): string {
   return `${date.getFullYear()}-${month}-${day}`;
 }
 
-const NON_PLAYER_IDS = new Set(['BYE', 'MARKER', 'PLAY_IN_WINNER', 'TBD']);
+const NON_PLAYER_IDS = new Set(['BYE', 'MARKER', 'TBD']);
 
 function isPlayerId(playerId: string | undefined): playerId is string {
-  return Boolean(playerId && !NON_PLAYER_IDS.has(playerId));
+  return Boolean(playerId && !NON_PLAYER_IDS.has(playerId) && !isPlayInWinnerPlaceholder(playerId));
 }
 
 function bracketRound(match: Match): number {

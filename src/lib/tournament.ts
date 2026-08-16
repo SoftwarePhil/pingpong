@@ -5,6 +5,57 @@ import { Tournament, Match } from '../types/pingpong';
  * determined (i.e. the upstream match was edited back into an incomplete state). */
 export const TBD_PLACEHOLDER = 'TBD';
 
+/** Placeholder used for a play-in winner before its preliminary match is played. */
+export const PLAY_IN_WINNER_PLACEHOLDER = 'PLAY_IN_WINNER';
+
+/** Returns true for the legacy single play-in placeholder and indexed placeholders. */
+export function isPlayInWinnerPlaceholder(playerId: string): boolean {
+  return playerId === PLAY_IN_WINNER_PLACEHOLDER || /^PLAY_IN_WINNER_\d+$/.test(playerId);
+}
+
+/** Keeps the original placeholder name for one play-in for legacy data. */
+export function getPlayInWinnerPlaceholder(index: number, total: number): string {
+  return total === 1
+    ? PLAY_IN_WINNER_PLACEHOLDER
+    : `${PLAY_IN_WINNER_PLACEHOLDER}_${index + 1}`;
+}
+
+/** Replaces the R1 slot fed by a preliminary match with its winner. */
+export function replacePlayInWinnerSlot(
+  matches: Match[],
+  playInMatchId: string,
+  winnerId?: string,
+): Match[] {
+  const playInMatches = matches.filter(m =>
+    m.round === 'bracket' && (m.bracketRound ?? 0) === 0
+  );
+  const playInIndex = playInMatches.findIndex(m => m.id === playInMatchId);
+  const playInMatch = playInMatches[playInIndex];
+  if (!playInMatch) return matches;
+
+  const placeholder = getPlayInWinnerPlaceholder(playInIndex, playInMatches.length);
+  const participantIds = [playInMatch.player1Id, playInMatch.player2Id];
+  const target = matches.find(m =>
+    m.round === 'bracket' &&
+    (m.bracketRound ?? 0) === 1 &&
+    [m.player1Id, m.player2Id].some(id =>
+      id === placeholder || participantIds.includes(id)
+    )
+  );
+  if (!target) return matches;
+
+  const isPlayer1Slot = target.player1Id === placeholder || participantIds.includes(target.player1Id);
+  const replacement = winnerId ?? TBD_PLACEHOLDER;
+  return matches.map(m => m.id === target.id
+    ? {
+        ...m,
+        ...(isPlayer1Slot ? { player1Id: replacement } : { player2Id: replacement }),
+        winnerId: undefined,
+      }
+    : m
+  );
+}
+
 /** Returns the configured bestOf for a bracket round with the given match count.
  * Falls back to 1 if no config entry matches. */
 function getBestOfForMatchCount(tournament: Tournament, matchCount: number): number {
@@ -212,8 +263,8 @@ export function cascadeBracketR1PlayerSwap(
   if (target.games.length > 0) throw new Error('Cannot change players after games have been played');
   if (newPlayer1Id === newPlayer2Id) throw new Error('Player 1 and Player 2 must be different');
 
-  const oldPlayers = [target.player1Id, target.player2Id].filter(p => p !== 'BYE' && p !== 'PLAY_IN_WINNER');
-  const newPlayers = [newPlayer1Id, newPlayer2Id].filter(p => p !== 'BYE' && p !== 'PLAY_IN_WINNER');
+  const oldPlayers = [target.player1Id, target.player2Id].filter(p => p !== 'BYE' && !isPlayInWinnerPlaceholder(p));
+  const newPlayers = [newPlayer1Id, newPlayer2Id].filter(p => p !== 'BYE' && !isPlayInWinnerPlaceholder(p));
   const displaced = oldPlayers.filter(p => !newPlayers.includes(p));
   const incoming  = newPlayers.filter(p => !oldPlayers.includes(p));
 
@@ -290,8 +341,8 @@ export function cascadeBracketPlayerSwap(
     throw new Error('Final and third-place participants are fixed after the semifinals');
   }
 
-  const oldPlayers = [target.player1Id, target.player2Id].filter(p => p !== 'BYE' && p !== 'PLAY_IN_WINNER');
-  const newPlayers = [newPlayer1Id, newPlayer2Id].filter(p => p !== 'BYE' && p !== 'PLAY_IN_WINNER');
+  const oldPlayers = [target.player1Id, target.player2Id].filter(p => p !== 'BYE' && !isPlayInWinnerPlaceholder(p));
+  const newPlayers = [newPlayer1Id, newPlayer2Id].filter(p => p !== 'BYE' && !isPlayInWinnerPlaceholder(p));
   const displaced = oldPlayers.filter(p => !newPlayers.includes(p));
   const incoming  = newPlayers.filter(p => !oldPlayers.includes(p));
 
@@ -512,7 +563,7 @@ export function createThirdPlaceMatch(tournament: Tournament): Match | null {
     match.winnerId === match.player1Id ? match.player2Id : match.player1Id
   );
   if (
-    semifinalLosers.some(id => id === 'BYE' || id === TBD_PLACEHOLDER || id === 'PLAY_IN_WINNER') ||
+    semifinalLosers.some(id => id === 'BYE' || id === TBD_PLACEHOLDER || isPlayInWinnerPlaceholder(id)) ||
     semifinalLosers[0] === semifinalLosers[1]
   ) {
     return null;
@@ -549,6 +600,21 @@ export function generateBracketSeeding(n: number): number[] {
     result.push(n + 1 - seed);
   }
   return result;
+}
+
+/** Returns the number of preliminary matches needed to reach a power-of-two field. */
+function getPlayInMatchCount(playerCount: number): number {
+  const lowerPowerOfTwo = Math.pow(2, Math.floor(Math.log2(playerCount)));
+  return playerCount === lowerPowerOfTwo ? 1 : playerCount - lowerPowerOfTwo;
+}
+
+function shuffle<T>(items: T[]): T[] {
+  const shuffled = [...items];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
 }
 
 /**
@@ -607,9 +673,11 @@ export function createBracketMatches(tournament: Tournament, createMainBracket =
   // Count wins and point differentials for each player (all players, including inactive, for historical accuracy)
   const playerWins: { [key: string]: number } = {};
   const playerPointDiff: { [key: string]: number } = {};
+  const playerGamesPlayed: { [key: string]: number } = {};
   tournament.players.forEach(playerId => {
     playerWins[playerId] = 0;
     playerPointDiff[playerId] = 0;
+    playerGamesPlayed[playerId] = 0;
   });
 
   roundRobinMatches.forEach(match => {
@@ -618,6 +686,8 @@ export function createBracketMatches(tournament: Tournament, createMainBracket =
     }
     if (match.player2Id !== 'BYE') {
       match.games.forEach(g => {
+        playerGamesPlayed[match.player1Id] = (playerGamesPlayed[match.player1Id] || 0) + 1;
+        playerGamesPlayed[match.player2Id] = (playerGamesPlayed[match.player2Id] || 0) + 1;
         playerPointDiff[match.player1Id] = (playerPointDiff[match.player1Id] || 0) + g.score1 - g.score2;
         playerPointDiff[match.player2Id] = (playerPointDiff[match.player2Id] || 0) + g.score2 - g.score1;
       });
@@ -626,16 +696,24 @@ export function createBracketMatches(tournament: Tournament, createMainBracket =
 
   // Only rank active players for the bracket
   const activePlayerPool = tournament.activePlayers ?? tournament.players;
-  const rankedPlayers = [...activePlayerPool].sort((a, b) => {
-    const winsA = playerWins[a] || 0;
-    const winsB = playerWins[b] || 0;
-    if (winsA !== winsB) return winsB - winsA;
-    // Tiebreaker: point differential (more positive = ranked higher)
-    const diffA = playerPointDiff[a] || 0;
-    const diffB = playerPointDiff[b] || 0;
-    if (diffA !== diffB) return diffB - diffA;
-    return Math.random() - 0.5;
-  });
+  const hasAnyRoundRobinGames = roundRobinMatches.some(match => match.games.length > 0);
+  const rankedPlayers = !hasAnyRoundRobinGames
+    ? shuffle(activePlayerPool)
+    : [
+        ...[...activePlayerPool]
+          .filter(playerId => (playerGamesPlayed[playerId] || 0) > 0)
+          .sort((a, b) => {
+            const winsA = playerWins[a] || 0;
+            const winsB = playerWins[b] || 0;
+            if (winsA !== winsB) return winsB - winsA;
+            // Tiebreaker: point differential (more positive = ranked higher)
+            const diffA = playerPointDiff[a] || 0;
+            const diffB = playerPointDiff[b] || 0;
+            if (diffA !== diffB) return diffB - diffA;
+            return Math.random() - 0.5;
+          }),
+        ...shuffle(activePlayerPool.filter(playerId => (playerGamesPlayed[playerId] || 0) === 0)),
+      ];
 
   const bracketPlayers = rankedPlayers;
 
@@ -650,27 +728,31 @@ export function createBracketMatches(tournament: Tournament, createMainBracket =
 
   if (bracketPlayers.length >= 2) {
     if (shouldPlayIn) {
-      // Play-in round (prelim for odd or forced): bottom two lowest seeds play each other.
-      // This is bracketRound 0 (special prelim). The main bracket is then created on the
-      // reduced set (n-1 players: top n-2 + PLAY_IN_WINNER placeholder) so that the main
-      // R1 is a clean power-of-2 with no extra byes in the main bracket's first round.
-      // For 9 players: 1 play-in + 4 matches in main R1 (for the 8 advancers).
-      const playInMatch: Match = {
-        id: Date.now().toString() + Math.random(),
-        tournamentId: tournament.id,
-        player1Id: bracketPlayers[bracketPlayers.length - 2],
-        player2Id: bracketPlayers[bracketPlayers.length - 1],
-        round: 'bracket',
-        bracketRound: 0,
-        bestOf: 1,
-        games: [],
-      };
-      newMatches.push(playInMatch);
+      // Create enough preliminary matches to reduce the field to the next
+      // lower power of two. For example, 10 players need two play-ins so
+      // that six direct entrants plus two winners fill an 8-player bracket.
+      const playInMatchCount = getPlayInMatchCount(bracketPlayers.length);
+      const directEntrantCount = bracketPlayers.length - playInMatchCount * 2;
+      for (let i = 0; i < playInMatchCount; i++) {
+        const pairStart = directEntrantCount + i * 2;
+        newMatches.push({
+          id: Date.now().toString() + Math.random(),
+          tournamentId: tournament.id,
+          player1Id: bracketPlayers[pairStart],
+          player2Id: bracketPlayers[pairStart + 1],
+          round: 'bracket',
+          bracketRound: 0,
+          bestOf: 1,
+          games: [],
+        });
+      }
 
       if (createMainBracket) {
         const mainBracketPlayers: string[] = [
-          ...bracketPlayers.slice(0, bracketPlayers.length - 2),
-          'PLAY_IN_WINNER',
+          ...bracketPlayers.slice(0, directEntrantCount),
+          ...Array.from({ length: playInMatchCount }, (_, i) =>
+            getPlayInWinnerPlaceholder(i, playInMatchCount)
+          ),
         ];
         newMatches.push(...createSeededBracketMatches(mainBracketPlayers, tournament));
       }
