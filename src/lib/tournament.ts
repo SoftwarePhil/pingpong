@@ -738,6 +738,7 @@ export function createBracketMatches(tournament: Tournament, createMainBracket =
         newMatches.push({
           id: Date.now().toString() + Math.random(),
           tournamentId: tournament.id,
+          createdAt: new Date().toISOString(),
           player1Id: bracketPlayers[pairStart],
           player2Id: bracketPlayers[pairStart + 1],
           round: 'bracket',
