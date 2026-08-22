@@ -22,7 +22,7 @@ export default function ActiveTournamentsPage() {
   const [showEditForm, setShowEditForm]           = useState(false);
   const [editingTournament, setEditingTournament] = useState<Tournament | null>(null);
   const [selectedPlayers, setSelectedPlayers]     = useState<string[]>([]);
-  const [pairingStrategy, setPairingStrategy]     = useState<'random' | 'top-vs-top' | 'swiss'>('swiss');
+  const [pairingStrategy, setPairingStrategy]     = useState<'random' | 'top-vs-top' | 'swiss'>('top-vs-top');
   const [savingPairingStrategy, setSavingPairingStrategy] = useState(false);
 
   const [showNewPlayerForm, setShowNewPlayerForm] = useState(false);

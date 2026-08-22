@@ -20,7 +20,7 @@ export default function NewTournamentPage() {
   const [semiBestOf, setSemiBestOf] = useState(3);
   const [finalBestOf, setFinalBestOf] = useState(3);
   const [thirdPlaceMatch, setThirdPlaceMatch] = useState(false);
-  const [rrPairingStrategy, setRrPairingStrategy] = useState<'random' | 'top-vs-top' | 'swiss'>('swiss');
+  const [rrPairingStrategy, setRrPairingStrategy] = useState<'random' | 'top-vs-top' | 'swiss'>('top-vs-top');
   const [selectedPlayers, setSelectedPlayers] = useState<string[]>([]);
   const [showNewPlayerForm, setShowNewPlayerForm] = useState(false);
   const [newPlayerName, setNewPlayerName] = useState('');
