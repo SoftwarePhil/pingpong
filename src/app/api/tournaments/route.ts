@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
   if (denied) return denied;
   try {
     const body = await request.json();
-    const { name, roundRobinRounds, bracketRounds, players, rrBestOf, rrPairingStrategy, thirdPlaceMatch }: { name: string; roundRobinRounds: number; bracketRounds: { matchCount: number; bestOf: number }[]; players: string[]; rrBestOf: number; rrPairingStrategy?: 'random' | 'top-vs-top'; thirdPlaceMatch?: boolean } = body;
+    const { name, roundRobinRounds, bracketRounds, players, rrBestOf, rrPairingStrategy, thirdPlaceMatch }: { name: string; roundRobinRounds: number; bracketRounds: { matchCount: number; bestOf: number }[]; players: string[]; rrBestOf: number; rrPairingStrategy?: 'random' | 'top-vs-top' | 'swiss'; thirdPlaceMatch?: boolean } = body;
     const uniquePlayers = [...new Set(players)];
     if (!name || !roundRobinRounds || !bracketRounds || !uniquePlayers || uniquePlayers.length < 2) {
       return NextResponse.json({ error: 'Invalid data' }, { status: 400 });
@@ -74,7 +74,7 @@ export async function PUT(request: NextRequest) {
       id: string;
       status?: 'roundRobin' | 'bracket' | 'completed';
       action?: 'advanceRound' | 'addRoundRobinRound' | 'startBracket' | 'addThirdPlaceMatch';
-      rrPairingStrategy?: 'random' | 'top-vs-top';
+      rrPairingStrategy?: 'random' | 'top-vs-top' | 'swiss';
     } = body;
     // Note: adding/removing players is handled by its own atomic endpoint —
     // PATCH /api/tournaments/[id]/players — not by this PUT handler. See
@@ -95,7 +95,7 @@ export async function PUT(request: NextRequest) {
     // current round's unplayed matches so the new strategy takes effect right away
     // (future rounds pick it up automatically via advanceRoundRobinRound).
     if (rrPairingStrategy) {
-      if (rrPairingStrategy !== 'random' && rrPairingStrategy !== 'top-vs-top') {
+      if (rrPairingStrategy !== 'random' && rrPairingStrategy !== 'top-vs-top' && rrPairingStrategy !== 'swiss') {
         return NextResponse.json({ error: 'Invalid rrPairingStrategy' }, { status: 400 });
       }
       if (bracketStarted || tournament.status === 'completed') {

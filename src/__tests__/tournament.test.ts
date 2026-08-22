@@ -1,4 +1,5 @@
 import { createRoundRobinPairings, advanceBracketRound, createBracketMatches, advanceRoundRobinRound, replacePlayInWinnerSlot } from '../lib/tournament';
+import { orderPlayersForSwissPairing, getRoundRobinOpponents, getPlayersWithBye } from '../lib/swissPairing';
 import { Tournament, Match, MARKER_PLAYER_ID } from '../types/pingpong';
 
 function makeTournament(overrides: Partial<Tournament> = {}): Tournament {
@@ -149,6 +150,77 @@ describe('advanceRoundRobinRound', () => {
     const newMatches = advanceRoundRobinRound(tournament);
     expect(newMatches.every(m => m.round === 'roundRobin')).toBe(true);
     expect(newMatches.every(m => m.bracketRound === 2)).toBe(true);
+  });
+
+  it('swiss strategy avoids rematches when a same-record opponent is available', () => {
+    const tournament = makeTournament({
+      players: ['p1', 'p2', 'p3', 'p4'],
+      roundRobinRounds: 4,
+      rrPairingStrategy: 'swiss',
+      matches: [
+        makeMatch('m1', { round: 'roundRobin', bracketRound: 1, player1Id: 'p1', player2Id: 'p2', winnerId: 'p1',
+          games: [{ id: 'g1', matchId: 'm1', player1Id: 'p1', player2Id: 'p2', score1: 11, score2: 5, date: '' }] }),
+        makeMatch('m2', { round: 'roundRobin', bracketRound: 1, player1Id: 'p3', player2Id: 'p4', winnerId: 'p3',
+          games: [{ id: 'g2', matchId: 'm2', player1Id: 'p3', player2Id: 'p4', score1: 11, score2: 9, date: '' }] }),
+        makeMatch('m3', { round: 'roundRobin', bracketRound: 2, player1Id: 'p1', player2Id: 'p3', winnerId: 'p1',
+          games: [{ id: 'g3', matchId: 'm3', player1Id: 'p1', player2Id: 'p3', score1: 11, score2: 7, date: '' }] }),
+        makeMatch('m4', { round: 'roundRobin', bracketRound: 2, player1Id: 'p2', player2Id: 'p4', winnerId: 'p2',
+          games: [{ id: 'g4', matchId: 'm4', player1Id: 'p2', player2Id: 'p4', score1: 11, score2: 8, date: '' }] }),
+      ],
+    });
+    const newMatches = advanceRoundRobinRound(tournament);
+    const realMatches = newMatches.filter(m => m.player2Id !== 'BYE');
+    expect(realMatches).toHaveLength(2);
+
+    const alreadyPlayed = [
+      ['p1', 'p2'],
+      ['p3', 'p4'],
+      ['p1', 'p3'],
+      ['p2', 'p4'],
+    ];
+    realMatches.forEach(m => {
+      const pair = [m.player1Id, m.player2Id].sort();
+      const isRematch = alreadyPlayed.some(([a, b]) => [a, b].sort().join() === pair.join());
+      expect(isRematch).toBe(false);
+    });
+  });
+
+  it('swiss strategy rotates the bye away from a player who already had one', () => {
+    const tournament = makeTournament({
+      players: ['p1', 'p2', 'p3'],
+      activePlayers: ['p1', 'p2', 'p3'],
+      roundRobinRounds: 3,
+      rrPairingStrategy: 'swiss',
+      matches: [
+        makeMatch('m1', { round: 'roundRobin', bracketRound: 1, player1Id: 'p1', player2Id: 'p2', winnerId: 'p1',
+          games: [{ id: 'g1', matchId: 'm1', player1Id: 'p1', player2Id: 'p2', score1: 11, score2: 4, date: '' }] }),
+        makeMatch('bye1', { round: 'roundRobin', bracketRound: 1, player1Id: 'p3', player2Id: 'BYE', winnerId: 'p3' }),
+      ],
+    });
+    const newMatches = advanceRoundRobinRound(tournament);
+    const bye = newMatches.find(m => m.player2Id === 'BYE');
+    expect(bye).toBeDefined();
+    expect(bye!.player1Id).not.toBe('p3');
+  });
+});
+
+describe('orderPlayersForSwissPairing', () => {
+  it('records prior opponents and previous byes from round-robin history', () => {
+    const matches: Match[] = [
+      makeMatch('m1', { round: 'roundRobin', player1Id: 'p1', player2Id: 'p2' }),
+      makeMatch('bye', { round: 'roundRobin', player1Id: 'p3', player2Id: 'BYE', winnerId: 'p3' }),
+    ];
+    expect([...getRoundRobinOpponents(matches).get('p1')!]).toEqual(['p2']);
+    expect(getPlayersWithBye(matches).has('p3')).toBe(true);
+  });
+
+  it('places the bye player last so createRoundRobinPairings assigns the bye correctly', () => {
+    const ordered = orderPlayersForSwissPairing(
+      ['p1', 'p2', 'p3'],
+      [makeMatch('bye', { round: 'roundRobin', player1Id: 'p3', player2Id: 'BYE', winnerId: 'p3' })],
+    );
+    expect(ordered).toHaveLength(3);
+    expect(ordered[ordered.length - 1]).not.toBe('p3');
   });
 });
 

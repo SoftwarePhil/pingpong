@@ -22,7 +22,7 @@ export default function ActiveTournamentsPage() {
   const [showEditForm, setShowEditForm]           = useState(false);
   const [editingTournament, setEditingTournament] = useState<Tournament | null>(null);
   const [selectedPlayers, setSelectedPlayers]     = useState<string[]>([]);
-  const [pairingStrategy, setPairingStrategy]     = useState<'random' | 'top-vs-top'>('top-vs-top');
+  const [pairingStrategy, setPairingStrategy]     = useState<'random' | 'top-vs-top' | 'swiss'>('swiss');
   const [savingPairingStrategy, setSavingPairingStrategy] = useState(false);
 
   const [showNewPlayerForm, setShowNewPlayerForm] = useState(false);
@@ -420,7 +420,7 @@ export default function ActiveTournamentsPage() {
     else { const err = await res.json(); alert(err.error ?? 'Failed to update tournament'); }
   };
 
-  const updatePairingStrategy = async (strategy: 'random' | 'top-vs-top') => {
+  const updatePairingStrategy = async (strategy: 'random' | 'top-vs-top' | 'swiss') => {
     if (!editingTournament || strategy === pairingStrategy) return;
     setPairingStrategy(strategy);
     setSavingPairingStrategy(true);
@@ -547,11 +547,12 @@ export default function ActiveTournamentsPage() {
             <form onSubmit={updateTournamentPlayers} className="space-y-6">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-3">Round Robin Pairing Strategy</label>
-                <div className="flex gap-4">
+                <div className="flex flex-col md:flex-row gap-4">
                   {([
-                    { value: 'random', label: '🎲 Random', desc: 'Players are paired randomly each round' },
-                    { value: 'top-vs-top', label: '🏆 Top vs Top', desc: 'Top-ranked players face each other for competitive matches' },
-                  ] as { value: 'random' | 'top-vs-top'; label: string; desc: string }[]).map(opt => (
+                    { value: 'swiss', label: 'Swiss', desc: 'Similar records play, rematches avoided, byes rotate' },
+                    { value: 'top-vs-top', label: 'Top vs Top', desc: 'Top-ranked players face each other for competitive matches' },
+                    { value: 'random', label: 'Random', desc: 'Players are paired randomly each round' },
+                  ] as { value: 'random' | 'top-vs-top' | 'swiss'; label: string; desc: string }[]).map(opt => (
                     <button
                       key={opt.value}
                       type="button"

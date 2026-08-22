@@ -392,6 +392,38 @@ describe('resyncRoundRobinMatches', () => {
       expect([topMatch!.player1Id, topMatch!.player2Id]).toContain('p3');
     });
 
+    it('swiss strategy re-pairs the current round without rematches from earlier rounds', () => {
+      const tournament = makeTournament({
+        players: ['p1', 'p2', 'p3', 'p4'],
+        activePlayers: ['p1', 'p2', 'p3', 'p4'],
+        rrPairingStrategy: 'swiss',
+        matches: [
+          makeMatch('m1', {
+            bracketRound: 1, player1Id: 'p1', player2Id: 'p2', winnerId: 'p1',
+            games: [{ id: 'g1', matchId: 'm1', player1Id: 'p1', player2Id: 'p2', score1: 11, score2: 5, date: '' }],
+          }),
+          makeMatch('m2', {
+            bracketRound: 1, player1Id: 'p3', player2Id: 'p4', winnerId: 'p3',
+            games: [{ id: 'g2', matchId: 'm2', player1Id: 'p3', player2Id: 'p4', score1: 11, score2: 9, date: '' }],
+          }),
+          makeMatch('m3', {
+            bracketRound: 2, player1Id: 'p1', player2Id: 'p2', games: [],
+          }),
+          makeMatch('m4', {
+            bracketRound: 2, player1Id: 'p3', player2Id: 'p4', games: [],
+          }),
+        ],
+      });
+
+      const { addedMatches, removedMatchIds } = resyncRoundRobinMatches(tournament);
+      expect(removedMatchIds.sort()).toEqual(['m3', 'm4']);
+      addedMatches.filter(m => m.player2Id !== 'BYE').forEach(m => {
+        const pair = [m.player1Id, m.player2Id].sort().join('-');
+        expect(pair).not.toBe('p1-p2');
+        expect(pair).not.toBe('p3-p4');
+      });
+    });
+
     it('random strategy (default) still produces exactly one slot per active player, no duplicates', () => {
       const tournament = makeTournament({
         players: ['p1', 'p2', 'p3', 'p4'],
