@@ -20,7 +20,7 @@ export default function NewTournamentPage() {
   const [semiBestOf, setSemiBestOf] = useState(3);
   const [finalBestOf, setFinalBestOf] = useState(3);
   const [thirdPlaceMatch, setThirdPlaceMatch] = useState(false);
-  const [rrPairingStrategy, setRrPairingStrategy] = useState<'random' | 'top-vs-top'>('top-vs-top');
+  const [rrPairingStrategy, setRrPairingStrategy] = useState<'random' | 'top-vs-top' | 'swiss'>('swiss');
   const [selectedPlayers, setSelectedPlayers] = useState<string[]>([]);
   const [showNewPlayerForm, setShowNewPlayerForm] = useState(false);
   const [newPlayerName, setNewPlayerName] = useState('');
@@ -246,11 +246,12 @@ export default function NewTournamentPage() {
             {/* Round Robin Pairing Strategy */}
             <div>
               <label className="block text-lg font-semibold text-gray-800 mb-4">Round Robin Pairing Strategy</label>
-              <div className="flex gap-4">
+              <div className="flex flex-col md:flex-row gap-4">
                 {([
-                  { value: 'random', label: '🎲 Random', desc: 'Players are paired randomly each round' },
-                  { value: 'top-vs-top', label: '🏆 Top vs Top', desc: 'Top-ranked players face each other for competitive matches' },
-                ] as { value: 'random' | 'top-vs-top'; label: string; desc: string }[]).map(opt => (
+                  { value: 'swiss', label: 'Swiss', desc: 'Similar records play, rematches avoided, byes rotate' },
+                  { value: 'top-vs-top', label: 'Top vs Top', desc: 'Top-ranked players face each other for competitive matches' },
+                  { value: 'random', label: 'Random', desc: 'Players are paired randomly each round' },
+                ] as { value: 'random' | 'top-vs-top' | 'swiss'; label: string; desc: string }[]).map(opt => (
                   <button
                     key={opt.value}
                     type="button"

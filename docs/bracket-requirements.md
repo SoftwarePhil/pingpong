@@ -17,7 +17,7 @@ This document reflects the current implemented behavior (prelim play-in + reduce
 ## Phase 1 — Round Robin
 
 ### Structure
-- Players are randomly paired each round (shuffled). Alternative strategy "top-vs-top" is supported via `rrPairingStrategy`.
+- Players are paired each round according to `rrPairingStrategy`: `random` (shuffle), `top-vs-top` (rank by standings, then pair 1v2 / 3v4), or `swiss` (score groups, rematch avoidance, rotating byes).
 - If the active player count is odd, one player receives a bye (automatic win).
 - The number of rounds is configured when the tournament is created.
 - Only **active players** (`activePlayers` field, defaults to all players) participate in current and future rounds.
@@ -30,7 +30,7 @@ Adding/removing players is its **own atomic operation**, deliberately separate f
 - **Players who have played don't change.** A match with a recorded game, or a genuine (non-BYE) winner, is left completely untouched, in every round — including matches whose participant was later removed (kept for historical accuracy).
 - **Players who haven't played and get removed are dropped from every unplayed match they're in** — not just the current round. Stale unplayed leftovers from earlier rounds are also cleaned up defensively.
 - A BYE match is intentionally **not** treated as "played for real": the bye holder always returns to the pool so they can be matched against anyone newly added/reactivated instead of auto-winning by default.
-- The pool is paired via `createRoundRobinPairings`, honoring `rrPairingStrategy` (`top-vs-top` ranks the pool by current standings before pairing; `random` shuffles it) — the same pairing engine used everywhere else, so there is a single source of truth for how matches get built.
+- The pool is paired via `createRoundRobinPairings`, honoring `rrPairingStrategy` (`top-vs-top` ranks the pool by current standings before pairing; `swiss` avoids rematches and rotates byes; `random` shuffles it) — the same pairing engine used everywhere else, so there is a single source of truth for how matches get built.
 
 **Refreshing matches on demand:** `POST /api/tournaments/[id]/refresh-matches` runs the exact same `resyncRoundRobinMatches` resync without changing the roster at all. Roster edits already resync automatically as part of the PATCH above; this endpoint exists purely so the host can re-trigger the same fix-up on demand (e.g. a "🔄 Refresh Matches" button next to "Current Matches" in the UI) if matches ever look out of sync. Both endpoints reject requests once the bracket has started or the tournament is completed.
 

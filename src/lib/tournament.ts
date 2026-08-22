@@ -1,4 +1,5 @@
 import { Tournament, Match } from '../types/pingpong';
+import { orderPlayersForSwissPairing } from './swissPairing';
 
 /** Placeholder player slot used when a downstream bracket match's participant
  * is invalidated by an upstream correction and no replacement winner is yet
@@ -819,6 +820,11 @@ export function advanceRoundRobinRound(tournament: Tournament): Match[] {
     return createRoundRobinPairings(sortedPlayers, tournament.id, nextRound, tournament.rrBestOf ?? 1);
   }
 
+  if (strategy === 'swiss') {
+    const orderedPlayers = orderPlayersForSwissPairing(activePlayers, tournamentMatches);
+    return createRoundRobinPairings(orderedPlayers, tournament.id, nextRound, tournament.rrBestOf ?? 1);
+  }
+
   // Random strategy (default)
   const shuffledPlayers = [...activePlayers].sort(() => Math.random() - 0.5);
   return createRoundRobinPairings(shuffledPlayers, tournament.id, nextRound, tournament.rrBestOf ?? 1);
@@ -915,9 +921,13 @@ export function resyncRoundRobinMatches(tournament: Tournament): RoundRobinResyn
   // player can ever appear in more than one match this round.
   const pool = activePlayers.filter(pid => !lockedPlayerIds.has(pid));
 
-  const orderedPool = (tournament.rrPairingStrategy ?? 'random') === 'top-vs-top'
+  const strategy = tournament.rrPairingStrategy ?? 'random';
+  const historyMatches = [...keptOtherRoundMatches, ...lockedMatches];
+  const orderedPool = strategy === 'top-vs-top'
     ? rankPlayersByStandings(pool, rrMatches)
-    : [...pool].sort(() => Math.random() - 0.5);
+    : strategy === 'swiss'
+      ? orderPlayersForSwissPairing(pool, historyMatches)
+      : [...pool].sort(() => Math.random() - 0.5);
 
   const addedMatches = createRoundRobinPairings(orderedPool, tournament.id, currentRound, tournament.rrBestOf ?? 1);
 
