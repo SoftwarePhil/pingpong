@@ -40,6 +40,8 @@ export function getRoundRobinOpponents(matches: Match[]): Map<string, Set<string
   };
   matches.forEach(m => {
     if (m.round !== 'roundRobin') return;
+    const playedForReal = m.games.length > 0 || (!!m.winnerId && m.player1Id !== 'BYE' && m.player2Id !== 'BYE');
+    if (!playedForReal) return;
     if (!isPairablePlayerId(m.player1Id) || !isPairablePlayerId(m.player2Id)) return;
     add(m.player1Id, m.player2Id);
     add(m.player2Id, m.player1Id);
