@@ -157,8 +157,8 @@ function TournamentHistoryContent() {
               })}
             </div>
           )}
-          {match.games.length === 0 && side2.includes('BYE') && <div className="px-4 py-2 text-sm text-gray-400 italic">Bye round</div>}
-          {match.games.length === 0 && !side2.includes('BYE') && <div className="px-4 py-2 text-sm text-gray-400 italic">No games recorded</div>}
+          {match.games.length === 0 && (side1.includes('BYE') || side2.includes('BYE')) && <div className="px-4 py-2 text-sm text-gray-400 italic">Bye round</div>}
+          {match.games.length === 0 && !(side1.includes('BYE') || side2.includes('BYE')) && <div className="px-4 py-2 text-sm text-gray-400 italic">No games recorded</div>}
         </div>
       );
     };
