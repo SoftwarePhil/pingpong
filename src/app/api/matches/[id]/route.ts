@@ -3,6 +3,7 @@ import { Match, MARKER_PLAYER_ID } from '../../../../types/pingpong';
 import { getMatch, getTournamentIdForMatch, getTournament, setTournament, updateMatchInTournament, removeMatchFromTournament, removeGamesFromHistory, recalculateMatchWinner, saveData } from '../../../../data/data';
 import { cascadeRoundRobinPlayerSwap, cascadeBracketPlayerSwap, cascadeBracketOutcomeChange } from '../../../../lib/tournament';
 import { requireAdmin } from '../../../../lib/auth';
+import { isDoublesMatch } from '../../../../lib/matchFormat';
 
 export async function PUT(
   request: NextRequest,
@@ -26,6 +27,9 @@ export async function PUT(
 
       if (!isRR && !isBracket) {
         return NextResponse.json({ error: 'Players can only be changed in round robin or bracket matches' }, { status: 400 });
+      }
+      if (isRR && isDoublesMatch(currentMatch)) {
+        return NextResponse.json({ error: 'Doubles teams cannot be changed after the round is generated' }, { status: 400 });
       }
       if (currentMatch.games.length > 0) {
         return NextResponse.json({ error: 'Cannot change players after games have been played' }, { status: 400 });
@@ -93,6 +97,15 @@ export async function PUT(
     }
 
     // Non-player update (scores, winnerId, bestOf, etc.) — standard path
+    if (
+      updates.side1PlayerIds !== undefined ||
+      updates.side2PlayerIds !== undefined ||
+      updates.winnerSide !== undefined ||
+      (isDoublesMatch(currentMatch) && updates.games !== undefined) ||
+      (isDoublesMatch(currentMatch) && updates.winnerId !== undefined)
+    ) {
+      return NextResponse.json({ error: 'Participants and winners are derived from the match format and games' }, { status: 400 });
+    }
     let updatedMatch: Match = { ...currentMatch, ...updates };
 
     // Changing the number of games in a match may change (or clear) its

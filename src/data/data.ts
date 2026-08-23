@@ -1,7 +1,8 @@
-import { createClient, RedisClientType } from 'redis';
+import { createClient, RedisClientType, WatchError } from 'redis';
 import { MongoClient, Db, Collection } from 'mongodb';
-import { Player, Tournament, Match, Game } from '../types/pingpong';
-import { cascadeBracketOutcomeChange } from '../lib/tournament';
+import { Player, Tournament, Match, Game, RoundRobinFormat } from '../types/pingpong';
+import { cascadeBracketOutcomeChange, setRoundRobinFormat } from '../lib/tournament';
+import { getMatchSides, isDoublesMatch } from '../lib/matchFormat';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Environment isolation
@@ -166,6 +167,113 @@ export async function setTournament(tournament: Tournament): Promise<void> {
   } catch (error) {
     console.error('Error setting tournament:', error);
     throw error;
+  }
+}
+
+export class TournamentNotFoundError extends Error {
+  constructor(tournamentId: string) {
+    super(`Tournament ${tournamentId} not found`);
+    this.name = 'TournamentNotFoundError';
+  }
+}
+
+export class TournamentConflictError extends Error {
+  constructor(tournamentId: string) {
+    super(`Tournament ${tournamentId} was changed by another request`);
+    this.name = 'TournamentConflictError';
+  }
+}
+
+/**
+ * Changes the current round-robin format and updates its tournament document
+ * and match index in one optimistic Redis transaction. The transaction uses a
+ * dedicated connection because WATCH state is connection-scoped and the main
+ * client is shared by unrelated requests.
+ */
+export async function setRoundRobinFormatAtomically(
+  tournamentId: string,
+  requestedRound: number,
+  format: RoundRobinFormat,
+): Promise<Tournament> {
+  if (!redisClient) await initRedis();
+
+  const transactionClient = redisClient.duplicate();
+  await transactionClient.connect();
+  const key = tournamentKey(tournamentId);
+  let watching = false;
+
+  try {
+    // Watch the document and index together. The index is normally changed
+    // alongside the document, but watching both also protects against a
+    // concurrent index repair or registration operation.
+    await transactionClient.watch([key, MATCH_INDEX_KEY]);
+    watching = true;
+
+    const data = await transactionClient.get(key);
+    if (!data) throw new TournamentNotFoundError(tournamentId);
+
+    const tournament = JSON.parse(data) as Tournament;
+    const bracketStarted = Boolean(
+      tournament.bracketStartedAt ||
+      (tournament.matches ?? []).some(match => match.round === 'bracket') ||
+      tournament.status === 'bracket' ||
+      tournament.status === 'completed'
+    );
+    if (bracketStarted || tournament.status !== 'roundRobin') {
+      throw new Error('Round format can only be changed during the round robin stage');
+    }
+
+    const rrMatches = (tournament.matches ?? []).filter(match => match.round === 'roundRobin');
+    const currentRound = rrMatches.length > 0
+      ? Math.max(...rrMatches.map(match => match.bracketRound ?? 1))
+      : 1;
+    if (!Number.isInteger(requestedRound) || requestedRound !== currentRound) {
+      throw new Error('Only the current round format can be changed');
+    }
+
+    const { addedMatches, removedMatchIds } = setRoundRobinFormat(tournament, format);
+    const indexEntries: Record<string, string> = {};
+    addedMatches.forEach(match => { indexEntries[match.id] = tournament.id; });
+
+    const transaction = transactionClient.multi();
+    transaction
+      .set(key, JSON.stringify(tournament))
+      .zAdd(ACTIVE_TOURNAMENTS_KEY, {
+        score: new Date(tournament.startDate).getTime(),
+        value: tournament.id,
+      });
+    if (removedMatchIds.length > 0) {
+      transaction.hDel(MATCH_INDEX_KEY, removedMatchIds);
+    }
+    if (Object.keys(indexEntries).length > 0) {
+      transaction.hSet(MATCH_INDEX_KEY, indexEntries);
+    }
+
+    try {
+      const results = await transaction.exec();
+      const commandError = results.find(result => result instanceof Error);
+      if (commandError instanceof Error) {
+        throw commandError;
+      }
+    } catch (error) {
+      if (error instanceof WatchError) {
+        throw new TournamentConflictError(tournamentId);
+      }
+      throw error;
+    }
+
+    watching = false;
+    return tournament;
+  } catch (error) {
+    if (error instanceof WatchError) {
+      throw new TournamentConflictError(tournamentId);
+    }
+    throw error;
+  } finally {
+    if (watching) {
+      await transactionClient.unwatch().catch(() => undefined);
+    }
+    await transactionClient.quit().catch(() => undefined);
   }
 }
 
@@ -477,9 +585,14 @@ export function recalculateMatchWinner(match: Match): Match {
   const p1Wins = match.games.filter(g => g.score1 > g.score2).length;
   const p2Wins = match.games.filter(g => g.score2 > g.score1).length;
   const requiredWins = Math.ceil(match.bestOf / 2);
-  if (p1Wins >= requiredWins) return { ...match, winnerId: match.player1Id };
-  if (p2Wins >= requiredWins) return { ...match, winnerId: match.player2Id };
-  return { ...match, winnerId: undefined };
+  if (isDoublesMatch(match)) {
+    if (p1Wins >= requiredWins) return { ...match, winnerId: undefined, winnerSide: 1 };
+    if (p2Wins >= requiredWins) return { ...match, winnerId: undefined, winnerSide: 2 };
+    return { ...match, winnerId: undefined, winnerSide: undefined };
+  }
+  if (p1Wins >= requiredWins) return { ...match, winnerId: match.player1Id, winnerSide: undefined };
+  if (p2Wins >= requiredWins) return { ...match, winnerId: match.player2Id, winnerSide: undefined };
+  return { ...match, winnerId: undefined, winnerSide: undefined };
 }
 
 // Persist a game to MongoDB for long-term history (non-fatal if it fails)
@@ -555,14 +668,25 @@ export async function addGameToMatch(
     if (!tournament?.matches) return null;
     const matchIdx = tournament.matches.findIndex(m => m.id === game.matchId);
     if (matchIdx === -1) return null;
+    const match = tournament.matches[matchIdx];
+    const [side1, side2] = getMatchSides(match);
+    const persistedGame = isDoublesMatch(match)
+      ? {
+          ...game,
+          player1Id: side1[0],
+          player2Id: side2[0],
+          side1PlayerIds: side1,
+          side2PlayerIds: side2,
+        }
+      : game;
     tournament.matches[matchIdx] = recalculateMatchWinner({
-      ...tournament.matches[matchIdx],
-      games: [...tournament.matches[matchIdx].games, game],
+      ...match,
+      games: [...match.games, persistedGame],
     });
     const finalMatch = await applyBracketCascade(tournament, tournament.matches[matchIdx]);
     await setTournament(tournament);
     // Persist game to MongoDB history
-    await persistGameHistory(game);
+    await persistGameHistory(persistedGame);
     return { match: finalMatch, tournament };
   } catch (error) {
     console.error('Error adding game to match:', error);
@@ -581,18 +705,29 @@ export async function updateGameInMatch(
     if (!tournament?.matches) return null;
     const matchIdx = tournament.matches.findIndex(m => m.id === updatedGame.matchId);
     if (matchIdx === -1) return null;
-    const games = tournament.matches[matchIdx].games.map(g =>
-      g.id === updatedGame.id ? updatedGame : g
+    const match = tournament.matches[matchIdx];
+    const [side1, side2] = getMatchSides(match);
+    const persistedGame = isDoublesMatch(match)
+      ? {
+          ...updatedGame,
+          player1Id: side1[0],
+          player2Id: side2[0],
+          side1PlayerIds: side1,
+          side2PlayerIds: side2,
+        }
+      : updatedGame;
+    const games = match.games.map(g =>
+      g.id === updatedGame.id ? persistedGame : g
     );
     if (!games.some(g => g.id === updatedGame.id)) return null;
     tournament.matches[matchIdx] = recalculateMatchWinner({
-      ...tournament.matches[matchIdx],
+      ...match,
       games,
     });
     const finalMatch = await applyBracketCascade(tournament, tournament.matches[matchIdx]);
     await setTournament(tournament);
     // Keep MongoDB history in sync
-    await persistGameHistory(updatedGame);
+    await persistGameHistory(persistedGame);
     return { match: finalMatch, tournament };
   } catch (error) {
     console.error('Error updating game in match:', error);

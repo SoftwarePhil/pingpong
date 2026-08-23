@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { MARKER_PLAYER_ID, Match, Player, Tournament } from '../../../types/pingpong';
 import { getPlayerAge } from '../../../lib/player';
 import { isPlayInWinnerPlaceholder } from '../../../lib/tournament';
+import { getMatchPlayerIds } from '../../../lib/matchFormat';
+import { getRoundRobinStandings } from '../../../lib/standings';
 
 interface LeaderboardProps {
   tournament: Tournament;
@@ -36,25 +38,21 @@ export default function Leaderboard({ tournament, players, getPlayerName, bracke
     ...tournament.players,
     ...(tournament.activePlayers ?? []),
     ...(tournament.playerRanking ?? []),
-    ...bracketMatches.flatMap(match => [match.player1Id, match.player2Id]),
+    ...bracketMatches.flatMap(getMatchPlayerIds),
   ])].filter(isRealPlayer);
 
   const standings = (() => {
     const stats: Record<string, { wins: number; losses: number; played: number; pointDiff: number }> = {};
     displayedPlayerIds.forEach(p => { stats[p] = { wins: 0, losses: 0, played: 0, pointDiff: 0 }; });
 
-    rrMatches.forEach(m => {
-      if (!m.winnerId || m.player2Id === 'BYE') return;
-      const loserId = m.player1Id === m.winnerId ? m.player2Id : m.player1Id;
-      if (stats[m.winnerId]) {
-        stats[m.winnerId].wins++;
-        stats[m.winnerId].played++;
-      }
-      if (stats[loserId]) { stats[loserId].losses++; stats[loserId].played++; }
-      m.games.forEach(g => {
-        if (stats[m.player1Id]) stats[m.player1Id].pointDiff += g.score1 - g.score2;
-        if (stats[m.player2Id]) stats[m.player2Id].pointDiff += g.score2 - g.score1;
-      });
+    const calculated = getRoundRobinStandings(displayedPlayerIds, rrMatches);
+    displayedPlayerIds.forEach(playerId => {
+      stats[playerId] = {
+        wins: calculated[playerId].wins,
+        losses: calculated[playerId].losses,
+        played: calculated[playerId].played,
+        pointDiff: calculated[playerId].pointDiff,
+      };
     });
 
     return displayedPlayerIds

@@ -7,6 +7,7 @@ import BracketView from '../../active/BracketView';
 import { Tournament, Player, Match } from '../../../../types/pingpong';
 import { PageHeader } from '../../../../components/PageHeader';
 import { getCompletedSemifinalMatches, isPlayInWinnerPlaceholder } from '../../../../lib/tournament';
+import { isMatchComplete } from '../../../../lib/matchFormat';
 
 export default function TournamentBracketPage() {
   const params = useParams<{ id: string }>();
@@ -69,7 +70,7 @@ export default function TournamentBracketPage() {
     if (!rounds.length) return;
     const currentRound = Math.max(...rounds);
     const current = bm.filter(m => m.bracketRound === currentRound);
-    if (!current.length || !current.every(m => m.winnerId)) return;
+     if (!current.length || !current.every(isMatchComplete)) return;
 
     await fetch('/api/tournaments', {
       method: 'PUT',
@@ -88,7 +89,7 @@ export default function TournamentBracketPage() {
     const res = await fetch('/api/games', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ player1Id: match.player1Id, player2Id: match.player2Id, score1, score2, matchId: match.id }),
+      body: JSON.stringify({ score1, score2, matchId: match.id }),
     });
     if (!res.ok) {
       const err = await res.json();

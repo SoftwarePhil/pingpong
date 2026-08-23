@@ -1,5 +1,6 @@
 import { Match, Tournament } from '../types/pingpong';
 import { isPlayInWinnerPlaceholder } from './tournament';
+import { getRoundRobinStandings } from './standings';
 
 export interface TournamentPointValues {
   firstPlacePoints: number;
@@ -71,35 +72,11 @@ function getLoser(match: Match): string | null {
 }
 
 function getRoundRobinRanking(tournament: Tournament): string[] {
-  const stats: Record<string, { wins: number; pointDiff: number; played: number }> = {};
   const playerIds = tournament.players.filter(isPlayerId);
-  playerIds.forEach(playerId => {
-    stats[playerId] = { wins: 0, pointDiff: 0, played: 0 };
-  });
-
-  (tournament.matches ?? [])
-    .filter(match => match.round === 'roundRobin')
-    .forEach(match => {
-      if (
-        match.player2Id === 'BYE' ||
-        !isPlayerId(match.player1Id) ||
-        !isPlayerId(match.player2Id)
-      ) {
-        return;
-      }
-
-      if (match.winnerId && stats[match.winnerId]) {
-        stats[match.winnerId].wins++;
-        stats[match.winnerId].played++;
-        const loserId = getOpponent(match, match.winnerId);
-        if (loserId && stats[loserId]) stats[loserId].played++;
-      }
-
-      match.games.forEach(game => {
-        if (stats[game.player1Id]) stats[game.player1Id].pointDiff += game.score1 - game.score2;
-        if (stats[game.player2Id]) stats[game.player2Id].pointDiff += game.score2 - game.score1;
-      });
-    });
+  const stats = getRoundRobinStandings(
+    playerIds,
+    (tournament.matches ?? []).filter(match => match.round === 'roundRobin'),
+  );
 
   return playerIds.sort((a, b) => {
     if (stats[b].wins !== stats[a].wins) return stats[b].wins - stats[a].wins;

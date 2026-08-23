@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { Player, Game } from '../types/pingpong';
+import { getGamePlayerIds } from '../lib/matchFormat';
 
 interface PlayerSearchSelectProps {
   players: Player[];
@@ -24,8 +25,9 @@ export function PlayerSearchSelect({ players, games, selected, onChange, suggest
   const gamesPlayedById = useMemo(() => {
     const counts: Record<string, number> = {};
     games.forEach(g => {
-      if (g.player1Id) counts[g.player1Id] = (counts[g.player1Id] ?? 0) + 1;
-      if (g.player2Id) counts[g.player2Id] = (counts[g.player2Id] ?? 0) + 1;
+      getGamePlayerIds(g).forEach(playerId => {
+        counts[playerId] = (counts[playerId] ?? 0) + 1;
+      });
     });
     return counts;
   }, [games]);

@@ -1,5 +1,14 @@
-import { Tournament, Match } from '../types/pingpong';
+import { RoundRobinFormat, Tournament, Match } from '../types/pingpong';
 import { orderPlayersForSwissPairing } from './swissPairing';
+import {
+  getMatchPlayerIds,
+  getRoundRobinFormat,
+  isDoublesMatch,
+  isMatchComplete,
+  isByeMatch,
+  isValidDoublesRoster,
+} from './matchFormat';
+import { getRoundRobinStandings, rankPlayersByRoundRobinStandings } from './standings';
 
 /** Placeholder player slot used when a downstream bracket match's participant
  * is invalidated by an upstream correction and no replacement winner is yet
@@ -197,6 +206,7 @@ export function cascadeRoundRobinPlayerSwap(
   const target = matches.find(m => m.id === matchId);
   if (!target) throw new Error(`Match ${matchId} not found`);
   if (target.round !== 'roundRobin') throw new Error('Players can only be changed in round robin matches');
+  if (isDoublesMatch(target)) throw new Error('Doubles teams cannot be changed after the round is generated');
   if (target.games.length > 0) throw new Error('Cannot change players after games have been played');
   if (newPlayer1Id === newPlayer2Id) throw new Error('Player 1 and Player 2 must be different');
 
@@ -239,7 +249,7 @@ export function cascadeRoundRobinPlayerSwap(
  * for player-swap cascades.
  */
 function isNonByeCompletedMatch(m: Match): boolean {
-  return m.games.length > 0 || (!!m.winnerId && m.player1Id !== 'BYE' && m.player2Id !== 'BYE');
+  return m.games.length > 0 || (isMatchComplete(m) && m.player1Id !== 'BYE' && m.player2Id !== 'BYE');
 }
 
 /**
@@ -385,9 +395,43 @@ export function cascadeBracketPlayerSwap(
 }
 
 // Helper function to create a single round of round robin pairings
-export function createRoundRobinPairings(players: string[], tournamentId: string, bracketRound: number = 1, bestOf: number = 1): Match[] {
+export function createRoundRobinPairings(
+  players: string[],
+  tournamentId: string,
+  bracketRound: number = 1,
+  bestOf: number = 1,
+  format: RoundRobinFormat = 'singles',
+): Match[] {
   const newMatches: Match[] = [];
   const shuffled = [...players];
+
+  if (format === 'doubles') {
+    if (shuffled.length === 0) return [];
+    if (shuffled.length < 4 || shuffled.length % 4 !== 0 || new Set(shuffled).size !== shuffled.length) {
+      throw new Error('Doubles round robin requires at least four active players in groups of four');
+    }
+
+    for (let i = 0; i < shuffled.length; i += 4) {
+      const side1 = [shuffled[i], shuffled[i + 3]];
+      const side2 = [shuffled[i + 1], shuffled[i + 2]];
+      newMatches.push({
+        id: Date.now().toString() + Math.random(),
+        tournamentId,
+        createdAt: new Date().toISOString(),
+        // Keep deterministic representative IDs for legacy consumers. The
+        // side arrays are authoritative for doubles matches.
+        player1Id: side1[0],
+        player2Id: side2[0],
+        side1PlayerIds: side1,
+        side2PlayerIds: side2,
+        round: 'roundRobin',
+        bracketRound,
+        bestOf,
+        games: [],
+      });
+    }
+    return newMatches;
+  }
 
   // If odd number of players, the last one gets a bye
   let byePlayer: string | null = null;
@@ -449,7 +493,7 @@ export function advanceBracketRound(tournament: Tournament): Match[] {
   const currentRoundMatches = bracketMatches.filter(m => (m.bracketRound ?? 1) === currentRound);
 
   // Check if all current round matches are completed
-  const incompleteMatches = currentRoundMatches.filter(m => !m.winnerId);
+  const incompleteMatches = currentRoundMatches.filter(m => !isMatchComplete(m));
   if (incompleteMatches.length > 0) {
     return []; // Current round not complete
   }
@@ -457,7 +501,9 @@ export function advanceBracketRound(tournament: Tournament): Match[] {
   // Get winners in positional order (preserves the bracket structure encoded at R1 creation).
   // currentRoundMatches are already stored in display order, so winners[i] is the winner
   // of the i-th match. Pairs of adjacent matches (0+1, 2+3, …) feed into the next round.
-  const winners = currentRoundMatches.map(m => m.winnerId).filter(id => id) as string[];
+  const winners = currentRoundMatches
+    .map(m => m.winnerId)
+    .filter((id): id is string => Boolean(id));
 
   if (winners.length < 2) {
     const thirdPlaceMatch = (tournament.matches ?? []).find(m =>
@@ -671,30 +717,10 @@ export function createBracketMatches(tournament: Tournament, createMainBracket =
   // Get round robin matches to determine rankings
   const roundRobinMatches = (tournament.matches ?? []).filter(m => m.round === 'roundRobin');
 
-  // Count wins and point differentials for each player (all players, including inactive, for historical accuracy)
-  const playerWins: { [key: string]: number } = {};
-  const playerPointDiff: { [key: string]: number } = {};
-  const playerGamesPlayed: { [key: string]: number } = {};
-  tournament.players.forEach(playerId => {
-    playerWins[playerId] = 0;
-    playerPointDiff[playerId] = 0;
-    playerGamesPlayed[playerId] = 0;
-  });
-
-  roundRobinMatches.forEach(match => {
-    if (match.winnerId) {
-      playerWins[match.winnerId] = (playerWins[match.winnerId] || 0) + 1;
-    }
-    if (match.player2Id !== 'BYE') {
-      match.games.forEach(g => {
-        playerGamesPlayed[match.player1Id] = (playerGamesPlayed[match.player1Id] || 0) + 1;
-        playerGamesPlayed[match.player2Id] = (playerGamesPlayed[match.player2Id] || 0) + 1;
-        playerPointDiff[match.player1Id] = (playerPointDiff[match.player1Id] || 0) + g.score1 - g.score2;
-        playerPointDiff[match.player2Id] = (playerPointDiff[match.player2Id] || 0) + g.score2 - g.score1;
-      });
-    }
-  });
-
+  // Count individual results so doubles rounds seed the existing singles bracket
+  // using the same standings shown in the round-robin leaderboard.
+  const standings = rankPlayersByRoundRobinStandings(tournament.players, roundRobinMatches);
+  const standingStats = getRoundRobinStandings(tournament.players, roundRobinMatches);
   // Only rank active players for the bracket
   const activePlayerPool = tournament.activePlayers ?? tournament.players;
   const hasAnyRoundRobinGames = roundRobinMatches.some(match => match.games.length > 0);
@@ -702,18 +728,9 @@ export function createBracketMatches(tournament: Tournament, createMainBracket =
     ? shuffle(activePlayerPool)
     : [
         ...[...activePlayerPool]
-          .filter(playerId => (playerGamesPlayed[playerId] || 0) > 0)
-          .sort((a, b) => {
-            const winsA = playerWins[a] || 0;
-            const winsB = playerWins[b] || 0;
-            if (winsA !== winsB) return winsB - winsA;
-            // Tiebreaker: point differential (more positive = ranked higher)
-            const diffA = playerPointDiff[a] || 0;
-            const diffB = playerPointDiff[b] || 0;
-            if (diffA !== diffB) return diffB - diffA;
-            return Math.random() - 0.5;
-          }),
-        ...shuffle(activePlayerPool.filter(playerId => (playerGamesPlayed[playerId] || 0) === 0)),
+          .filter(playerId => standingStats[playerId]?.gamesPlayed > 0)
+          .sort((a, b) => standings.indexOf(a) - standings.indexOf(b)),
+        ...shuffle(activePlayerPool.filter(playerId => (standingStats[playerId]?.gamesPlayed ?? 0) === 0)),
       ];
 
   const bracketPlayers = rankedPlayers;
@@ -775,29 +792,18 @@ export function createBracketMatches(tournament: Tournament, createMainBracket =
  * Shared by the 'top-vs-top' pairing strategy in both `advanceRoundRobinRound`
  * and `resyncRoundRobinMatches`.
  */
-function rankPlayersByStandings(players: string[], matches: Match[]): string[] {
-  const wins: Record<string, number> = {};
-  const pointDiff: Record<string, number> = {};
-  players.forEach(p => { wins[p] = 0; pointDiff[p] = 0; });
-  matches.forEach(m => {
-    if (m.winnerId && players.includes(m.winnerId)) {
-      wins[m.winnerId] = (wins[m.winnerId] || 0) + 1;
-    }
-    if (m.player2Id !== 'BYE') {
-      m.games.forEach(g => {
-        if (players.includes(m.player1Id)) {
-          pointDiff[m.player1Id] = (pointDiff[m.player1Id] || 0) + g.score1 - g.score2;
-        }
-        if (players.includes(m.player2Id)) {
-          pointDiff[m.player2Id] = (pointDiff[m.player2Id] || 0) + g.score2 - g.score1;
-        }
-      });
-    }
-  });
-  return [...players].sort((a, b) => {
-    if (wins[b] !== wins[a]) return wins[b] - wins[a];
-    return (pointDiff[b] || 0) - (pointDiff[a] || 0);
-  });
+export function orderPlayersForRoundRobin(
+  players: string[],
+  matches: Match[],
+  strategy: Tournament['rrPairingStrategy'] = 'random',
+): string[] {
+  if (strategy === 'top-vs-top') {
+    return rankPlayersByRoundRobinStandings(players, matches);
+  }
+  if (strategy === 'swiss') {
+    return orderPlayersForSwissPairing(players, matches);
+  }
+  return [...players].sort(() => Math.random() - 0.5);
 }
 
 // Function to advance to next round robin round
@@ -814,20 +820,71 @@ export function advanceRoundRobinRound(tournament: Tournament): Match[] {
 
   const activePlayers = tournament.activePlayers ?? tournament.players;
   const strategy = tournament.rrPairingStrategy ?? 'random';
+  const orderedPlayers = orderPlayersForRoundRobin(activePlayers, tournamentMatches, strategy);
+  return createRoundRobinPairings(
+    orderedPlayers,
+    tournament.id,
+    nextRound,
+    tournament.rrBestOf ?? 1,
+    getRoundRobinFormat(tournament, nextRound),
+  );
+}
 
-  if (strategy === 'top-vs-top') {
-    const sortedPlayers = rankPlayersByStandings(activePlayers, tournamentMatches);
-    return createRoundRobinPairings(sortedPlayers, tournament.id, nextRound, tournament.rrBestOf ?? 1);
+/** Replaces the unplayed current round with pairings in the requested format. */
+export function setRoundRobinFormat(
+  tournament: Tournament,
+  format: RoundRobinFormat,
+): { addedMatches: Match[]; removedMatchIds: string[] } {
+  const rrMatches = (tournament.matches ?? []).filter(match => match.round === 'roundRobin');
+  const currentRound = rrMatches.length > 0
+    ? Math.max(...rrMatches.map(match => match.bracketRound ?? 1))
+    : 1;
+  const currentRoundMatches = rrMatches.filter(match => (match.bracketRound ?? 1) === currentRound);
+
+  if (currentRoundMatches.length === 0) {
+    throw new Error('No current round robin matches found');
   }
 
-  if (strategy === 'swiss') {
-    const orderedPlayers = orderPlayersForSwissPairing(activePlayers, tournamentMatches);
-    return createRoundRobinPairings(orderedPlayers, tournament.id, nextRound, tournament.rrBestOf ?? 1);
+  if (currentRoundMatches.some(match => match.games.length > 0)) {
+    throw new Error('Cannot change the round format after a game has been played');
   }
 
-  // Random strategy (default)
-  const shuffledPlayers = [...activePlayers].sort(() => Math.random() - 0.5);
-  return createRoundRobinPairings(shuffledPlayers, tournament.id, nextRound, tournament.rrBestOf ?? 1);
+  const currentFormat = getRoundRobinFormat(tournament, currentRound);
+  if (currentFormat === format) {
+    throw new Error(`Round ${currentRound} is already ${format}`);
+  }
+
+  const activePlayers = tournament.activePlayers ?? tournament.players;
+  if (format === 'doubles' && !isValidDoublesRoster(activePlayers)) {
+    throw new Error('Doubles round robin requires at least four active players in groups of four');
+  }
+
+  const orderedPlayers = orderPlayersForRoundRobin(
+    activePlayers,
+    rrMatches.filter(match => (match.bracketRound ?? 1) !== currentRound),
+    tournament.rrPairingStrategy ?? 'random',
+  );
+  const addedMatches = createRoundRobinPairings(
+    orderedPlayers,
+    tournament.id,
+    currentRound,
+    tournament.rrBestOf ?? 1,
+    format,
+  );
+  const removedMatchIds = currentRoundMatches.map(match => match.id);
+  const currentIds = new Set(removedMatchIds);
+
+  tournament.matches = [
+    ...(tournament.matches ?? []).filter(match => !currentIds.has(match.id)),
+    ...addedMatches,
+  ];
+
+  const formats = { ...(tournament.roundRobinFormats ?? {}) };
+  if (format === 'singles') delete formats[currentRound];
+  else formats[currentRound] = format;
+  tournament.roundRobinFormats = Object.keys(formats).length > 0 ? formats : undefined;
+
+  return { addedMatches, removedMatchIds };
 }
 
 export interface RoundRobinResyncResult {
@@ -893,9 +950,13 @@ export function resyncRoundRobinMatches(tournament: Tournament): RoundRobinResyn
 
   // "Played for real": has a recorded game, or a genuine (non-BYE) winner.
   const isLocked = (m: Match) =>
-    m.games.length > 0 || (!!m.winnerId && m.player1Id !== 'BYE' && m.player2Id !== 'BYE');
+    m.games.length > 0 || (isMatchComplete(m) && !isByeMatch(m));
 
   const activePlayers = tournament.activePlayers ?? tournament.players;
+  const currentFormat = getRoundRobinFormat(tournament, currentRound);
+  if (currentFormat === 'doubles' && !isValidDoublesRoster(activePlayers)) {
+    throw new Error('A 2v2 round requires at least four active players in groups of four');
+  }
   const activeSet = new Set(activePlayers);
 
   // Defensive cleanup of earlier rounds: an unplayed match left behind for a
@@ -904,15 +965,16 @@ export function resyncRoundRobinMatches(tournament: Tournament): RoundRobinResyn
   const keptOtherRoundMatches: Match[] = [];
   const staleOtherRoundMatchIds: string[] = [];
   for (const m of otherRoundMatches) {
+    const playerIds = getMatchPlayerIds(m);
     const stillValid = isLocked(m) ||
-      (activeSet.has(m.player1Id) && (m.player2Id === 'BYE' || activeSet.has(m.player2Id)));
+      playerIds.every(playerId => playerId === 'BYE' || activeSet.has(playerId));
     if (stillValid) keptOtherRoundMatches.push(m);
     else staleOtherRoundMatchIds.push(m.id);
   }
 
   const lockedMatches   = currentRoundMatches.filter(isLocked);
   const unlockedMatches = currentRoundMatches.filter(m => !isLocked(m));
-  const lockedPlayerIds = new Set(lockedMatches.flatMap(m => [m.player1Id, m.player2Id]));
+  const lockedPlayerIds = new Set(lockedMatches.flatMap(getMatchPlayerIds));
 
   // Everyone active who doesn't already have a real result this round needs
   // to be (re)paired: brand-new players, reactivated players, players whose
@@ -923,13 +985,14 @@ export function resyncRoundRobinMatches(tournament: Tournament): RoundRobinResyn
 
   const strategy = tournament.rrPairingStrategy ?? 'random';
   const historyMatches = [...keptOtherRoundMatches, ...lockedMatches];
-  const orderedPool = strategy === 'top-vs-top'
-    ? rankPlayersByStandings(pool, rrMatches)
-    : strategy === 'swiss'
-      ? orderPlayersForSwissPairing(pool, historyMatches)
-      : [...pool].sort(() => Math.random() - 0.5);
-
-  const addedMatches = createRoundRobinPairings(orderedPool, tournament.id, currentRound, tournament.rrBestOf ?? 1);
+  const orderedPool = orderPlayersForRoundRobin(pool, historyMatches, strategy);
+  const addedMatches = createRoundRobinPairings(
+    orderedPool,
+    tournament.id,
+    currentRound,
+    tournament.rrBestOf ?? 1,
+    getRoundRobinFormat(tournament, currentRound),
+  );
 
   const removedMatchIds = [...unlockedMatches.map(m => m.id), ...staleOtherRoundMatchIds];
   const matches = [...nonRRMatches, ...keptOtherRoundMatches, ...lockedMatches, ...addedMatches];

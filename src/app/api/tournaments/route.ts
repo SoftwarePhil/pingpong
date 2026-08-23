@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Tournament, Match, BracketConfig } from '../../../types/pingpong';
-import { getTournaments, saveData, setTournament, getTournament, deleteTournament, registerMatchesIndex, unregisterMatchesIndex, syncTournamentPlayers } from '../../../data/data';
+import { Tournament, Match, BracketConfig, RoundRobinFormat } from '../../../types/pingpong';
+import { getTournaments, saveData, setTournament, getTournament, deleteTournament, registerMatchesIndex, unregisterMatchesIndex, syncTournamentPlayers, setRoundRobinFormatAtomically, TournamentConflictError, TournamentNotFoundError } from '../../../data/data';
 import { createRoundRobinPairings, advanceBracketRound, createBracketMatches, advanceRoundRobinRound, resyncRoundRobinMatches, createThirdPlaceMatch } from '../../../lib/tournament';
 import { requireAdmin } from '../../../lib/auth';
+import { isMatchComplete } from '../../../lib/matchFormat';
 
 export async function GET() {
   try {
@@ -73,13 +74,42 @@ export async function PUT(request: NextRequest) {
     const { id, status, action, rrPairingStrategy }: {
       id: string;
       status?: 'roundRobin' | 'bracket' | 'completed';
-      action?: 'advanceRound' | 'addRoundRobinRound' | 'startBracket' | 'addThirdPlaceMatch';
+      action?: 'advanceRound' | 'addRoundRobinRound' | 'startBracket' | 'addThirdPlaceMatch' | 'setRoundRobinFormat';
       rrPairingStrategy?: 'random' | 'top-vs-top' | 'swiss';
     } = body;
     // Note: adding/removing players is handled by its own atomic endpoint —
     // PATCH /api/tournaments/[id]/players — not by this PUT handler. See
     // that route for the diff-based { add, remove } roster operation, which
     // also resyncs round-robin matches in the same atomic pass.
+
+    if (action === 'setRoundRobinFormat') {
+      const requestedRound = body.round;
+      const format = body.format as RoundRobinFormat;
+
+      if (!Number.isInteger(requestedRound)) {
+        return NextResponse.json({ error: 'Only the current round format can be changed' }, { status: 400 });
+      }
+      if (format !== 'singles' && format !== 'doubles') {
+        return NextResponse.json({ error: 'Invalid round robin format' }, { status: 400 });
+      }
+
+      try {
+        const updatedTournament = await setRoundRobinFormatAtomically(id, requestedRound, format);
+        await saveData();
+        return NextResponse.json(updatedTournament);
+      } catch (error) {
+        if (error instanceof TournamentNotFoundError) {
+          return NextResponse.json({ error: 'Tournament not found' }, { status: 404 });
+        }
+        if (error instanceof TournamentConflictError) {
+          return NextResponse.json({ error: 'Tournament changed while updating the round. Please try again.' }, { status: 409 });
+        }
+        if (error instanceof Error) {
+          return NextResponse.json({ error: error.message }, { status: 400 });
+        }
+        throw error;
+      }
+    }
 
     const tournament = await getTournament(id);
 
@@ -150,7 +180,7 @@ if (action === 'advanceRound') {
           ? Math.max(...rrMatchesForCheck.map(m => m.bracketRound ?? 1))
           : 1;
         const incompleteCurrentRoundMatches = rrMatchesForCheck.filter(m =>
-          (m.bracketRound ?? 1) === currentRRRound && !m.winnerId
+          (m.bracketRound ?? 1) === currentRRRound && !isMatchComplete(m)
         );
 
         if (incompleteCurrentRoundMatches.length > 0) {
@@ -186,7 +216,7 @@ if (action === 'advanceRound') {
         const currentBracketMatches = standardBracketMatches.filter(m =>
           (m.bracketRound ?? 1) === currentBracketRound
         );
-        if (!currentBracketMatches.length || !currentBracketMatches.every(m => m.winnerId)) {
+         if (!currentBracketMatches.length || !currentBracketMatches.every(isMatchComplete)) {
           return NextResponse.json({ error: 'Current bracket round is not complete' }, { status: 400 });
         }
 
@@ -195,7 +225,7 @@ if (action === 'advanceRound') {
           (tournament.matches ?? []).some(m =>
             m.isThirdPlace &&
             (m.bracketRound ?? 0) === currentBracketRound &&
-            !m.winnerId
+            !isMatchComplete(m)
           );
         if (newBracketMatches.length === 0 && (tournament.status as string) !== 'completed' && !thirdPlacePending) {
           return NextResponse.json({ error: 'Cannot advance bracket round' }, { status: 400 });
@@ -222,15 +252,15 @@ if (action === 'advanceRound') {
         return NextResponse.json({ error: 'No round robin matches found' }, { status: 400 });
       }
       const firstRound = rrMatches.filter(m => (m.bracketRound ?? 1) === 1);
-      const incompleteFirstRound = firstRound.filter(m => !m.winnerId);
+       const incompleteFirstRound = firstRound.filter(m => !isMatchComplete(m));
       if (incompleteFirstRound.length > 0) {
         return NextResponse.json({ error: 'Finish round robin round 1 before starting bracket' }, { status: 400 });
       }
 
       const existingBracketMatches = (tournament.matches ?? []).filter(m => m.round === 'bracket');
-      const hasPlayedBracket = existingBracketMatches.some(m =>
-        m.games.length > 0 || (!!m.winnerId && m.player1Id !== 'BYE' && m.player2Id !== 'BYE')
-      );
+       const hasPlayedBracket = existingBracketMatches.some(m =>
+         m.games.length > 0 || (isMatchComplete(m) && m.player1Id !== 'BYE' && m.player2Id !== 'BYE')
+       );
       if (hasPlayedBracket) {
         return NextResponse.json({ error: 'Cannot rebuild bracket after bracket games have been played' }, { status: 400 });
       }

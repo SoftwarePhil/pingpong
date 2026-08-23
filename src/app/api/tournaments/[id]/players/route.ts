@@ -10,6 +10,7 @@ import {
 } from '../../../../../data/data';
 import { resyncRoundRobinMatches } from '../../../../../lib/tournament';
 import { requireAdmin } from '../../../../../lib/auth';
+import { getRoundRobinFormat, isValidDoublesRoster } from '../../../../../lib/matchFormat';
 
 /** Validates and de-duplicates a request-body field into a clean string[] (ignores non-string entries). */
 function toUniqueStringArray(value: unknown): string[] {
@@ -89,6 +90,26 @@ export async function PATCH(
     }
 
     const currentActive = tournament.activePlayers ?? tournament.players;
+    const currentRRMatches = (tournament.matches ?? []).filter(match => match.round === 'roundRobin');
+    const currentRound = currentRRMatches.length > 0
+      ? Math.max(...currentRRMatches.map(match => match.bracketRound ?? 1))
+      : 1;
+    const currentRoundMatches = currentRRMatches.filter(match => (match.bracketRound ?? 1) === currentRound);
+    const requestedActive = [...new Set([...currentActive, ...add])].filter(pid => !remove.includes(pid));
+    if (getRoundRobinFormat(tournament, currentRound) === 'doubles') {
+      if (currentRoundMatches.some(match => match.games.length > 0)) {
+        return NextResponse.json(
+          { error: 'Cannot change players after a doubles round has started' },
+          { status: 400 },
+        );
+      }
+      if (!isValidDoublesRoster(requestedActive)) {
+        return NextResponse.json(
+          { error: 'A 2v2 round requires at least four active players in groups of four' },
+          { status: 400 },
+        );
+      }
+    }
     tournament.players = [...new Set([...tournament.players, ...add])];
     tournament.activePlayers = [...new Set([...currentActive, ...add])].filter(
       pid => !remove.includes(pid)

@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Game, Match } from '../../../types/pingpong';
-import { getAllGames, addGameToMatch, setTournament, registerMatchesIndex, unregisterMatchesIndex, getMatch, getTournament } from '../../../data/data';
+import { Game } from '../../../types/pingpong';
+import { getAllGames, addGameToMatch, setTournament, getMatch, getTournament } from '../../../data/data';
 import { validateScore } from '../../../lib/scoring';
 import { replacePlayInWinnerSlot } from '../../../lib/tournament';
 import { requireAdmin } from '../../../lib/auth';
+import { getMatchSides, isDoublesMatch } from '../../../lib/matchFormat';
 
 export async function GET() {
   try {
@@ -20,9 +21,12 @@ export async function POST(request: NextRequest) {
   if (denied) return denied;
   try {
     const body = await request.json();
-    const { player1Id, player2Id, score1, score2, matchId }: { player1Id: string; player2Id: string; score1: number; score2: number; matchId?: string } = body;
-    if (!player1Id || !player2Id || score1 === undefined || score2 === undefined) {
-      return NextResponse.json({ error: 'All fields are required' }, { status: 400 });
+    const { player1Id, player2Id, score1, score2, matchId }: { player1Id?: string; player2Id?: string; score1?: number; score2?: number; matchId?: string } = body;
+    if (score1 === undefined || score2 === undefined || (!matchId && (!player1Id || !player2Id))) {
+      return NextResponse.json(
+        { error: 'score1 and score2 are required, plus either matchId or both player1Id and player2Id' },
+        { status: 400 },
+      );
     }
 
     // Validate ping pong scoring rules (deuce logic)
@@ -31,16 +35,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: scoreError }, { status: 400 });
     }
 
-    const newGame: Game = {
-      id: Date.now().toString(),
-      matchId,
-      player1Id,
-      player2Id,
-      score1,
-      score2,
-      date: new Date().toISOString(),
-    };
-
+    let newGame: Game;
     if (matchId) {
       const existingMatch = await getMatch(matchId);
       if (!existingMatch) {
@@ -58,6 +53,23 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
+
+      const [side1, side2] = getMatchSides(existingMatch);
+      newGame = {
+        id: Date.now().toString(),
+        matchId,
+        // These required legacy fields remain deterministic compatibility
+        // references; side arrays are authoritative for doubles.
+        player1Id: side1[0],
+        player2Id: side2[0],
+        ...(isDoublesMatch(existingMatch) && {
+          side1PlayerIds: side1,
+          side2PlayerIds: side2,
+        }),
+        score1,
+        score2,
+        date: new Date().toISOString(),
+      };
 
       const result = await addGameToMatch(newGame);
       if (!result) {
@@ -79,6 +91,15 @@ export async function POST(request: NextRequest) {
           await setTournament(tournament);
         }
       }
+    } else {
+      newGame = {
+        id: Date.now().toString(),
+        player1Id: player1Id!,
+        player2Id: player2Id!,
+        score1,
+        score2,
+        date: new Date().toISOString(),
+      };
     }
 
     return NextResponse.json(newGame, { status: 201 });

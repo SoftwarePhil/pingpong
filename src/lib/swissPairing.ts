@@ -1,4 +1,6 @@
 import { Match } from '../types/pingpong';
+import { getMatchSides, isByeMatch } from './matchFormat';
+import { getRoundRobinStandings } from './standings';
 
 const NON_PLAYER_PAIRING_IDS = new Set(['BYE', 'MARKER', 'TBD']);
 
@@ -7,20 +9,11 @@ function isPairablePlayerId(playerId: string): boolean {
 }
 
 function getStandings(players: string[], matches: Match[]): Record<string, { wins: number; pointDiff: number }> {
-  const stats: Record<string, { wins: number; pointDiff: number }> = {};
-  players.forEach(p => { stats[p] = { wins: 0, pointDiff: 0 }; });
-  matches.forEach(m => {
-    if (m.winnerId && stats[m.winnerId]) {
-      stats[m.winnerId].wins++;
-    }
-    if (m.player2Id !== 'BYE') {
-      m.games.forEach(g => {
-        if (stats[g.player1Id]) stats[g.player1Id].pointDiff += g.score1 - g.score2;
-        if (stats[g.player2Id]) stats[g.player2Id].pointDiff += g.score2 - g.score1;
-      });
-    }
-  });
-  return stats;
+  const standings = getRoundRobinStandings(players, matches);
+  return Object.fromEntries(players.map(playerId => [playerId, {
+    wins: standings[playerId].wins,
+    pointDiff: standings[playerId].pointDiff,
+  }]));
 }
 
 function rankPlayersByStandings(players: string[], matches: Match[]): string[] {
@@ -31,7 +24,7 @@ function rankPlayersByStandings(players: string[], matches: Match[]): string[] {
   });
 }
 
-/** Prior real opponents from RR matches (excludes byes/markers). */
+/** Prior scheduled opponents from RR matches (excludes byes/markers). */
 export function getRoundRobinOpponents(matches: Match[]): Map<string, Set<string>> {
   const opponents = new Map<string, Set<string>>();
   const add = (a: string, b: string) => {
@@ -40,11 +33,14 @@ export function getRoundRobinOpponents(matches: Match[]): Map<string, Set<string
   };
   matches.forEach(m => {
     if (m.round !== 'roundRobin') return;
-    const playedForReal = m.games.length > 0 || (!!m.winnerId && m.player1Id !== 'BYE' && m.player2Id !== 'BYE');
-    if (!playedForReal) return;
-    if (!isPairablePlayerId(m.player1Id) || !isPairablePlayerId(m.player2Id)) return;
-    add(m.player1Id, m.player2Id);
-    add(m.player2Id, m.player1Id);
+    const [side1, side2] = getMatchSides(m);
+    const players1 = side1.filter(isPairablePlayerId);
+    const players2 = side2.filter(isPairablePlayerId);
+    if (players1.length === 0 || players2.length === 0 || isByeMatch(m)) return;
+    players1.forEach(player1 => players2.forEach(player2 => {
+      add(player1, player2);
+      add(player2, player1);
+    }));
   });
   return opponents;
 }
@@ -53,8 +49,9 @@ export function getPlayersWithBye(matches: Match[]): Set<string> {
   const byes = new Set<string>();
   matches.forEach(m => {
     if (m.round !== 'roundRobin') return;
-    if (m.player2Id === 'BYE' && isPairablePlayerId(m.player1Id)) byes.add(m.player1Id);
-    if (m.player1Id === 'BYE' && isPairablePlayerId(m.player2Id)) byes.add(m.player2Id);
+    const [side1, side2] = getMatchSides(m);
+    if (side1.includes('BYE')) side2.filter(isPairablePlayerId).forEach(playerId => byes.add(playerId));
+    if (side2.includes('BYE')) side1.filter(isPairablePlayerId).forEach(playerId => byes.add(playerId));
   });
   return byes;
 }
