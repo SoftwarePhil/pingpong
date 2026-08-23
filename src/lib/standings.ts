@@ -64,7 +64,7 @@ export function getIndividualStandings(
       const winnerPlayers = winningSide === 1 ? side1Players : side2Players;
       const loserPlayers = winningSide === 1 ? side2Players : side1Players;
 
-      if (hasMarker) {
+      if (hasMarker && winnerPlayers.length > 0) {
         winnerPlayers.forEach(playerId => {
           standings[playerId].wins++;
           standings[playerId].played++;
