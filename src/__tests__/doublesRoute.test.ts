@@ -11,6 +11,9 @@ jest.mock('../data/data', () => ({
   registerMatchesIndex: jest.fn(),
   unregisterMatchesIndex: jest.fn(),
   syncTournamentPlayers: jest.fn(),
+  setRoundRobinFormatAtomically: jest.fn(),
+  TournamentConflictError: class TournamentConflictError extends Error {},
+  TournamentNotFoundError: class TournamentNotFoundError extends Error {},
 }));
 
 jest.mock('../lib/tournament', () => ({
@@ -20,7 +23,6 @@ jest.mock('../lib/tournament', () => ({
   advanceRoundRobinRound: jest.fn(),
   resyncRoundRobinMatches: jest.fn(),
   createThirdPlaceMatch: jest.fn(),
-  setRoundRobinFormat: jest.fn(),
 }));
 
 import {
@@ -29,15 +31,16 @@ import {
   saveData,
   registerMatchesIndex,
   unregisterMatchesIndex,
+  setRoundRobinFormatAtomically,
+  TournamentConflictError,
 } from '../data/data';
-import { setRoundRobinFormat } from '../lib/tournament';
 
 const mockedGetTournament = getTournament as jest.MockedFunction<typeof getTournament>;
 const mockedSetTournament = setTournament as jest.MockedFunction<typeof setTournament>;
 const mockedSaveData = saveData as jest.MockedFunction<typeof saveData>;
 const mockedRegisterMatchesIndex = registerMatchesIndex as jest.MockedFunction<typeof registerMatchesIndex>;
 const mockedUnregisterMatchesIndex = unregisterMatchesIndex as jest.MockedFunction<typeof unregisterMatchesIndex>;
-const mockedSetFormat = setRoundRobinFormat as jest.MockedFunction<typeof setRoundRobinFormat>;
+const mockedSetFormat = setRoundRobinFormatAtomically as jest.MockedFunction<typeof setRoundRobinFormatAtomically>;
 
 function makeMatch(id: string, overrides: Partial<Match> = {}): Match {
   return {
@@ -92,17 +95,13 @@ describe('setRoundRobinFormat tournament action', () => {
   });
 
   it('replaces current-round matches and updates the match index', async () => {
-    const tournament = makeTournament();
+    const updatedTournament = makeTournament({ roundRobinFormats: { 1: 'doubles' } });
     const added = [makeMatch('new', {
       side1PlayerIds: ['p1', 'p4'],
       side2PlayerIds: ['p2', 'p3'],
     })];
-    mockedGetTournament.mockResolvedValue(tournament);
-    mockedSetFormat.mockImplementation((current, format) => {
-      current.roundRobinFormats = { 1: format };
-      current.matches = added;
-      return { addedMatches: added, removedMatchIds: ['old'] };
-    });
+    updatedTournament.matches = added;
+    mockedSetFormat.mockResolvedValue(updatedTournament);
 
     const response = await callPut({
       id: 't1',
@@ -113,20 +112,16 @@ describe('setRoundRobinFormat tournament action', () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(mockedSetFormat).toHaveBeenCalledWith(tournament, 'doubles');
-    expect(mockedUnregisterMatchesIndex).toHaveBeenCalledWith(['old']);
-    expect(mockedRegisterMatchesIndex).toHaveBeenCalledWith(added);
-    expect(mockedSetTournament).toHaveBeenCalledWith(tournament);
+    expect(mockedSetFormat).toHaveBeenCalledWith('t1', 1, 'doubles');
+    expect(mockedUnregisterMatchesIndex).not.toHaveBeenCalled();
+    expect(mockedRegisterMatchesIndex).not.toHaveBeenCalled();
+    expect(mockedSetTournament).not.toHaveBeenCalled();
     expect(mockedSaveData).toHaveBeenCalledTimes(1);
     expect(body.roundRobinFormats).toEqual({ 1: 'doubles' });
   });
 
   it('returns a validation error without persisting when conversion is rejected', async () => {
-    const tournament = makeTournament();
-    mockedGetTournament.mockResolvedValue(tournament);
-    mockedSetFormat.mockImplementation(() => {
-      throw new Error('Cannot change the round format after a game has been played');
-    });
+    mockedSetFormat.mockRejectedValue(new Error('Cannot change the round format after a game has been played'));
 
     const response = await callPut({
       id: 't1',
@@ -140,5 +135,20 @@ describe('setRoundRobinFormat tournament action', () => {
     expect(body.error).toMatch(/after a game has been played/i);
     expect(mockedSetTournament).not.toHaveBeenCalled();
     expect(mockedRegisterMatchesIndex).not.toHaveBeenCalled();
+  });
+
+  it('returns a conflict when the optimistic transaction is aborted', async () => {
+    mockedSetFormat.mockRejectedValue(new TournamentConflictError('t1'));
+
+    const response = await callPut({
+      id: 't1',
+      action: 'setRoundRobinFormat',
+      round: 1,
+      format: 'doubles',
+    });
+
+    const body = await response.json();
+    expect(response.status).toBe(409);
+    expect(body.error).toMatch(/changed while updating/i);
   });
 });

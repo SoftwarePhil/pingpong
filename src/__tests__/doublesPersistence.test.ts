@@ -5,6 +5,8 @@ import {
   getMatch,
   registerMatchesIndex,
   setTournament,
+  setRoundRobinFormatAtomically,
+  TournamentConflictError,
 } from '../data/data';
 import { createRoundRobinPairings } from '../lib/tournament';
 import { Match, Tournament } from '../types/pingpong';
@@ -17,6 +19,38 @@ const mockRedisHashes = new Map<string, Map<string, string>>();
 const mockRedisSortedSets = new Map<string, Map<string, number>>();
 const mockMongoGames = new Map<string, StoredDocument>();
 const mockMongoTournaments = new Map<string, StoredDocument>();
+const mockTransactionCommands: string[][] = [];
+const mockWatchedKeys: (string | string[])[] = [];
+let mockAbortNextTransaction = false;
+
+type WatchErrorConstructor = new (message?: string) => Error;
+
+type MockRedisTransaction = {
+  set: jest.Mock<MockRedisTransaction, [string, string]>;
+  zAdd: jest.Mock<MockRedisTransaction, [string, { score: number; value: string }]>;
+  hDel: jest.Mock<MockRedisTransaction, [string, string | string[]]>;
+  hSet: jest.Mock<MockRedisTransaction, [string, Record<string, string>]>;
+  exec: jest.Mock<Promise<unknown[]>, []>;
+};
+
+type MockRedisClient = {
+  on: jest.Mock;
+  connect: jest.Mock<Promise<void>, []>;
+  get: jest.Mock<Promise<string | null>, [string]>;
+  set: jest.Mock<Promise<string>, [string, string]>;
+  zRange: jest.Mock<Promise<string[]>, [string, number, number]>;
+  zAdd: jest.Mock<Promise<number>, [string, { score: number; value: string }]>;
+  zRem: jest.Mock<Promise<number>, [string, string]>;
+  hGet: jest.Mock<Promise<string | null>, [string, string]>;
+  hSet: jest.Mock<Promise<number>, [string, string | Record<string, string>, (string | undefined)?]>;
+  hDel: jest.Mock<Promise<number>, [string, string | string[]]>;
+  duplicate: jest.Mock<MockRedisClient, []>;
+  watch: jest.Mock<Promise<string>, [string | string[]]>;
+  unwatch: jest.Mock<Promise<string>, []>;
+  quit: jest.Mock<Promise<string>, []>;
+  multi: jest.Mock<MockRedisTransaction, []>;
+  del: jest.Mock<Promise<number>, [string]>;
+};
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
@@ -40,8 +74,8 @@ function sortedSetFor(key: string): Map<string, number> {
   return sortedSet;
 }
 
-function makeRedisClient() {
-  return {
+function makeRedisClient(watchError: WatchErrorConstructor): MockRedisClient {
+  const client: MockRedisClient = {
     on: jest.fn(),
     connect: jest.fn().mockResolvedValue(undefined),
     get: jest.fn(async (key: string) => mockRedisStrings.get(key) ?? null),
@@ -79,6 +113,54 @@ function makeRedisClient() {
       (Array.isArray(fields) ? fields : [fields]).forEach(field => hash.delete(field));
       return 1;
     }),
+    duplicate: jest.fn(() => makeRedisClient(watchError)),
+    watch: jest.fn(async (keys: string | string[]) => {
+      mockWatchedKeys.push(keys);
+      return 'OK';
+    }),
+    unwatch: jest.fn(async () => 'OK'),
+    quit: jest.fn(async () => 'OK'),
+    multi: jest.fn(() => {
+      const commands: string[] = [];
+      const operations: (() => void)[] = [];
+      const transaction = {} as MockRedisTransaction;
+      transaction.set = jest.fn((key: string, value: string) => {
+        commands.push(`set:${key}`);
+        operations.push(() => mockRedisStrings.set(key, value));
+        return transaction;
+      });
+      transaction.zAdd = jest.fn((key: string, item: { score: number; value: string }) => {
+        commands.push(`zAdd:${key}`);
+        operations.push(() => sortedSetFor(key).set(item.value, item.score));
+        return transaction;
+      });
+      transaction.hDel = jest.fn((key: string, fields: string | string[]) => {
+        commands.push(`hDel:${key}`);
+        operations.push(() => {
+          const hash = hashFor(key);
+          (Array.isArray(fields) ? fields : [fields]).forEach(field => hash.delete(field));
+        });
+        return transaction;
+      });
+      transaction.hSet = jest.fn((key: string, entries: Record<string, string>) => {
+        commands.push(`hSet:${key}`);
+        operations.push(() => {
+          const hash = hashFor(key);
+          Object.entries(entries).forEach(([field, value]) => hash.set(field, value));
+        });
+        return transaction;
+      });
+      transaction.exec = jest.fn(async () => {
+        mockTransactionCommands.push(commands);
+        if (mockAbortNextTransaction) {
+          mockAbortNextTransaction = false;
+          throw new watchError('watched key changed');
+        }
+        operations.forEach(operation => operation());
+        return [];
+      });
+      return transaction;
+    }),
     del: jest.fn(async (key: string) => {
       mockRedisStrings.delete(key);
       mockRedisHashes.delete(key);
@@ -86,11 +168,16 @@ function makeRedisClient() {
       return 1;
     }),
   };
+  return client;
 }
 
-jest.mock('redis', () => ({
-  createClient: jest.fn(() => makeRedisClient()),
-}));
+jest.mock('redis', () => {
+  class MockWatchError extends Error {}
+  return {
+    createClient: jest.fn(() => makeRedisClient(MockWatchError)),
+    WatchError: MockWatchError,
+  };
+});
 
 function collectionFor(name: string) {
   const documents = name === 'games' ? mockMongoGames : mockMongoTournaments;
@@ -146,7 +233,7 @@ jest.mock('mongodb', () => ({
   })),
 }));
 
-function makeTournament(match: Match): Tournament {
+function makeTournament(match: Match, format: 'singles' | 'doubles' = 'doubles'): Tournament {
   return {
     id: 't1',
     name: 'Doubles persistence',
@@ -157,23 +244,25 @@ function makeTournament(match: Match): Tournament {
     bracketRounds: [{ matchCount: 1, bestOf: 1 }],
     players: ['p1', 'p2', 'p3', 'p4'],
     activePlayers: ['p1', 'p2', 'p3', 'p4'],
-    roundRobinFormats: { 1: 'doubles' },
+    roundRobinFormats: format === 'doubles' ? { 1: 'doubles' } : undefined,
     matches: [match],
   };
 }
 
-async function seedDoublesMatch() {
+async function seedMatch(format: 'singles' | 'doubles' = 'doubles') {
   const [match] = createRoundRobinPairings(
     ['p1', 'p2', 'p3', 'p4'],
     't1',
     1,
     3,
-    'doubles',
+    format,
   );
-  await setTournament(makeTournament(match));
+  await setTournament(makeTournament(match, format));
   await registerMatchesIndex([match]);
   return match;
 }
+
+const seedDoublesMatch = () => seedMatch('doubles');
 
 function postRequest(matchId: string, score1: number, score2: number) {
   return adminRequest('http://localhost/api/games', {
@@ -216,6 +305,9 @@ describe('doubles game persistence', () => {
     mockRedisSortedSets.clear();
     mockMongoGames.clear();
     mockMongoTournaments.clear();
+    mockTransactionCommands.length = 0;
+    mockWatchedKeys.length = 0;
+    mockAbortNextTransaction = false;
     jest.clearAllMocks();
     jest.spyOn(Date, 'now').mockImplementation(() => nextTimestamp++);
   });
@@ -313,5 +405,48 @@ describe('doubles game persistence', () => {
     expect(savedMatch?.games[0].side1PlayerIds).toEqual(['p1', 'p4']);
     expect(history).toHaveLength(1);
     expect(history[0].side2PlayerIds).toEqual(['p2', 'p3']);
+  });
+
+  it('commits the tournament document and match index changes in one watched transaction', async () => {
+    const oldMatch = await seedMatch('singles');
+
+    const updatedTournament = await setRoundRobinFormatAtomically('t1', 1, 'doubles');
+    const newMatch = updatedTournament.matches?.find(match => match.id !== oldMatch.id);
+
+    expect(updatedTournament.roundRobinFormats).toEqual({ 1: 'doubles' });
+    expect(newMatch?.side1PlayerIds).toHaveLength(2);
+    expect(mockWatchedKeys).toEqual([
+      expect.arrayContaining([
+        expect.stringContaining(':pingpong:tournament:t1'),
+        expect.stringContaining(':pingpong:match_index'),
+      ]),
+    ]);
+    expect(mockTransactionCommands).toHaveLength(1);
+    expect(mockTransactionCommands[0]).toEqual([
+      expect.stringMatching(/^set:/),
+      expect.stringMatching(/^zAdd:/),
+      expect.stringMatching(/^hDel:/),
+      expect.stringMatching(/^hSet:/),
+    ]);
+    expect(await getMatch(oldMatch.id)).toBeNull();
+    expect(newMatch && await getMatch(newMatch.id)).toMatchObject({ id: newMatch?.id });
+  });
+
+  it('does not publish document or index changes when optimistic execution aborts', async () => {
+    const oldMatch = await seedMatch('singles');
+    mockAbortNextTransaction = true;
+
+    await expect(setRoundRobinFormatAtomically('t1', 1, 'doubles'))
+      .rejects.toBeInstanceOf(TournamentConflictError);
+
+    const currentTournament = await getMatch(oldMatch.id);
+    expect(currentTournament).toMatchObject({ id: oldMatch.id });
+    expect(mockTransactionCommands).toHaveLength(1);
+    expect(mockTransactionCommands[0]).toEqual([
+      expect.stringMatching(/^set:/),
+      expect.stringMatching(/^zAdd:/),
+      expect.stringMatching(/^hDel:/),
+      expect.stringMatching(/^hSet:/),
+    ]);
   });
 });

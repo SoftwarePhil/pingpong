@@ -1,7 +1,7 @@
-import { createClient, RedisClientType } from 'redis';
+import { createClient, RedisClientType, WatchError } from 'redis';
 import { MongoClient, Db, Collection } from 'mongodb';
-import { Player, Tournament, Match, Game } from '../types/pingpong';
-import { cascadeBracketOutcomeChange } from '../lib/tournament';
+import { Player, Tournament, Match, Game, RoundRobinFormat } from '../types/pingpong';
+import { cascadeBracketOutcomeChange, setRoundRobinFormat } from '../lib/tournament';
 import { getMatchSides, isDoublesMatch } from '../lib/matchFormat';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -167,6 +167,113 @@ export async function setTournament(tournament: Tournament): Promise<void> {
   } catch (error) {
     console.error('Error setting tournament:', error);
     throw error;
+  }
+}
+
+export class TournamentNotFoundError extends Error {
+  constructor(tournamentId: string) {
+    super(`Tournament ${tournamentId} not found`);
+    this.name = 'TournamentNotFoundError';
+  }
+}
+
+export class TournamentConflictError extends Error {
+  constructor(tournamentId: string) {
+    super(`Tournament ${tournamentId} was changed by another request`);
+    this.name = 'TournamentConflictError';
+  }
+}
+
+/**
+ * Changes the current round-robin format and updates its tournament document
+ * and match index in one optimistic Redis transaction. The transaction uses a
+ * dedicated connection because WATCH state is connection-scoped and the main
+ * client is shared by unrelated requests.
+ */
+export async function setRoundRobinFormatAtomically(
+  tournamentId: string,
+  requestedRound: number,
+  format: RoundRobinFormat,
+): Promise<Tournament> {
+  if (!redisClient) await initRedis();
+
+  const transactionClient = redisClient.duplicate();
+  await transactionClient.connect();
+  const key = tournamentKey(tournamentId);
+  let watching = false;
+
+  try {
+    // Watch the document and index together. The index is normally changed
+    // alongside the document, but watching both also protects against a
+    // concurrent index repair or registration operation.
+    await transactionClient.watch([key, MATCH_INDEX_KEY]);
+    watching = true;
+
+    const data = await transactionClient.get(key);
+    if (!data) throw new TournamentNotFoundError(tournamentId);
+
+    const tournament = JSON.parse(data) as Tournament;
+    const bracketStarted = Boolean(
+      tournament.bracketStartedAt ||
+      (tournament.matches ?? []).some(match => match.round === 'bracket') ||
+      tournament.status === 'bracket' ||
+      tournament.status === 'completed'
+    );
+    if (bracketStarted || tournament.status !== 'roundRobin') {
+      throw new Error('Round format can only be changed during the round robin stage');
+    }
+
+    const rrMatches = (tournament.matches ?? []).filter(match => match.round === 'roundRobin');
+    const currentRound = rrMatches.length > 0
+      ? Math.max(...rrMatches.map(match => match.bracketRound ?? 1))
+      : 1;
+    if (!Number.isInteger(requestedRound) || requestedRound !== currentRound) {
+      throw new Error('Only the current round format can be changed');
+    }
+
+    const { addedMatches, removedMatchIds } = setRoundRobinFormat(tournament, format);
+    const indexEntries: Record<string, string> = {};
+    addedMatches.forEach(match => { indexEntries[match.id] = tournament.id; });
+
+    const transaction = transactionClient.multi();
+    transaction
+      .set(key, JSON.stringify(tournament))
+      .zAdd(ACTIVE_TOURNAMENTS_KEY, {
+        score: new Date(tournament.startDate).getTime(),
+        value: tournament.id,
+      });
+    if (removedMatchIds.length > 0) {
+      transaction.hDel(MATCH_INDEX_KEY, removedMatchIds);
+    }
+    if (Object.keys(indexEntries).length > 0) {
+      transaction.hSet(MATCH_INDEX_KEY, indexEntries);
+    }
+
+    try {
+      const results = await transaction.exec();
+      const commandError = results.find(result => result instanceof Error);
+      if (commandError instanceof Error) {
+        throw commandError;
+      }
+    } catch (error) {
+      if (error instanceof WatchError) {
+        throw new TournamentConflictError(tournamentId);
+      }
+      throw error;
+    }
+
+    watching = false;
+    return tournament;
+  } catch (error) {
+    if (error instanceof WatchError) {
+      throw new TournamentConflictError(tournamentId);
+    }
+    throw error;
+  } finally {
+    if (watching) {
+      await transactionClient.unwatch().catch(() => undefined);
+    }
+    await transactionClient.quit().catch(() => undefined);
   }
 }
 

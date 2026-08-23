@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Tournament, Match, BracketConfig, RoundRobinFormat } from '../../../types/pingpong';
-import { getTournaments, saveData, setTournament, getTournament, deleteTournament, registerMatchesIndex, unregisterMatchesIndex, syncTournamentPlayers } from '../../../data/data';
-import { createRoundRobinPairings, advanceBracketRound, createBracketMatches, advanceRoundRobinRound, resyncRoundRobinMatches, createThirdPlaceMatch, setRoundRobinFormat } from '../../../lib/tournament';
+import { getTournaments, saveData, setTournament, getTournament, deleteTournament, registerMatchesIndex, unregisterMatchesIndex, syncTournamentPlayers, setRoundRobinFormatAtomically, TournamentConflictError, TournamentNotFoundError } from '../../../data/data';
+import { createRoundRobinPairings, advanceBracketRound, createBracketMatches, advanceRoundRobinRound, resyncRoundRobinMatches, createThirdPlaceMatch } from '../../../lib/tournament';
 import { requireAdmin } from '../../../lib/auth';
 import { isMatchComplete } from '../../../lib/matchFormat';
 
@@ -82,6 +82,35 @@ export async function PUT(request: NextRequest) {
     // that route for the diff-based { add, remove } roster operation, which
     // also resyncs round-robin matches in the same atomic pass.
 
+    if (action === 'setRoundRobinFormat') {
+      const requestedRound = body.round;
+      const format = body.format as RoundRobinFormat;
+
+      if (!Number.isInteger(requestedRound)) {
+        return NextResponse.json({ error: 'Only the current round format can be changed' }, { status: 400 });
+      }
+      if (format !== 'singles' && format !== 'doubles') {
+        return NextResponse.json({ error: 'Invalid round robin format' }, { status: 400 });
+      }
+
+      try {
+        const updatedTournament = await setRoundRobinFormatAtomically(id, requestedRound, format);
+        await saveData();
+        return NextResponse.json(updatedTournament);
+      } catch (error) {
+        if (error instanceof TournamentNotFoundError) {
+          return NextResponse.json({ error: 'Tournament not found' }, { status: 404 });
+        }
+        if (error instanceof TournamentConflictError) {
+          return NextResponse.json({ error: 'Tournament changed while updating the round. Please try again.' }, { status: 409 });
+        }
+        if (error instanceof Error) {
+          return NextResponse.json({ error: error.message }, { status: 400 });
+        }
+        throw error;
+      }
+    }
+
     const tournament = await getTournament(id);
 
     if (!tournament) {
@@ -115,36 +144,6 @@ export async function PUT(request: NextRequest) {
       await setTournament(tournament);
       await saveData();
       return NextResponse.json(tournament);
-    }
-
-    if (action === 'setRoundRobinFormat') {
-      const requestedRound = body.round;
-      const format = body.format as RoundRobinFormat;
-      const rrMatches = (tournament.matches ?? []).filter(m => m.round === 'roundRobin');
-      const currentRound = rrMatches.length > 0
-        ? Math.max(...rrMatches.map(m => m.bracketRound ?? 1))
-        : 1;
-
-      if (bracketStarted || tournament.status !== 'roundRobin') {
-        return NextResponse.json({ error: 'Round format can only be changed during the round robin stage' }, { status: 400 });
-      }
-      if (!Number.isInteger(requestedRound) || requestedRound !== currentRound) {
-        return NextResponse.json({ error: 'Only the current round format can be changed' }, { status: 400 });
-      }
-      if (format !== 'singles' && format !== 'doubles') {
-        return NextResponse.json({ error: 'Invalid round robin format' }, { status: 400 });
-      }
-
-      try {
-        const { addedMatches, removedMatchIds } = setRoundRobinFormat(tournament, format);
-        await unregisterMatchesIndex(removedMatchIds);
-        await registerMatchesIndex(addedMatches);
-        await setTournament(tournament);
-        await saveData();
-        return NextResponse.json(tournament);
-      } catch (error) {
-        return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed to change round format' }, { status: 400 });
-      }
     }
 
     if (action === 'addThirdPlaceMatch') {
