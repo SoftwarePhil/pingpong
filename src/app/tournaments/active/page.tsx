@@ -11,6 +11,7 @@ import { createBracketMatches, cascadeBracketR1PlayerSwap, cascadeBracketPlayerS
 import { PlayerSearchSelect } from '../../../components/PlayerSearchSelect';
 import { useAuth } from '../../../components/AuthProvider';
 import { PageHeader } from '../../../components/PageHeader';
+import { getGameSides, getMatchPlayerIds, getMatchSides, getRoundRobinFormat, getWinningSide, isMatchComplete, isValidDoublesRoster } from '../../../lib/matchFormat';
 
 export default function ActiveTournamentsPage() {
   const router = useRouter();
@@ -79,7 +80,7 @@ export default function ActiveTournamentsPage() {
     const res = await fetch('/api/games', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ player1Id: match.player1Id, player2Id: match.player2Id, score1, score2, matchId: match.id }),
+      body: JSON.stringify({ score1, score2, matchId: match.id }),
     });
     if (!res.ok) return;
     await Promise.all([fetchGames(), fetchTournaments()]);
@@ -133,7 +134,7 @@ export default function ActiveTournamentsPage() {
 
     const currentRound = Math.max(...bracketMatches.map(m => m.bracketRound ?? 1));
     const currentRoundMatches = bracketMatches.filter(m => (m.bracketRound ?? 1) === currentRound);
-    if (!currentRoundMatches.length || !currentRoundMatches.every(m => m.winnerId)) return;
+    if (!currentRoundMatches.length || !currentRoundMatches.every(isMatchComplete)) return;
 
     const res = await fetch('/api/tournaments', {
       method: 'PUT',
@@ -246,6 +247,28 @@ export default function ActiveTournamentsPage() {
     });
     if (res.ok) { await fetchTournaments(); }
     else { const err = await res.json(); alert(err.error ?? 'Failed to add round'); }
+  };
+
+  const changeRoundRobinFormat = async (tournament: Tournament, format: 'singles' | 'doubles') => {
+    const rrMatches = (tournament.matches ?? []).filter(match => match.round === 'roundRobin');
+    const currentRound = rrMatches.length > 0
+      ? Math.max(...rrMatches.map(match => match.bracketRound ?? 1))
+      : 1;
+    const currentFormat = getRoundRobinFormat(tournament, currentRound);
+    const label = format === 'doubles' ? '2v2' : '1v1';
+    if (currentFormat === format) return;
+    if (!confirm(`Change Round ${currentRound} to ${label}? All unplayed matches in this round will be replaced.`)) return;
+
+    const res = await fetch('/api/tournaments', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: tournament.id, action: 'setRoundRobinFormat', round: currentRound, format }),
+    });
+    if (res.ok) await fetchTournaments();
+    else {
+      const err = await res.json();
+      alert(err.error ?? 'Failed to change round format');
+    }
   };
 
   const startBracket = async (tournament: Tournament) => {
@@ -498,8 +521,8 @@ export default function ActiveTournamentsPage() {
 
   const getProjectedBracketMatches = (tournament: Tournament): Match[] => {
     const rrMatches = (tournament.matches ?? []).filter(m => m.round === 'roundRobin');
-    const firstRoundMatches = rrMatches.filter(m => (m.bracketRound ?? 1) === 1);
-    const firstRoundComplete = firstRoundMatches.length > 0 && firstRoundMatches.every(m => Boolean(m.winnerId));
+            const firstRoundMatches = rrMatches.filter(m => (m.bracketRound ?? 1) === 1);
+            const firstRoundComplete = firstRoundMatches.length > 0 && firstRoundMatches.every(isMatchComplete);
 
     if (!firstRoundComplete) {
       return [];
@@ -633,8 +656,14 @@ export default function ActiveTournamentsPage() {
               getCompletedSemifinalMatches(t).length === 2;
             const activeTab = activeTabByTournament[t.id] ?? (bracketStarted ? 'bracket' : 'roundRobin');
             const rrMatches = tm.filter(m => m.round === 'roundRobin');
+            const currentRoundNumber = rrMatches.length > 0
+              ? Math.max(...rrMatches.map(m => m.bracketRound ?? 1))
+              : 1;
+            const currentRoundMatches = rrMatches.filter(m => (m.bracketRound ?? 1) === currentRoundNumber);
+            const currentRoundFormat = getRoundRobinFormat(t, currentRoundNumber);
+            const currentRoundHasGames = currentRoundMatches.some(m => m.games.length > 0);
             const firstRoundMatches = rrMatches.filter(m => (m.bracketRound ?? 1) === 1);
-            const firstRoundComplete = firstRoundMatches.length > 0 && firstRoundMatches.every(m => Boolean(m.winnerId));
+             const firstRoundComplete = firstRoundMatches.length > 0 && firstRoundMatches.every(isMatchComplete);
             const baseProjected = !bracketStarted ? getProjectedBracketMatches(t) : [];
             // Use locally edited preview if the user has made configuration changes in the bracket tab preview.
             const previewMatches = bracketPreviewById[t.id];
@@ -643,7 +672,7 @@ export default function ActiveTournamentsPage() {
             const tournamentGames = games
               .filter(g => g.matchId && tm.some(m => m.id === g.matchId))
               .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-            const allRoundRobinComplete = rrMatches.length > 0 && rrMatches.every(m => Boolean(m.winnerId));
+            const allRoundRobinComplete = rrMatches.length > 0 && rrMatches.every(isMatchComplete);
 
             return (
               <div key={t.id} className="bg-white rounded-2xl shadow-sm border-2 border-gray-200 overflow-hidden">
@@ -674,6 +703,20 @@ export default function ActiveTournamentsPage() {
                             >
                               ✏️ Edit Tournament
                             </button>
+                            {t.status === 'roundRobin' && !bracketStarted && (
+                              <button
+                                disabled={currentRoundHasGames || (currentRoundFormat === 'singles' && !isValidDoublesRoster(t.activePlayers ?? t.players))}
+                                onClick={() => { setOpenMenuId(null); changeRoundRobinFormat(t, currentRoundFormat === 'doubles' ? 'singles' : 'doubles'); }}
+                                title={currentRoundHasGames
+                                  ? 'Round format cannot change after a game has been played'
+                                  : currentRoundFormat === 'singles' && !isValidDoublesRoster(t.activePlayers ?? t.players)
+                                    ? '2v2 requires at least four active players in groups of four'
+                                    : undefined}
+                                className="w-full text-left px-4 py-2.5 text-sm text-indigo-700 hover:bg-indigo-50 flex items-center gap-2 disabled:text-gray-400 disabled:hover:bg-white disabled:cursor-not-allowed"
+                              >
+                                {currentRoundFormat === 'doubles' ? '↩ Use 1v1 for this round' : '👥 Enable 2v2 for this round'}
+                              </button>
+                            )}
                             <button
                               onClick={() => { setOpenMenuId(null); endTournament(t); }}
                               className="w-full text-left px-4 py-2.5 text-sm text-orange-600 hover:bg-orange-50 flex items-center gap-2"
@@ -738,21 +781,37 @@ export default function ActiveTournamentsPage() {
                             {t.players.map(pid => {
                               const activeList = t.activePlayers ?? t.players;
                               const isActive = activeList.includes(pid);
+                              const nextActivePlayers = isActive
+                                ? activeList.filter(activeId => activeId !== pid)
+                                : [...activeList, pid];
+                              const blockedByDoubles = currentRoundFormat === 'doubles' &&
+                                (currentRoundHasGames || !isValidDoublesRoster(nextActivePlayers));
                               return (
                                 <button
                                   key={pid}
                                   onClick={() => toggleActivePlayer(t, pid)}
+                                  disabled={blockedByDoubles}
+                                  title={blockedByDoubles
+                                    ? currentRoundHasGames
+                                      ? 'Roster changes are locked after a 2v2 game has been played'
+                                      : 'A 2v2 round must keep at least four active players in groups of four'
+                                    : undefined}
                                   className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
                                     isActive
                                       ? 'bg-green-100 text-green-800 border-green-300 hover:bg-green-200'
                                       : 'bg-gray-100 text-gray-400 border-gray-200 hover:bg-gray-200 line-through'
-                                  }`}
+                                  } disabled:opacity-50 disabled:cursor-not-allowed`}
                                 >
                                   {getPlayerName(pid)}
                                 </button>
                               );
                             })}
                           </div>
+                          {currentRoundFormat === 'doubles' && (
+                            <p className="text-xs text-amber-700 mt-2">
+                              2v2 is active for Round {currentRoundNumber}. Before play, roster changes must keep the active count in groups of four.
+                            </p>
+                          )}
                         </div>
                       )}
 
@@ -793,19 +852,23 @@ export default function ActiveTournamentsPage() {
                            <Leaderboard tournament={t} players={players} getPlayerName={getPlayerName} bracketMatches={bracketMatches} />
                           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Previous Round Robin Rounds</p>
                           {Array.from(new Set(rrMatches.map(m => m.bracketRound ?? 1))).sort((a, b) => a - b).map(round => {
-                            const roundMatches = rrMatches.filter(m => (m.bracketRound ?? 1) === round && m.player2Id !== 'BYE');
+                             const roundMatches = rrMatches.filter(m =>
+                               (m.bracketRound ?? 1) === round && !getMatchPlayerIds(m).includes('BYE')
+                             );
                             return (
                               <div key={round}>
                                 <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Round {round}</div>
                                 <div className="space-y-1.5">
                                   {roundMatches.map(match => {
-                                    const p1Won = match.winnerId === match.player1Id;
-                                    const p2Won = match.winnerId === match.player2Id;
+                                    const [side1, side2] = getMatchSides(match);
+                                    const winningSide = getWinningSide(match);
+                                    const p1Won = winningSide === 1;
+                                    const p2Won = winningSide === 2;
                                     return (
                                       <div key={match.id} className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
                                         <div className="flex items-center px-4 py-2 text-sm gap-3">
                                           <span className={`font-semibold flex-1 ${p1Won ? 'text-green-700' : 'text-gray-500'}`}>
-                                            {getPlayerName(match.player1Id)}
+                                            {side1.map(getPlayerName).join(' + ')}
                                           </span>
                                           <div className="flex items-center gap-1.5 flex-shrink-0">
                                             {match.games.map((g, gi) => {
@@ -822,7 +885,7 @@ export default function ActiveTournamentsPage() {
                                             {match.games.length === 0 && <span className="text-xs text-gray-400 italic">no games</span>}
                                           </div>
                                           <span className={`font-semibold flex-1 text-right ${p2Won ? 'text-green-700' : 'text-gray-500'}`}>
-                                            {getPlayerName(match.player2Id)}
+                                            {side2.map(getPlayerName).join(' + ')}
                                           </span>
                                         </div>
                                       </div>
@@ -995,14 +1058,16 @@ export default function ActiveTournamentsPage() {
                                   ? 'Bracket Play-in'
                                   : `Bracket R${match?.bracketRound ?? 1}`
                                 : `RR R${match?.bracketRound ?? 1}`;
-                              const p1Won = game.score1 > game.score2;
-                              return (
+                               const p1Won = game.score1 > game.score2;
+                               const [gameSide1, gameSide2] = getGameSides(game);
+                               const gameSideName = (side: string[]) => side.map(getPlayerName).join(' + ');
+                               return (
                                 <div key={game.id} className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
                                   <div className="min-w-0">
                                     <p className="text-sm font-semibold text-gray-900 truncate">
-                                      <span className={p1Won ? 'text-green-700' : 'text-gray-600'}>{getPlayerName(game.player1Id)}</span>
-                                      <span className="text-gray-300 mx-1.5">vs</span>
-                                      <span className={!p1Won ? 'text-green-700' : 'text-gray-600'}>{getPlayerName(game.player2Id)}</span>
+                                       <span className={p1Won ? 'text-green-700' : 'text-gray-600'}>{gameSideName(gameSide1)}</span>
+                                       <span className="text-gray-300 mx-1.5">vs</span>
+                                       <span className={!p1Won ? 'text-green-700' : 'text-gray-600'}>{gameSideName(gameSide2)}</span>
                                     </p>
                                     <p className="text-xs text-gray-500">{roundLabel} · {new Date(game.date).toLocaleString()}</p>
                                   </div>
@@ -1032,7 +1097,7 @@ export default function ActiveTournamentsPage() {
                     </div>
                     <div className="text-center">
                       <div className="text-2xl font-black text-gray-900">
-                        {tm.filter(m => m.round === 'roundRobin' && m.winnerId).length}
+                        {tm.filter(m => m.round === 'roundRobin' && isMatchComplete(m)).length}
                       </div>
                       <div className="text-xs text-gray-500 font-semibold mt-0.5">RR Matches Done</div>
                     </div>

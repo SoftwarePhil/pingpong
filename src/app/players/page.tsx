@@ -11,6 +11,16 @@ import { wilsonLowerBound } from '../../lib/stats';
 import { useAuth } from '../../components/AuthProvider';
 import { getPlayerAge } from '../../lib/player';
 import { PageHeader } from '../../components/PageHeader';
+import {
+  getGamePlayerIds,
+  getGameSides,
+  getMatchPlayerIds,
+  getMatchSides,
+  getSideForPlayer,
+  getWinningSide,
+  isMatchComplete,
+  isByeMatch,
+} from '../../lib/matchFormat';
 
 type PlayerTab = 'overview' | 'matches' | 'games' | 'h2h';
 type PlayerForm = {
@@ -102,7 +112,6 @@ function PlayerProfileFields({
 export default function PlayersPage() {
   const { isAdmin } = useAuth();
   const [players, setPlayers] = useState<Player[]>([]);
-  const [games, setGames] = useState<Game[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [newPlayer, setNewPlayer] = useState<PlayerForm>(emptyPlayerForm);
@@ -121,7 +130,6 @@ export default function PlayersPage() {
 
   useEffect(() => {
     fetchPlayers();
-    fetchGames();
     fetchMatches();
     fetchTournaments();
   }, []);
@@ -130,12 +138,6 @@ export default function PlayersPage() {
     const res = await fetch('/api/players');
     const data = await res.json();
     setPlayers(data);
-  };
-
-  const fetchGames = async () => {
-    const res = await fetch('/api/games');
-    const data = await res.json();
-    setGames(data);
   };
 
   const fetchMatches = async () => {
@@ -240,14 +242,14 @@ export default function PlayersPage() {
   const getAdvancedStats = (playerId: string) => {
     // All matches for this player (exclude BYE)
     const playerMatches = matches.filter(
-      m => (m.player1Id === playerId || m.player2Id === playerId) &&
-        m.player2Id !== 'BYE' && (includeRoundRobin || m.round !== 'roundRobin') && matchIsInDateRange(m)
+      m => getMatchPlayerIds(m).includes(playerId) &&
+        !isByeMatch(m) && (includeRoundRobin || m.round !== 'roundRobin') && matchIsInDateRange(m)
     );
 
     // All games embedded in those matches, sorted by date
     const playerGames: (Game & { match: Match })[] = playerMatches
       .flatMap(m => m.games.map(g => ({ ...g, match: m })))
-      .filter(g => g.player1Id === playerId || g.player2Id === playerId)
+      .filter(g => getGamePlayerIds(g).includes(playerId))
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     // Core game stats
@@ -258,13 +260,13 @@ export default function PlayersPage() {
     const winRateOverTime: { game: number; winRate: number; label: string }[] = [];
 
     playerMatches.forEach(match => {
-      const isP1 = match.player1Id === playerId;
+      const playerSide = getSideForPlayer(match, playerId);
       const gameResults = match.games.map(g => {
-        const mine = isP1 ? g.score1 : g.score2;
-        const theirs = isP1 ? g.score2 : g.score1;
+        const mine = playerSide === 1 ? g.score1 : g.score2;
+        const theirs = playerSide === 1 ? g.score2 : g.score1;
         return { mine, theirs, won: mine > theirs };
       });
-      if (match.winnerId === playerId && gameResults.length > 0) {
+      if (getWinningSide(match) === playerSide && gameResults.length > 0) {
         if (gameResults.filter(g => g.won).length === gameResults.length) straightMatchWins++;
         if (gameResults[0] && !gameResults[0].won) comebackWins++;
       }
@@ -275,10 +277,13 @@ export default function PlayersPage() {
     });
 
     playerGames.forEach((game, i) => {
-      const isP1 = game.player1Id === playerId;
-      const myScore = isP1 ? game.score1 : game.score2;
-      const oppScore = isP1 ? game.score2 : game.score1;
-      const oppId = isP1 ? game.player2Id : game.player1Id;
+      const playerSide = getSideForPlayer(game, playerId);
+      if (!playerSide) return;
+      const myScore = playerSide === 1 ? game.score1 : game.score2;
+      const oppScore = playerSide === 1 ? game.score2 : game.score1;
+      const [gameSide1, gameSide2] = getGameSides(game);
+      const opponents = (playerSide === 1 ? gameSide2 : gameSide1)
+        .filter(opponentId => opponentId !== playerId);
       const won = myScore > oppScore;
 
       totalScore += myScore;
@@ -302,9 +307,11 @@ export default function PlayersPage() {
         label: new Date(game.date).toLocaleDateString(),
       });
 
-      if (!h2h[oppId]) h2h[oppId] = { wins: 0, losses: 0 };
-      if (won) h2h[oppId].wins++;
-      else h2h[oppId].losses++;
+      opponents.forEach(opponentId => {
+        if (!h2h[opponentId]) h2h[opponentId] = { wins: 0, losses: 0 };
+        if (won) h2h[opponentId].wins++;
+        else h2h[opponentId].losses++;
+      });
     });
 
     // Current streak
@@ -312,8 +319,9 @@ export default function PlayersPage() {
     let currentStreakType: 'W' | 'L' | null = null;
     for (let i = playerGames.length - 1; i >= 0; i--) {
       const g = playerGames[i];
-      const isP1 = g.player1Id === playerId;
-      const won = (isP1 ? g.score1 : g.score2) > (isP1 ? g.score2 : g.score1);
+      const playerSide = getSideForPlayer(g, playerId);
+      if (!playerSide) continue;
+      const won = (playerSide === 1 ? g.score1 : g.score2) > (playerSide === 1 ? g.score2 : g.score1);
       if (i === playerGames.length - 1) {
         currentStreakType = won ? 'W' : 'L';
         currentStreak = 1;
@@ -323,24 +331,24 @@ export default function PlayersPage() {
     }
 
     // Match wins/losses
-    const matchWins = playerMatches.filter(m => m.winnerId === playerId).length;
-    const matchLosses = playerMatches.filter(m => m.winnerId && m.winnerId !== playerId).length;
+    const matchWins = playerMatches.filter(m => isMatchComplete(m) && getWinningSide(m) === getSideForPlayer(m, playerId)).length;
+    const matchLosses = playerMatches.filter(m => isMatchComplete(m) && getWinningSide(m) !== getSideForPlayer(m, playerId)).length;
 
     // Tournament performance
     const tournamentStats = tournaments
       .filter(t => t.players.includes(playerId))
       .map(t => {
         const tMatches = (t.matches || []).filter(
-          m => (m.player1Id === playerId || m.player2Id === playerId) && m.player2Id !== 'BYE'
+          m => getMatchPlayerIds(m).includes(playerId) && !isByeMatch(m)
             && (includeRoundRobin || m.round !== 'roundRobin') && matchIsInDateRange(m)
         );
-        const tMatchWins = tMatches.filter(m => m.winnerId === playerId).length;
-        const tMatchLosses = tMatches.filter(m => m.winnerId && m.winnerId !== playerId).length;
+        const tMatchWins = tMatches.filter(m => isMatchComplete(m) && getWinningSide(m) === getSideForPlayer(m, playerId)).length;
+        const tMatchLosses = tMatches.filter(m => isMatchComplete(m) && getWinningSide(m) !== getSideForPlayer(m, playerId)).length;
         const tGames = tMatches.flatMap(m => m.games).filter(
-          g => g.player1Id === playerId || g.player2Id === playerId
+          g => getGamePlayerIds(g).includes(playerId)
         );
         const tGameWins = tGames.filter(g =>
-          g.player1Id === playerId ? g.score1 > g.score2 : g.score2 > g.score1
+          getSideForPlayer(g, playerId) === 1 ? g.score1 > g.score2 : g.score2 > g.score1
         ).length;
         const rank = t.playerRanking ? t.playerRanking.indexOf(playerId) + 1 : null;
         return {
@@ -895,10 +903,11 @@ export default function PlayersPage() {
                                     return (a.bracketRound || 0) - (b.bracketRound || 0);
                                   })
                                   .map(match => {
-                                    const isP1 = match.player1Id === selectedPlayer.id;
-                                    const oppId = isP1 ? match.player2Id : match.player1Id;
-                                    const won = match.winnerId === selectedPlayer.id;
-                                    const lost = match.winnerId && match.winnerId !== selectedPlayer.id;
+                                    const playerSide = getSideForPlayer(match, selectedPlayer.id);
+                                    const [matchSide1, matchSide2] = getMatchSides(match);
+                                    const opponentIds = (playerSide === 1 ? matchSide2 : matchSide1)
+                                      .filter(opponentId => opponentId !== selectedPlayer.id);
+                                    const won = isMatchComplete(match) && getWinningSide(match) === playerSide;
                                     const roundLabel = match.round === 'roundRobin'
                                       ? `Round Robin${match.bracketRound ? ` R${match.bracketRound}` : ''}`
                                       : `Bracket R${match.bracketRound ?? 1}`;
@@ -908,13 +917,13 @@ export default function PlayersPage() {
                                         {/* Match header */}
                                         <div className="flex items-center justify-between bg-gray-50 px-4 py-2.5">
                                           <div className="flex items-center gap-2">
-                                            {match.winnerId && (
+                                            {isMatchComplete(match) && (
                                               <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${won ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
                                                 {won ? 'WIN' : 'LOSS'}
                                               </span>
                                             )}
                                             <span className="font-medium text-gray-800 text-sm">
-                                              vs {getPlayerName(oppId)}
+                                               vs {opponentIds.map(getPlayerName).join(' + ')}
                                             </span>
                                           </div>
                                           <span className="text-xs text-gray-400">{roundLabel}</span>
@@ -923,8 +932,8 @@ export default function PlayersPage() {
                                         {match.games.length > 0 && (
                                           <div className="divide-y divide-gray-100">
                                             {match.games.map((g, gi) => {
-                                              const myG = isP1 ? g.score1 : g.score2;
-                                              const oppG = isP1 ? g.score2 : g.score1;
+                                              const myG = playerSide === 1 ? g.score1 : g.score2;
+                                              const oppG = playerSide === 1 ? g.score2 : g.score1;
                                               const gWon = myG > oppG;
                                               return (
                                                 <div key={g.id} className="flex items-center justify-between px-4 py-1.5 text-sm">
@@ -961,11 +970,13 @@ export default function PlayersPage() {
                       <div>
                         <div className="text-xs text-gray-400 mb-3">{stats.playerGames.length} games, newest first</div>
                         <div className="space-y-2">
-                          {[...stats.playerGames].reverse().map((game, idx) => {
-                            const isP1 = game.player1Id === selectedPlayer.id;
-                            const myScore = isP1 ? game.score1 : game.score2;
-                            const oppScore = isP1 ? game.score2 : game.score1;
-                            const oppId = isP1 ? game.player2Id : game.player1Id;
+                          {[...stats.playerGames].reverse().map(game => {
+                            const playerSide = getSideForPlayer(game, selectedPlayer.id);
+                            const myScore = playerSide === 1 ? game.score1 : game.score2;
+                            const oppScore = playerSide === 1 ? game.score2 : game.score1;
+                            const [gameSide1, gameSide2] = getGameSides(game);
+                            const opponentIds = (playerSide === 1 ? gameSide2 : gameSide1)
+                              .filter(opponentId => opponentId !== selectedPlayer.id);
                             const won = myScore > oppScore;
                             const roundLabel = game.match.round === 'roundRobin'
                               ? 'Round Robin'
@@ -977,9 +988,9 @@ export default function PlayersPage() {
                                 <div className="flex items-center gap-3">
                                   <span className={`text-xs font-bold w-8 ${won ? 'text-green-600' : 'text-red-500'}`}>{won ? 'WIN' : 'LOSS'}</span>
                                   <div>
-                                    <div className="text-sm font-medium text-gray-900">
-                                      vs {getPlayerName(oppId)}
-                                    </div>
+                                      <div className="text-sm font-medium text-gray-900">
+                                        vs {opponentIds.map(getPlayerName).join(' + ')}
+                                      </div>
                                     <div className="text-xs text-gray-400">
                                       {t?.name ?? ''} · {roundLabel} · {new Date(game.date).toLocaleDateString()}
                                     </div>

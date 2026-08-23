@@ -162,6 +162,35 @@ describe('PATCH /api/tournaments/[id]/players', () => {
     expect(mockedResync).toHaveBeenCalledTimes(1);
   });
 
+  it('rejects roster changes that would leave a doubles round with an invalid active count', async () => {
+    const tournament = makeTournament({
+      players: ['p1', 'p2', 'p3', 'p4'],
+      activePlayers: ['p1', 'p2', 'p3', 'p4'],
+      roundRobinFormats: { 1: 'doubles' },
+      matches: [{
+        id: 'doubles-1',
+        tournamentId: 't1',
+        player1Id: 'p1',
+        player2Id: 'p2',
+        side1PlayerIds: ['p1', 'p4'],
+        side2PlayerIds: ['p2', 'p3'],
+        round: 'roundRobin',
+        bracketRound: 1,
+        bestOf: 1,
+        games: [],
+      }],
+    });
+    mockedGetTournament.mockResolvedValue(tournament);
+
+    const response = await callPatch({ remove: ['p4'] });
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.error).toMatch(/groups of four/i);
+    expect(mockedResync).not.toHaveBeenCalled();
+    expect(mockedSetTournament).not.toHaveBeenCalled();
+  });
+
   it('supports add and remove together in a single atomic request', async () => {
     const tournament = makeTournament();
     mockedGetTournament.mockResolvedValue(tournament);

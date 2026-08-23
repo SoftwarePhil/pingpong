@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Match, Player } from '../../../types/pingpong';
 import { getPlayInWinnerPlaceholder, isPlayInWinnerPlaceholder } from '../../../lib/tournament';
+import { getMatchSides, getWinningSide, isByeMatch as isByeMatchHelper, isMatchComplete } from '../../../lib/matchFormat';
 
 // ── Layout constants ─────────────────────────────────────────────────────────
 const CARD_W = 240;  // match card width (px)
@@ -175,7 +176,7 @@ export default function BracketView({ bracketMatches, getPlayerName, players = [
 
   // ── Active match score entry ───────────────────────────────────────────────
   const activeMatch = activeMatchId ? bracketMatches.find(m => m.id === activeMatchId) : null;
-  const isByeActiveMatch = activeMatch && (activeMatch.player1Id === 'BYE' || activeMatch.player2Id === 'BYE');
+  const isByeActiveMatch = activeMatch && isByeMatchHelper(activeMatch);
   const seriesComplete = !!activeMatch && activeMatch.games.length >= activeMatch.bestOf;
   const canSwapActiveMatch = ( !readOnly || previewMode ) && onSwapPlayers && activeMatch &&
     activeMatch.round === 'bracket' &&
@@ -183,7 +184,7 @@ export default function BracketView({ bracketMatches, getPlayerName, players = [
     !bracketMatches.some(m => m.isThirdPlace && m.bracketRound === activeMatch.bracketRound) &&
     activeMatch.games.length === 0 &&
     // Allow swap on bye matches (they have winnerId set automatically but no real games)
-    (!activeMatch.winnerId || isByeActiveMatch) &&
+     (!isMatchComplete(activeMatch) || isByeActiveMatch) &&
     !isPlayInWinnerPlaceholder(activeMatch.player1Id) && !isPlayInWinnerPlaceholder(activeMatch.player2Id) &&
     activeMatch.player1Id !== 'TBD' && activeMatch.player2Id !== 'TBD';
 
@@ -191,7 +192,7 @@ export default function BracketView({ bracketMatches, getPlayerName, players = [
   // Bye players are now eligible so they can be swapped with regular-match players and vice versa.
   // A "non-bye completed match" is one with real games played or a winnerId on a non-bye match.
   const isNonByeCompleted = (m: Match) =>
-    m.games.length > 0 || (!!m.winnerId && m.player1Id !== 'BYE' && m.player2Id !== 'BYE');
+    m.games.length > 0 || (isMatchComplete(m) && !isByeMatchHelper(m));
 
   const eligibleSwapPlayers = (() => {
     if (!activeMatch) return tournamentPlayers;
@@ -254,14 +255,16 @@ export default function BracketView({ bracketMatches, getPlayerName, players = [
         const finalRound = mainRounds[mainRounds.length - 1];
         const finalRoundMatches = mainMatches.filter(m => m.bracketRound === finalRound);
         if (finalRoundMatches.length !== 1) return null;
-        const finalMatch = finalRoundMatches.find(m => m.winnerId);
+         const finalMatch = finalRoundMatches.find(isMatchComplete);
         if (!finalMatch) return null;
         return (
           <div className="flex items-center justify-center gap-3 bg-amber-50 border-2 border-amber-200 rounded-2xl py-5">
             <span className="text-4xl">🏆</span>
             <div>
               <p className="text-xs font-bold text-amber-600 uppercase tracking-widest">Tournament Champion</p>
-              <p className="text-2xl font-black text-amber-900">{getPlayerName(finalMatch.winnerId!)}</p>
+              <p className="text-2xl font-black text-amber-900">
+                {getMatchSides(finalMatch)[getWinningSide(finalMatch)! - 1].map(getPlayerName).join(' + ')}
+              </p>
             </div>
           </div>
         );
@@ -689,12 +692,14 @@ interface BracketCardProps {
 function BracketCard({ match, getPlayerName, getPlayerProfile, isActive, onSelect, isFinal, readOnly = false, previewMode = false, isPlaceholder = false }: BracketCardProps) {
   const p1Wins = match.games.filter(g => g.score1 > g.score2).length;
   const p2Wins = match.games.filter(g => g.score2 > g.score1).length;
-  const isByeMatch = match.player1Id === 'BYE' || match.player2Id === 'BYE';
+  const isByeMatch = isByeMatchHelper(match);
+  const winningSide = getWinningSide(match);
+  const [side1, side2] = getMatchSides(match);
   const canInteract = !isPlaceholder && (
     (readOnly && !previewMode)
       ? match.games.length > 0
-      : ((!match.winnerId && !isByeMatch) ||                  // regular unplayed match
-          (!!match.winnerId && match.games.length > 0) ||     // completed match (view scores)
+         : ((!isMatchComplete(match) && !isByeMatch) ||                  // regular unplayed match
+           (isMatchComplete(match) && match.games.length > 0) ||     // completed match (view scores)
           (isByeMatch && (!readOnly || previewMode)) ||       // bye match (swap player) — allow in preview for config
           previewMode)                                        // in preview allow selecting unplayed for config
         && !isPlayInWinnerPlaceholder(match.player1Id) && !isPlayInWinnerPlaceholder(match.player2Id)
@@ -703,7 +708,7 @@ function BracketCard({ match, getPlayerName, getPlayerProfile, isActive, onSelec
 
   const ring = isPlaceholder
     ? 'border-dashed border-gray-200 bg-gray-50'
-    : isFinal && match.winnerId
+    : isFinal && winningSide
     ? 'border-amber-400 shadow-lg shadow-amber-100'
     : isActive
     ? 'border-blue-400 shadow-md shadow-blue-100'
@@ -743,37 +748,37 @@ function BracketCard({ match, getPlayerName, getPlayerProfile, isActive, onSelec
       className={`relative bg-white border-2 rounded-xl shadow-sm overflow-hidden flex flex-col transition-all select-none ${ring} ${canInteract ? 'cursor-pointer' : ''}`}
       onClick={canInteract ? onSelect : undefined}
     >
-      {/* Player 1 row */}
-      <div className={`flex-1 flex items-center pl-3 pr-4 border-b border-gray-100 ${match.winnerId === match.player1Id ? 'bg-green-50' : ''}`}>
+      {/* Side 1 row */}
+      <div className={`flex-1 flex items-center pl-3 pr-4 border-b border-gray-100 ${winningSide === 1 ? 'bg-green-50' : ''}`}>
         <div className={`text-sm font-semibold flex-1 min-w-0 ${
-          match.winnerId === match.player1Id ? 'text-green-800'
-          : match.winnerId ? 'text-gray-400' : 'text-gray-800'
-        }`}>
-          {renderPlayer(match.player1Id, Boolean(match.winnerId && match.winnerId !== match.player1Id))}
+           winningSide === 1 ? 'text-green-800'
+            : isMatchComplete(match) ? 'text-gray-400' : 'text-gray-800'
+         }`}>
+           {renderPlayer(side1[0], Boolean(isMatchComplete(match) && winningSide !== 1))}
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
-          {match.winnerId === match.player1Id && <span className="text-amber-500 text-xs leading-none">🏆</span>}
-          {match.games.length > 0 && (
-            <span className={`text-xs font-black tabular-nums w-4 text-center ${match.winnerId === match.player1Id ? 'text-green-700' : 'text-gray-400'}`}>{p1Wins}</span>
-          )}
+           {winningSide === 1 && <span className="text-amber-500 text-xs leading-none">🏆</span>}
+           {match.games.length > 0 && (
+             <span className={`text-xs font-black tabular-nums w-4 text-center ${winningSide === 1 ? 'text-green-700' : 'text-gray-400'}`}>{p1Wins}</span>
+           )}
         </div>
       </div>
 
-      {/* Player 2 row */}
-      <div className={`flex-1 flex items-center pl-3 pr-4 ${match.winnerId === match.player2Id ? 'bg-green-50' : ''}`}>
+      {/* Side 2 row */}
+      <div className={`flex-1 flex items-center pl-3 pr-4 ${winningSide === 2 ? 'bg-green-50' : ''}`}>
         <div className={`text-sm font-semibold flex-1 min-w-0 ${
-          match.winnerId === match.player2Id ? 'text-green-800'
-          : match.winnerId ? 'text-gray-400'
-          : match.player2Id === 'BYE' || isPlayInWinnerPlaceholder(match.player2Id) || match.player2Id === 'TBD' ? 'text-gray-400 italic text-xs'
-          : 'text-gray-800'
-        }`}>
-          {renderPlayer(match.player2Id, Boolean(match.winnerId && match.winnerId !== match.player2Id))}
+           winningSide === 2 ? 'text-green-800'
+            : isMatchComplete(match) ? 'text-gray-400'
+           : match.player2Id === 'BYE' || isPlayInWinnerPlaceholder(match.player2Id) || match.player2Id === 'TBD' ? 'text-gray-400 italic text-xs'
+           : 'text-gray-800'
+         }`}>
+          {renderPlayer(side2[0], Boolean(isMatchComplete(match) && winningSide !== 2))}
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
-          {isActive && !match.winnerId && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />}
-          {match.winnerId === match.player2Id && <span className="text-amber-500 text-xs leading-none">🏆</span>}
-          {match.games.length > 0 && (
-            <span className={`text-xs font-black tabular-nums w-4 text-center ${match.winnerId === match.player2Id ? 'text-green-700' : 'text-gray-400'}`}>{p2Wins}</span>
+           {isActive && !isMatchComplete(match) && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />}
+           {winningSide === 2 && <span className="text-amber-500 text-xs leading-none">🏆</span>}
+           {match.games.length > 0 && (
+             <span className={`text-xs font-black tabular-nums w-4 text-center ${winningSide === 2 ? 'text-green-700' : 'text-gray-400'}`}>{p2Wins}</span>
           )}
         </div>
       </div>

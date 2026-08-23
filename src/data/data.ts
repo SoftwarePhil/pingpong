@@ -2,6 +2,7 @@ import { createClient, RedisClientType } from 'redis';
 import { MongoClient, Db, Collection } from 'mongodb';
 import { Player, Tournament, Match, Game } from '../types/pingpong';
 import { cascadeBracketOutcomeChange } from '../lib/tournament';
+import { getMatchSides, isDoublesMatch } from '../lib/matchFormat';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Environment isolation
@@ -477,9 +478,14 @@ export function recalculateMatchWinner(match: Match): Match {
   const p1Wins = match.games.filter(g => g.score1 > g.score2).length;
   const p2Wins = match.games.filter(g => g.score2 > g.score1).length;
   const requiredWins = Math.ceil(match.bestOf / 2);
-  if (p1Wins >= requiredWins) return { ...match, winnerId: match.player1Id };
-  if (p2Wins >= requiredWins) return { ...match, winnerId: match.player2Id };
-  return { ...match, winnerId: undefined };
+  if (isDoublesMatch(match)) {
+    if (p1Wins >= requiredWins) return { ...match, winnerId: undefined, winnerSide: 1 };
+    if (p2Wins >= requiredWins) return { ...match, winnerId: undefined, winnerSide: 2 };
+    return { ...match, winnerId: undefined, winnerSide: undefined };
+  }
+  if (p1Wins >= requiredWins) return { ...match, winnerId: match.player1Id, winnerSide: undefined };
+  if (p2Wins >= requiredWins) return { ...match, winnerId: match.player2Id, winnerSide: undefined };
+  return { ...match, winnerId: undefined, winnerSide: undefined };
 }
 
 // Persist a game to MongoDB for long-term history (non-fatal if it fails)
@@ -555,14 +561,25 @@ export async function addGameToMatch(
     if (!tournament?.matches) return null;
     const matchIdx = tournament.matches.findIndex(m => m.id === game.matchId);
     if (matchIdx === -1) return null;
+    const match = tournament.matches[matchIdx];
+    const [side1, side2] = getMatchSides(match);
+    const persistedGame = isDoublesMatch(match)
+      ? {
+          ...game,
+          player1Id: side1[0],
+          player2Id: side2[0],
+          side1PlayerIds: side1,
+          side2PlayerIds: side2,
+        }
+      : game;
     tournament.matches[matchIdx] = recalculateMatchWinner({
-      ...tournament.matches[matchIdx],
-      games: [...tournament.matches[matchIdx].games, game],
+      ...match,
+      games: [...match.games, persistedGame],
     });
     const finalMatch = await applyBracketCascade(tournament, tournament.matches[matchIdx]);
     await setTournament(tournament);
     // Persist game to MongoDB history
-    await persistGameHistory(game);
+    await persistGameHistory(persistedGame);
     return { match: finalMatch, tournament };
   } catch (error) {
     console.error('Error adding game to match:', error);
@@ -581,18 +598,29 @@ export async function updateGameInMatch(
     if (!tournament?.matches) return null;
     const matchIdx = tournament.matches.findIndex(m => m.id === updatedGame.matchId);
     if (matchIdx === -1) return null;
-    const games = tournament.matches[matchIdx].games.map(g =>
-      g.id === updatedGame.id ? updatedGame : g
+    const match = tournament.matches[matchIdx];
+    const [side1, side2] = getMatchSides(match);
+    const persistedGame = isDoublesMatch(match)
+      ? {
+          ...updatedGame,
+          player1Id: side1[0],
+          player2Id: side2[0],
+          side1PlayerIds: side1,
+          side2PlayerIds: side2,
+        }
+      : updatedGame;
+    const games = match.games.map(g =>
+      g.id === updatedGame.id ? persistedGame : g
     );
     if (!games.some(g => g.id === updatedGame.id)) return null;
     tournament.matches[matchIdx] = recalculateMatchWinner({
-      ...tournament.matches[matchIdx],
+      ...match,
       games,
     });
     const finalMatch = await applyBracketCascade(tournament, tournament.matches[matchIdx]);
     await setTournament(tournament);
     // Keep MongoDB history in sync
-    await persistGameHistory(updatedGame);
+    await persistGameHistory(persistedGame);
     return { match: finalMatch, tournament };
   } catch (error) {
     console.error('Error updating game in match:', error);

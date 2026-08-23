@@ -8,6 +8,8 @@ import BracketView from '../active/BracketView';
 import { PageHeader } from '../../../components/PageHeader';
 import TournamentPointsPanel from './TournamentPointsPanel';
 import { getTournamentDateKey } from '../../../lib/tournamentPoints';
+import { getGameSides, getMatchSides, getWinningSide, isMatchComplete } from '../../../lib/matchFormat';
+import { getIndividualStandings } from '../../../lib/standings';
 
 type DetailTab = 'overview' | 'matches';
 
@@ -62,39 +64,28 @@ function TournamentHistoryContent() {
   };
 
   const getPlayerStandings = (tournament: Tournament) => {
-    const playerStats: { [playerId: string]: { wins: number; losses: number; totalGames: number } } = {};
-    tournament.players.forEach(playerId => {
-      playerStats[playerId] = { wins: 0, losses: 0, totalGames: 0 };
-    });
-
-    (tournament.matches || []).forEach(match => {
-      if (match.winnerId && match.player2Id !== 'BYE') {
-        if (playerStats[match.winnerId]) {
-          playerStats[match.winnerId].wins++;
-          playerStats[match.winnerId].totalGames++;
-        }
-        const loserId = match.player1Id === match.winnerId ? match.player2Id : match.player1Id;
-        if (loserId && playerStats[loserId]) {
-          playerStats[loserId].losses++;
-          playerStats[loserId].totalGames++;
-        }
-      }
-    });
+    const playerStats = getIndividualStandings(tournament.players, tournament.matches || []);
 
     return tournament.players
-      .map(playerId => ({ playerId, ...playerStats[playerId] }))
+      .map(playerId => ({
+        playerId,
+        wins: playerStats[playerId].wins,
+        losses: playerStats[playerId].losses,
+        totalGames: playerStats[playerId].played,
+      }))
       .sort((a, b) => {
         if (a.wins !== b.wins) return b.wins - a.wins;
         return a.totalGames - b.totalGames;
       });
   };
 
-  const getChampion = (tournament: Tournament): string | null => {
+  const getChampionName = (tournament: Tournament): string | null => {
     const bracketMatches = (tournament.matches || []).filter(m => m.round === 'bracket');
     if (bracketMatches.length === 0) return null;
     const maxRound = Math.max(...bracketMatches.map(m => m.bracketRound || 0));
     const finalMatch = bracketMatches.find(m => m.bracketRound === maxRound && !m.isThirdPlace);
-    return finalMatch?.winnerId ?? null;
+    if (!finalMatch || !isMatchComplete(finalMatch)) return null;
+    return getMatchSides(finalMatch)[getWinningSide(finalMatch)! - 1].map(getPlayerName).join(' + ');
   };
 
   const getTournamentGames = (tournament: Tournament) => {
@@ -125,24 +116,27 @@ function TournamentHistoryContent() {
 
   // ── Full-screen detail view ──────────────────────────────────────────────
   if (selectedTournament) {
-    const champ = getChampion(selectedTournament);
+    const champName = getChampionName(selectedTournament);
     const bracketMatches = (selectedTournament.matches || []).filter(m => m.round === 'bracket');
     const allMatches = selectedTournament.matches || [];
     const rrMatches = allMatches.filter(m => m.round === 'roundRobin').sort((a, b) => (a.bracketRound || 0) - (b.bracketRound || 0));
     const brMatches = allMatches.filter(m => m.round === 'bracket').sort((a, b) => (a.bracketRound || 0) - (b.bracketRound || 0));
 
     const renderMatch = (match: Match) => {
-      const p1Won = match.winnerId === match.player1Id;
-      const p2Won = match.winnerId === match.player2Id;
+      const [side1, side2] = getMatchSides(match);
+      const winningSide = getWinningSide(match);
+      const p1Won = winningSide === 1;
+      const p2Won = winningSide === 2;
+      const sideName = (side: string[]) => side.map(getPlayerName).join(' + ');
       return (
         <div key={match.id} className="border border-gray-200 rounded-lg overflow-hidden">
           <div className="flex items-center justify-between bg-gray-50 px-4 py-2 text-sm">
             <span className={`font-semibold ${p1Won ? 'text-green-700' : 'text-gray-700'}`}>
-              {getPlayerName(match.player1Id)}{p1Won && ' 🏆'}
+              {sideName(side1)}{p1Won && ' 🏆'}
             </span>
             <span className="text-gray-400 font-medium">vs</span>
             <span className={`font-semibold ${p2Won ? 'text-green-700' : 'text-gray-700'}`}>
-              {match.player2Id === 'BYE' ? 'BYE' : getPlayerName(match.player2Id)}{p2Won && ' 🏆'}
+              {sideName(side2)}{p2Won && ' 🏆'}
             </span>
           </div>
           {match.games.length > 0 && (
@@ -153,9 +147,9 @@ function TournamentHistoryContent() {
                   <div key={game.id} className="flex items-center justify-between px-4 py-2 text-sm">
                     <span className="text-gray-500 w-14">Game {gi + 1}</span>
                     <div className="flex items-center gap-3">
-                      <span className={`font-medium w-16 text-right ${g1Won ? 'text-green-600' : 'text-gray-600'}`}>{getPlayerName(game.player1Id)}</span>
+                      <span className={`font-medium w-16 text-right ${g1Won ? 'text-green-600' : 'text-gray-600'}`}>{getGameSides(game)[0].map(getPlayerName).join(' + ')}</span>
                       <span className="font-bold text-gray-900 tabular-nums">{game.score1} – {game.score2}</span>
-                      <span className={`font-medium w-16 ${!g1Won ? 'text-green-600' : 'text-gray-600'}`}>{getPlayerName(game.player2Id)}</span>
+                      <span className={`font-medium w-16 ${!g1Won ? 'text-green-600' : 'text-gray-600'}`}>{getGameSides(game)[1].map(getPlayerName).join(' + ')}</span>
                     </div>
                     <span className="text-gray-400 text-xs w-20 text-right">{new Date(game.date).toLocaleDateString()}</span>
                   </div>
@@ -163,8 +157,8 @@ function TournamentHistoryContent() {
               })}
             </div>
           )}
-          {match.games.length === 0 && match.player2Id === 'BYE' && <div className="px-4 py-2 text-sm text-gray-400 italic">Bye round</div>}
-          {match.games.length === 0 && match.player2Id !== 'BYE' && <div className="px-4 py-2 text-sm text-gray-400 italic">No games recorded</div>}
+          {match.games.length === 0 && side2.includes('BYE') && <div className="px-4 py-2 text-sm text-gray-400 italic">Bye round</div>}
+          {match.games.length === 0 && !side2.includes('BYE') && <div className="px-4 py-2 text-sm text-gray-400 italic">No games recorded</div>}
         </div>
       );
     };
@@ -191,9 +185,9 @@ function TournamentHistoryContent() {
               </button>
             }
           />
-          {champ && (
+          {champName && (
             <div className="mb-8 inline-flex items-center gap-2 bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-1.5 text-sm font-semibold text-yellow-800">
-              🥇 Champion: {getPlayerName(champ)}
+              🥇 Champion: {champName}
             </div>
           )}
 
@@ -258,7 +252,7 @@ function TournamentHistoryContent() {
 
                 <div className="grid grid-cols-3 gap-4 mt-6">
                   {[
-                    { label: 'Matches', value: allMatches.filter(m => m.winnerId).length },
+                    { label: 'Matches', value: allMatches.filter(isMatchComplete).length },
                     { label: 'Games', value: getTournamentGames(selectedTournament).length },
                     { label: 'Players', value: selectedTournament.players.length },
                   ].map(stat => (
@@ -368,9 +362,9 @@ function TournamentHistoryContent() {
           <div className="space-y-4">
             {visibleTournaments.map((tournament, idx) => {
               const standings = getPlayerStandings(tournament);
-              const champion = getChampion(tournament);
+              const champion = getChampionName(tournament);
               const tournamentGames = getTournamentGames(tournament);
-              const completedMatches = (tournament.matches || []).filter(m => m.winnerId);
+              const completedMatches = (tournament.matches || []).filter(isMatchComplete);
               const isLatest = idx === 0;
 
               return (
@@ -398,7 +392,7 @@ function TournamentHistoryContent() {
                       <div className="text-4xl mb-1">🥇</div>
                       <div className="text-xs font-semibold text-yellow-700 uppercase tracking-wider mb-1">Champion</div>
                       <div className="text-base font-bold text-gray-900 text-center">
-                        {champion ? getPlayerName(champion) : '—'}
+                        {champion ?? '—'}
                       </div>
                     </div>
 

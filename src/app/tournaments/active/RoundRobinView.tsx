@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Player, Tournament, Match } from '../../../types/pingpong';
 import MatchCard from './MatchCard';
 import Leaderboard from './Leaderboard';
+import { getRoundRobinFormat, isMatchComplete } from '../../../lib/matchFormat';
 
 interface RoundRobinViewProps {
   tournament: Tournament;
@@ -45,7 +46,7 @@ export default function RoundRobinView({
     : 1;
 
   const currentRoundMatches = rrMatches.filter(m => (m.bracketRound ?? 1) === currentRound);
-  const allCurrentComplete  = currentRoundMatches.length > 0 && currentRoundMatches.every(m => m.winnerId);
+  const allCurrentComplete  = currentRoundMatches.length > 0 && currentRoundMatches.every(isMatchComplete);
   const isLastRound         = currentRound >= tournament.roundRobinRounds;
 
   // Which round is being displayed. `null` means "follow the current round" —
@@ -53,6 +54,7 @@ export default function RoundRobinView({
   // round's dot again resumes auto-following as new rounds are created.
   const [manualRound, setManualRound] = useState<number | null>(null);
   const selectedRound = manualRound ?? currentRound;
+  const selectedRoundFormat = getRoundRobinFormat(tournament, selectedRound);
   const isViewingCurrentRound = selectedRound === currentRound;
   const selectedRoundMatches = isViewingCurrentRound
     ? currentRoundMatches
@@ -66,7 +68,10 @@ export default function RoundRobinView({
           <h3 className="text-xl font-bold text-gray-900">Round Robin</h3>
           <p className="text-sm text-gray-500 mt-0.5">
             Round <span className="font-semibold text-gray-700">{currentRound}</span> of{' '}
-            <span className="font-semibold text-gray-700">{tournament.roundRobinRounds}</span>
+            <span className="font-semibold text-gray-700">{tournament.roundRobinRounds}</span>{' · '}
+            <span className="font-semibold text-gray-700">
+              {getRoundRobinFormat(tournament, currentRound) === 'doubles' ? '2v2' : '1v1'}
+            </span>
           </p>
         </div>
 
@@ -96,6 +101,9 @@ export default function RoundRobinView({
                 </button>
               </>
             )}
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+              {selectedRoundFormat === 'doubles' ? '2v2' : '1v1'}
+            </span>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-4">
             {/* Round progress dots — click any round to view/edit it below */}
@@ -103,7 +111,7 @@ export default function RoundRobinView({
               {Array.from({ length: tournament.roundRobinRounds }, (_, i) => {
                 const roundNum = i + 1;
                 const roundMatches = rrMatches.filter(m => (m.bracketRound ?? 1) === roundNum);
-                const complete = roundMatches.length > 0 && roundMatches.every(m => m.winnerId);
+                const complete = roundMatches.length > 0 && roundMatches.every(isMatchComplete);
                 const isCurrent  = roundNum === currentRound;
                 const isSelected = roundNum === selectedRound;
                 const reachable = roundNum <= currentRound;

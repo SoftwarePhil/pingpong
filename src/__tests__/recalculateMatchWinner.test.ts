@@ -150,4 +150,16 @@ describe('recalculateMatchWinner', () => {
     recalculateMatchWinner(match);
     expect(match.winnerId).toBe(originalWinnerId);
   });
+
+  it('sets the winning side for a doubles match', () => {
+    const match = {
+      ...makeMatch(3, [makeGame('g1', 11, 5), makeGame('g2', 11, 8)]),
+      side1PlayerIds: ['p1', 'p3'],
+      side2PlayerIds: ['p2', 'p4'],
+    };
+
+    const result = recalculateMatchWinner(match);
+    expect(result.winnerSide).toBe(1);
+    expect(result.winnerId).toBeUndefined();
+  });
 });

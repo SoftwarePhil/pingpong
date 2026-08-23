@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Match, Game, MARKER_PLAYER_ID } from '../../../types/pingpong';
+import { getMatchSides, getWinningSide, isByeMatch, isDoublesMatch, isMatchComplete } from '../../../lib/matchFormat';
 
 interface MatchCardProps {
   match: Match;
@@ -34,6 +35,10 @@ export default function MatchCard({
   const [swapping, setSwapping] = useState(false);
   const [swapP1, setSwapP1] = useState(match.player1Id);
   const [swapP2, setSwapP2] = useState(match.player2Id);
+  const [side1, side2] = getMatchSides(match);
+  const doubles = isDoublesMatch(match);
+  const winningSide = getWinningSide(match);
+  const sideName = (side: string[]) => side.map(getPlayerName).join(' + ');
 
   const startEditingGame = (game: Game) => {
     setEditingGame(game);
@@ -62,8 +67,8 @@ export default function MatchCard({
     setSwapping(false);
   };
 
-  const canSwap = !readOnly && match.round === 'roundRobin' && match.games.length === 0 && !match.winnerId && match.player2Id !== MARKER_PLAYER_ID;
-  const isBye = match.player2Id === 'BYE';
+  const canSwap = !readOnly && !doubles && match.round === 'roundRobin' && match.games.length === 0 && !isMatchComplete(match) && match.player2Id !== MARKER_PLAYER_ID;
+  const isBye = isByeMatch(match);
 
   return (
     <div className="bg-white border-2 border-gray-200 rounded-xl shadow-sm overflow-hidden">
@@ -72,7 +77,7 @@ export default function MatchCard({
         <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
           {match.round === 'bracket'
             ? match.bracketRound === 0 ? 'Play-in' : `Round ${match.bracketRound}`
-            : `RR Round ${match.bracketRound ?? 1}`}
+            : `RR Round ${match.bracketRound ?? 1}${doubles ? ' · 2v2' : ''}`}
         </span>
         <div className="flex items-center gap-1">
           <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">
@@ -87,7 +92,7 @@ export default function MatchCard({
               ↔
             </button>
           )}
-          {!readOnly && match.round === 'roundRobin' && isBye && (
+          {!readOnly && !doubles && match.round === 'roundRobin' && isBye && (
             <button onClick={() => onAddMarker(match.id)} className="text-amber-600 hover:text-amber-800 px-1.5 py-0.5 rounded hover:bg-amber-50 text-xs font-semibold transition-colors">
               Add marker
             </button>
@@ -137,12 +142,12 @@ export default function MatchCard({
       {/* Players */}
       <div className="px-4 py-3 space-y-2">
         <div className={`flex justify-between items-center px-3 py-2 rounded-lg border ${
-          match.winnerId === match.player1Id
+          winningSide === 1
             ? 'bg-green-50 border-green-300 text-green-900'
             : 'bg-gray-50 border-gray-200 text-gray-900'
         }`}>
-          <span className="font-medium truncate mr-2 text-sm" title={getPlayerName(match.player1Id)}>
-            {getPlayerName(match.player1Id)}
+          <span className="font-medium truncate mr-2 text-sm" title={sideName(side1)}>
+            {sideName(side1)}
           </span>
           <span className="text-xs font-bold flex-shrink-0 tabular-nums">
             {match.games.filter(g => g.score1 > g.score2).length}W
@@ -155,12 +160,12 @@ export default function MatchCard({
 
         {!isBye && (
           <div className={`flex justify-between items-center px-3 py-2 rounded-lg border ${
-            match.winnerId === match.player2Id
+            winningSide === 2
               ? 'bg-green-50 border-green-300 text-green-900'
               : 'bg-gray-50 border-gray-200 text-gray-900'
           }`}>
-            <span className="font-medium truncate mr-2 text-sm" title={getPlayerName(match.player2Id)}>
-              {getPlayerName(match.player2Id)}
+            <span className="font-medium truncate mr-2 text-sm" title={sideName(side2)}>
+              {sideName(side2)}
             </span>
             <span className="text-xs font-bold flex-shrink-0 tabular-nums">
               {match.games.filter(g => g.score2 > g.score1).length}W
@@ -170,16 +175,16 @@ export default function MatchCard({
       </div>
 
       {/* Winner badge */}
-      {match.winnerId && (
+      {winningSide && (
         <div className="px-4 pb-3 text-center">
           <span className="inline-block bg-amber-100 text-amber-800 border border-amber-300 px-3 py-1 rounded-full text-xs font-bold">
-            🏆 {getPlayerName(match.winnerId)}
+            🏆 {sideName(winningSide === 1 ? side1 : side2)}
           </span>
         </div>
       )}
 
       {/* Score entry form */}
-      {!readOnly && match.games.length < match.bestOf && !match.winnerId && !isBye && (
+      {!readOnly && match.games.length < match.bestOf && !isMatchComplete(match) && !isBye && (
         <form
           onSubmit={e => {
             e.preventDefault();
@@ -199,10 +204,10 @@ export default function MatchCard({
           className="px-4 pb-4 pt-2 border-t border-gray-100 space-y-2"
         >
           <div className="flex gap-2">
-            <input name="score1" type="number" min="0" max="50" required placeholder={getPlayerName(match.player1Id).substring(0, 10)}
+            <input name="score1" type="number" min="0" max="50" required placeholder={sideName(side1).substring(0, 10)}
                className="form-control flex-1 min-w-0 rounded-lg px-2 py-1.5 text-sm" />
             <span className="flex items-center text-gray-400 font-bold text-sm">—</span>
-            <input name="score2" type="number" min="0" max="50" required placeholder={getPlayerName(match.player2Id).substring(0, 10)}
+            <input name="score2" type="number" min="0" max="50" required placeholder={sideName(side2).substring(0, 10)}
                className="form-control flex-1 min-w-0 rounded-lg px-2 py-1.5 text-sm" />
           </div>
           <p className="text-xs text-gray-400 text-center">First to 11, win by 2</p>

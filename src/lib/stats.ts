@@ -1,4 +1,5 @@
 import { Player, Game } from '../types/pingpong';
+import { getGameSides } from './matchFormat';
 
 export interface PlayerStats {
   id: string;
@@ -39,21 +40,30 @@ export function computeStats(players: Player[], games: Game[]): PlayerStats[] {
 
   // Aggregate game results — BYE or unknown players are skipped
   games.forEach(game => {
-    const p1 = statsMap[game.player1Id];
-    const p2 = statsMap[game.player2Id];
-    if (!p1 || !p2) return;
+    const [side1, side2] = getGameSides(game);
+    const validSide1Stats = side1
+      .map(playerId => statsMap[playerId])
+      .filter((playerStats): playerStats is PlayerStats => Boolean(playerStats));
+    const validSide2Stats = side2
+      .map(playerId => statsMap[playerId])
+      .filter((playerStats): playerStats is PlayerStats => Boolean(playerStats));
+    if (validSide1Stats.length !== side1.length || validSide2Stats.length !== side2.length) return;
 
-    p1.gamesPlayed++;
-    p2.gamesPlayed++;
-    p1.totalPoints += game.score1;
-    p2.totalPoints += game.score2;
+    validSide1Stats.forEach(playerStats => {
+      playerStats.gamesPlayed++;
+      playerStats.totalPoints += game.score1;
+    });
+    validSide2Stats.forEach(playerStats => {
+      playerStats.gamesPlayed++;
+      playerStats.totalPoints += game.score2;
+    });
 
     if (game.score1 > game.score2) {
-      p1.wins++;
-      p2.losses++;
+      validSide1Stats.forEach(playerStats => playerStats.wins++);
+      validSide2Stats.forEach(playerStats => playerStats.losses++);
     } else if (game.score2 > game.score1) {
-      p2.wins++;
-      p1.losses++;
+      validSide2Stats.forEach(playerStats => playerStats.wins++);
+      validSide1Stats.forEach(playerStats => playerStats.losses++);
     }
   });
 

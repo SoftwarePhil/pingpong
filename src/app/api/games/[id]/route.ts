@@ -3,6 +3,7 @@ import { Game } from '../../../../types/pingpong';
 import { getAllGames, updateGameInMatch, removeGameFromMatch, getMatch, getTournament } from '../../../../data/data';
 import { validateScore } from '../../../../lib/scoring';
 import { requireAdmin } from '../../../../lib/auth';
+import { isDoublesMatch } from '../../../../lib/matchFormat';
 
 export async function PUT(
   request: NextRequest,
@@ -43,6 +44,9 @@ export async function PUT(
       const match = await getMatch(updatedGame.matchId);
       if (!match) {
         return NextResponse.json({ error: 'Match not found for this game' }, { status: 404 });
+      }
+      if (isDoublesMatch(match) && (player1Id !== undefined || player2Id !== undefined)) {
+        return NextResponse.json({ error: 'Doubles game participants cannot be changed' }, { status: 400 });
       }
       const tournament = await getTournament(match.tournamentId);
       const bracketStarted = Boolean(
