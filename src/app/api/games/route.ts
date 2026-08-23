@@ -23,7 +23,10 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { player1Id, player2Id, score1, score2, matchId }: { player1Id?: string; player2Id?: string; score1?: number; score2?: number; matchId?: string } = body;
     if (score1 === undefined || score2 === undefined || (!matchId && (!player1Id || !player2Id))) {
-      return NextResponse.json({ error: 'All fields are required' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'score1 and score2 are required, plus either matchId or both player1Id and player2Id' },
+        { status: 400 },
+      );
     }
 
     // Validate ping pong scoring rules (deuce logic)
