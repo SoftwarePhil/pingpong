@@ -118,7 +118,11 @@ export default function BracketView({ bracketMatches, getPlayerName, players = [
     const participantIds = [playInMatch.player1Id, playInMatch.player2Id];
     const targetIndex = getPlayInTargetIndex(r1Matches, placeholder, participantIds, playInMatch.winnerId);
     if (targetIndex === -1) return -1;
-    return targetIndex * 2 + (r1Matches[targetIndex].player1Id === placeholder ? 0 : 1);
+    const targetMatch = r1Matches[targetIndex];
+    const isTopSlot = targetMatch.player1Id === placeholder ||
+      targetMatch.player1Id === playInMatch.winnerId ||
+      participantIds.includes(targetMatch.player1Id);
+    return targetIndex * 2 + (isTopSlot ? 0 : 1);
   });
   const orderedPlayInIndexes = orderPlayInIndexesByTarget(playInMatches.length, playInTargetIndexes);
   const unitH     = CARD_H + R1_GAP;
