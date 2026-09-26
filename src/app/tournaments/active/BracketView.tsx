@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Match, Player } from '../../../types/pingpong';
 import { getPlayInWinnerPlaceholder, isPlayInWinnerPlaceholder } from '../../../lib/tournament';
 import { getMatchSides, getWinningSide, isByeMatch as isByeMatchHelper, isMatchComplete } from '../../../lib/matchFormat';
+import { getBracketCardZIndex, getBracketSlotOffset, getPlayInTargetIndex, orderPlayInIndexesByTarget, shouldUseStraightPlayInConnector } from '../../../lib/bracketLayout';
 
 // ── Layout constants ─────────────────────────────────────────────────────────
 const CARD_W = 240;  // match card width (px)
@@ -112,8 +113,18 @@ export default function BracketView({ bracketMatches, getPlayerName, players = [
     );
   });
   const r1Matches = roundMatchesByIndex[0] ?? [];
+  const playInTargetIndexes = playInMatches.map((playInMatch, playInIndex) => {
+    const placeholder = getPlayInWinnerPlaceholder(playInIndex, playInMatches.length);
+    const participantIds = [playInMatch.player1Id, playInMatch.player2Id];
+    const targetIndex = getPlayInTargetIndex(r1Matches, placeholder, participantIds, playInMatch.winnerId);
+    if (targetIndex === -1) return -1;
+    return targetIndex * 2 + (r1Matches[targetIndex].player1Id === placeholder ? 0 : 1);
+  });
+  const orderedPlayInIndexes = orderPlayInIndexesByTarget(playInMatches.length, playInTargetIndexes);
   const unitH     = CARD_H + R1_GAP;
-  const totalH    = Math.max(r1Count * unitH, CARD_H + 40);
+  // Play-ins use their own vertical column. Its height can exceed the main
+  // bracket when many preliminary matches are required.
+  const totalH    = Math.max(r1Count, playInMatches.length) * unitH;
   const xOffset   = hasPlayIn ? CARD_W + COL_GAP : 0;
   const totalW    = xOffset + mainRounds.length * (CARD_W + COL_GAP) - COL_GAP + 2;
 
@@ -129,19 +140,36 @@ export default function BracketView({ bracketMatches, getPlayerName, players = [
     : null;
 
   // ── SVG connector paths ───────────────────────────────────────────────────
-  const connectors: { d: string; key: string }[] = [];
+  const connectors: { d: string; key: string; dashed?: boolean }[] = [];
 
   // Each play-in feeds its own placeholder slot in R1.
   if (hasPlayIn) {
     playInMatches.forEach((_, playInIndex) => {
+      const playInMatch = playInMatches[playInIndex];
       const placeholder = getPlayInWinnerPlaceholder(playInIndex, playInMatches.length);
-      const r1TargetIdx = r1Matches.findIndex(
-        m => m.player1Id === placeholder || m.player2Id === placeholder
-      );
-      if (r1TargetIdx === -1) return;
+      const targetOrder = playInTargetIndexes[playInIndex];
+      if (targetOrder === -1) return;
+      const r1TargetIdx = Math.floor(targetOrder / 2);
       const targetPos = getPos(0, r1TargetIdx, r1Count, hasPlayIn);
-      const cy = targetPos.y + CARD_H / 2;
-      connectors.push({ key: `playin-${playInIndex}`, d: `M ${CARD_W} ${cy} H ${targetPos.x}` });
+      const sourceIndex = orderedPlayInIndexes.indexOf(playInIndex);
+      const sourceY = sourceIndex * unitH + CARD_H / 2;
+      const targetMatch = r1Matches[r1TargetIdx];
+      const participantIds = [playInMatch.player1Id, playInMatch.player2Id];
+      const isTopSlot = targetMatch.player1Id === placeholder ||
+        targetMatch.player1Id === playInMatch.winnerId ||
+        participantIds.includes(targetMatch.player1Id);
+      // A play-in winner occupies one specific player row, not the center of
+      // the whole match card. Targeting that row makes multiple play-ins
+      // feeding the same match visually unambiguous.
+      const targetY = targetPos.y + CARD_H * getBracketSlotOffset(isTopSlot);
+      const bridgeX = CARD_W + COL_GAP / 2;
+      connectors.push({
+        key: `playin-${playInIndex}`,
+        d: shouldUseStraightPlayInConnector(sourceY, targetY)
+          ? `M ${CARD_W} ${sourceY} H ${targetPos.x}`
+          : `M ${CARD_W} ${sourceY} H ${bridgeX} V ${targetY} H ${targetPos.x}`,
+        dashed: true,
+      });
     });
   }
 
@@ -290,51 +318,69 @@ export default function BracketView({ bracketMatches, getPlayerName, players = [
 
       {/* Bracket canvas */}
       <div className="overflow-x-auto">
-        <div style={{ position: 'relative', width: totalW, height: totalH }}>
+        <div style={{ position: 'relative', width: totalW, height: totalH, isolation: 'isolate' }}>
           {/* SVG connector lines */}
           <svg
-            style={{ position: 'absolute', inset: 0, width: totalW, height: totalH, overflow: 'visible' }}
+            style={{ position: 'absolute', inset: 0, width: totalW, height: totalH, overflow: 'visible', zIndex: 0 }}
             className="pointer-events-none"
             aria-hidden
           >
-            {connectors.map(({ d, key }) => (
-              <path key={key} d={d} fill="none" stroke="#CBD5E1" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+            {connectors.map(({ d, key, dashed }) => (
+              <path
+                key={key}
+                d={d}
+                fill="none"
+                stroke="#CBD5E1"
+                strokeWidth={2}
+                strokeDasharray={dashed ? '6 6' : undefined}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
             ))}
           </svg>
 
-          {/* Play-in matches */}
-          {hasPlayIn && playInMatches.map(match => {
-            const playInIndex = playInMatches.findIndex(m => m.id === match.id);
-            const placeholder = getPlayInWinnerPlaceholder(playInIndex, playInMatches.length);
-            const r1TargetIdx = r1Matches.findIndex(
-              m => m.player1Id === placeholder || m.player2Id === placeholder
-            );
-            const yPos = r1TargetIdx !== -1
-              ? getPos(0, r1TargetIdx, r1Count, hasPlayIn).y
-              : playInIndex * unitH;
-            return (
-              <div key={match.id} style={{ position: 'absolute', left: 0, top: yPos, width: CARD_W }}>
-                <BracketCard
-                   match={match}
-                   getPlayerName={getPlayerName}
-                   getPlayerProfile={id => players.find(player => player.id === id)}
-                  isActive={activeMatchId === match.id}
-                  onSelect={() => {
-                    const isBye = match.player1Id === 'BYE' || match.player2Id === 'BYE';
-                    setSwapMode(isBye);
-                    if (isBye) {
-                      const real = match.player1Id === 'BYE' ? match.player2Id : match.player1Id;
-                      setSwapP1(real);
-                      setSwapP2('BYE');
-                    }
-                    setActiveMatchId(prev => prev === match.id ? null : match.id);
-                  }}
-                  readOnly={readOnly}
-                  previewMode={previewMode}
-                />
-              </div>
-            );
-          })}
+          {/* Play-in matches occupy a dedicated flow-based column. Keeping them
+              out of the main absolute-positioned layer prevents overlap when
+              the preliminary field and R1 have different match counts. */}
+          {hasPlayIn && (
+            <div
+              style={{
+                position: 'absolute',
+                left: 0,
+                top: 0,
+                width: CARD_W,
+                height: totalH,
+                zIndex: getBracketCardZIndex('playIn'),
+                display: 'flex',
+                flexDirection: 'column',
+                gap: R1_GAP,
+              }}
+            >
+              {orderedPlayInIndexes.map(playInIndex => {
+                const match = playInMatches[playInIndex];
+                return <div key={match.id} style={{ width: CARD_W, flex: `0 0 ${CARD_H}px` }}>
+                  <BracketCard
+                    match={match}
+                    getPlayerName={getPlayerName}
+                    getPlayerProfile={id => players.find(player => player.id === id)}
+                    isActive={activeMatchId === match.id}
+                    onSelect={() => {
+                      const isBye = match.player1Id === 'BYE' || match.player2Id === 'BYE';
+                      setSwapMode(isBye);
+                      if (isBye) {
+                        const real = match.player1Id === 'BYE' ? match.player2Id : match.player1Id;
+                        setSwapP1(real);
+                        setSwapP2('BYE');
+                      }
+                      setActiveMatchId(prev => prev === match.id ? null : match.id);
+                    }}
+                    readOnly={readOnly}
+                    previewMode={previewMode}
+                  />
+                </div>;
+              })}
+            </div>
+          )}
 
           {/* Main bracket matches */}
           {mainRounds.map((rNum, rIdx) => {
@@ -343,7 +389,16 @@ export default function BracketView({ bracketMatches, getPlayerName, players = [
             return roundMatches.map((match, mIdx) => {
               const { x, y } = getPos(rIdx, mIdx, r1Count, hasPlayIn);
               return (
-                <div key={match.id} style={{ position: 'absolute', left: x, top: y, width: CARD_W }}>
+                <div
+                  key={match.id}
+                  style={{
+                    position: 'absolute',
+                    left: x,
+                    top: y,
+                    width: CARD_W,
+                    zIndex: getBracketCardZIndex('main', activeMatchId === match.id),
+                  }}
+                >
                    <BracketCard
                       match={match}
                       getPlayerName={getPlayerName}

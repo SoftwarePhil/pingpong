@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
       status: 'roundRobin',
       roundRobinRounds,
       rrBestOf: rrBestOf ?? 1,
-      rrPairingStrategy: rrPairingStrategy ?? 'random',
+      rrPairingStrategy: rrPairingStrategy ?? 'swiss',
       bracketRounds,
       players: uniquePlayers,
       bracketConfig: { thirdPlaceMatch: thirdPlaceMatch === true },
