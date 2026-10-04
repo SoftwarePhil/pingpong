@@ -223,12 +223,16 @@ export function cascadeRoundRobinPlayerSwap(
     if (m.id === matchId) {
       return { ...m, player1Id: newPlayer1Id, player2Id: newPlayer2Id };
     }
-    // Only cascade to other unplayed round-robin matches in the same round
+    // Only cascade to other unplayed round-robin matches in the same round.
+    // Bye matches carry an automatic winnerId but have no games, so they must
+    // still be eligible — otherwise swapping the bye holder into another match
+    // leaves them on the bye as well and they show up twice in the round.
+    const isBye = m.player1Id === 'BYE' || m.player2Id === 'BYE';
     if (
       m.round !== 'roundRobin' ||
       m.bracketRound !== target.bracketRound ||
       m.games.length > 0 ||
-      m.winnerId
+      (m.winnerId && !isBye)
     ) {
       return m;
     }
@@ -237,7 +241,12 @@ export function cascadeRoundRobinPlayerSwap(
     if (swapMap.has(p1)) p1 = swapMap.get(p1)!;
     if (swapMap.has(p2)) p2 = swapMap.get(p2)!;
     if (p1 === m.player1Id && p2 === m.player2Id) return m;
-    return { ...m, player1Id: p1, player2Id: p2 };
+    const updated: Match = { ...m, player1Id: p1, player2Id: p2 };
+    // Keep the automatic bye win with whoever now holds the bye
+    if (isBye && m.winnerId) {
+      updated.winnerId = p1 === 'BYE' ? p2 : p1;
+    }
+    return updated;
   });
 }
 
