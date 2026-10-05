@@ -9,26 +9,16 @@ import {
   isValidDoublesRoster,
 } from './matchFormat';
 import { getRoundRobinStandings, rankPlayersByRoundRobinStandings } from './standings';
+import {
+  TBD_PLACEHOLDER,
+  PLAY_IN_WINNER_PLACEHOLDER,
+  getPlayInWinnerPlaceholder,
+  isPlayInWinnerPlaceholder,
+} from '@/bracket/core';
 
-/** Placeholder player slot used when a downstream bracket match's participant
- * is invalidated by an upstream correction and no replacement winner is yet
- * determined (i.e. the upstream match was edited back into an incomplete state). */
-export const TBD_PLACEHOLDER = 'TBD';
-
-/** Placeholder used for a play-in winner before its preliminary match is played. */
-export const PLAY_IN_WINNER_PLACEHOLDER = 'PLAY_IN_WINNER';
-
-/** Returns true for the legacy single play-in placeholder and indexed placeholders. */
-export function isPlayInWinnerPlaceholder(playerId: string): boolean {
-  return playerId === PLAY_IN_WINNER_PLACEHOLDER || /^PLAY_IN_WINNER_\d+$/.test(playerId);
-}
-
-/** Keeps the original placeholder name for one play-in for legacy data. */
-export function getPlayInWinnerPlaceholder(index: number, total: number): string {
-  return total === 1
-    ? PLAY_IN_WINNER_PLACEHOLDER
-    : `${PLAY_IN_WINNER_PLACEHOLDER}_${index + 1}`;
-}
+// The bracket module owns the slot placeholder conventions; re-exported so
+// tournament logic and its callers share one definition.
+export { TBD_PLACEHOLDER, PLAY_IN_WINNER_PLACEHOLDER, getPlayInWinnerPlaceholder, isPlayInWinnerPlaceholder };
 
 /** Replaces the R1 slot fed by a preliminary match with its winner. */
 export function replacePlayInWinnerSlot(

@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Tournament, Player, Match, Game, MARKER_PLAYER_ID } from '../../../types/pingpong';
 import Link from 'next/link';
-import BracketView from '../active/BracketView';
+import { BracketView } from '@/bracket';
 import { PageHeader } from '../../../components/PageHeader';
 import TournamentPointsPanel from './TournamentPointsPanel';
 import { getTournamentDateKey } from '../../../lib/tournamentPoints';
@@ -214,8 +214,6 @@ function TournamentHistoryContent() {
                   bracketMatches={bracketMatches}
                   getPlayerName={getPlayerName}
                   players={players}
-                  onAddGame={async () => {}}
-                  onSaveGameEdit={async () => {}}
                   showThirdPlace={selectedTournament.bracketConfig?.thirdPlaceMatch === true || bracketMatches.some(m => m.isThirdPlace)}
                   readOnly
                 />
