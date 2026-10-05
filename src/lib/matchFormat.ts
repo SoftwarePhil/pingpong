@@ -1,16 +1,12 @@
 import { Game, Match, RoundRobinFormat, Tournament } from '../types/pingpong';
+import { getMatchSides, getWinningSide, isByeMatch, isMatchComplete } from '@/bracket/core';
+import type { MatchSide } from '@/bracket/core';
 
-export type MatchSide = 1 | 2;
+// Side and winner rules are shared with the bracket renderer, which owns them.
+export { getMatchSides, getWinningSide, isByeMatch, isMatchComplete };
+export type { MatchSide };
 
 const NON_PLAYER_IDS = new Set(['BYE', 'MARKER', 'TBD']);
-
-/** Returns the two sides, falling back to the legacy singles fields. */
-export function getMatchSides(match: Match): [string[], string[]] {
-  if (Array.isArray(match.side1PlayerIds) && Array.isArray(match.side2PlayerIds)) {
-    return [[...match.side1PlayerIds], [...match.side2PlayerIds]];
-  }
-  return [[match.player1Id], [match.player2Id]];
-}
 
 /** Returns the participant snapshot, falling back to legacy game fields. */
 export function getGameSides(game: Game): [string[], string[]] {
@@ -26,21 +22,6 @@ export function isDoublesMatch(match: Match): boolean {
 
 export function getRoundRobinFormat(tournament: Tournament, round: number): RoundRobinFormat {
   return tournament.roundRobinFormats?.[round] ?? 'singles';
-}
-
-/** Finds the winning side for both new doubles records and legacy singles records. */
-export function getWinningSide(match: Match): MatchSide | undefined {
-  if (match.winnerSide === 1 || match.winnerSide === 2) return match.winnerSide;
-  if (!match.winnerId) return undefined;
-
-  const [side1, side2] = getMatchSides(match);
-  if (side1.includes(match.winnerId)) return 1;
-  if (side2.includes(match.winnerId)) return 2;
-  return undefined;
-}
-
-export function isMatchComplete(match: Match): boolean {
-  return getWinningSide(match) !== undefined;
 }
 
 export function getWinningPlayerIds(match: Match): string[] {
@@ -72,10 +53,6 @@ export function isPlayerId(playerId: string | undefined): playerId is string {
     !NON_PLAYER_IDS.has(playerId) &&
     !playerId.startsWith('PLAY_IN_WINNER')
   );
-}
-
-export function isByeMatch(match: Match): boolean {
-  return getMatchPlayerIds(match).includes('BYE');
 }
 
 export function isValidDoublesRoster(playerIds: string[]): boolean {

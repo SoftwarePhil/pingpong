@@ -5,7 +5,7 @@ import { Tournament, Player, Match, Game, BracketConfig, MARKER_PLAYER_ID } from
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import RoundRobinView from './RoundRobinView';
-import BracketView from './BracketView';
+import { BracketView } from '@/bracket';
 import Leaderboard from './Leaderboard';
 import { createBracketMatches, cascadeBracketR1PlayerSwap, cascadeBracketPlayerSwap, getCompletedSemifinalMatches, isPlayInWinnerPlaceholder } from '../../../lib/tournament';
 import { PlayerSearchSelect } from '../../../components/PlayerSearchSelect';
@@ -1002,11 +1002,10 @@ export default function ActiveTournamentsPage() {
 
                       {(bracketStarted || effectivePreviewMatches.length > 0) ? (
                         <div className="bg-white rounded-2xl shadow-sm border-2 border-gray-200 p-6">
-                           <BracketView
-                             bracketMatches={bracketStarted ? bracketMatches : effectivePreviewMatches}
-                             getPlayerName={getPlayerName}
-                             players={players}
-                             tournamentPlayers={t.players}
+                          <BracketView
+                            bracketMatches={bracketStarted ? bracketMatches : effectivePreviewMatches}
+                            getPlayerName={getPlayerName}
+                            players={players}
                             onAddGame={addGameToMatch}
                             onSaveGameEdit={saveGameEdit}
                             onDeleteGame={isAdmin && bracketStarted ? deleteGame : undefined}
@@ -1014,7 +1013,7 @@ export default function ActiveTournamentsPage() {
                             onSwapPlayers={isAdmin ? (bracketStarted ? swapPlayers : async (mid, p1, p2) => { handlePreviewBracketSwap(t.id, mid, p1, p2, effectivePreviewMatches); }) : undefined}
                             readOnly={!isAdmin}
                             previewMode={isAdmin && !bracketStarted}
-                             showThirdPlace={thirdPlaceEnabled || bracketMatches.some(m => m.isThirdPlace)}
+                            showThirdPlace={thirdPlaceEnabled || bracketMatches.some(m => m.isThirdPlace)}
                           />
                           {!bracketStarted && (
                             <div className="mt-3 flex justify-end">

@@ -1,5 +1,5 @@
 import { getPlayInWinnerPlaceholder } from '../lib/tournament';
-import { getBracketCardZIndex, getBracketSlotOffset, getPlayInTargetIndex, orderPlayInIndexesByTarget, shouldUseStraightPlayInConnector } from '../lib/bracketLayout';
+import { getBracketCardZIndex, getBracketSlotOffset, getPlayInTargetIndex, orderPlayInIndexesByTarget, shouldUseStraightPlayInConnector } from '@/bracket/core';
 
 describe('bracket play-in layout contract', () => {
   it('keeps indexed play-in placeholders addressable for stacked cards', () => {
