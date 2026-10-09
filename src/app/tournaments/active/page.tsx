@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import RoundRobinView from './RoundRobinView';
 import { BracketView } from '@/bracket';
+import { validateScore } from '../../../lib/scoring';
 import Leaderboard from './Leaderboard';
 import { createBracketMatches, cascadeBracketR1PlayerSwap, cascadeBracketPlayerSwap, getCompletedSemifinalMatches, isPlayInWinnerPlaceholder } from '../../../lib/tournament';
 import { PlayerSearchSelect } from '../../../components/PlayerSearchSelect';
@@ -82,7 +83,11 @@ export default function ActiveTournamentsPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ score1, score2, matchId: match.id }),
     });
-    if (!res.ok) return;
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert(err.error ?? 'Failed to record game');
+      return;
+    }
     await Promise.all([fetchGames(), fetchTournaments()]);
     if (match.round === 'bracket') {
       await maybeAdvanceBracketRound(match.tournamentId);
@@ -1011,6 +1016,7 @@ export default function ActiveTournamentsPage() {
                             onDeleteGame={isAdmin && bracketStarted ? deleteGame : undefined}
                             onChangeBestOf={isAdmin && bracketStarted ? changeMatchBestOf : undefined}
                             onSwapPlayers={isAdmin ? (bracketStarted ? swapPlayers : async (mid, p1, p2) => { handlePreviewBracketSwap(t.id, mid, p1, p2, effectivePreviewMatches); }) : undefined}
+                            validateGameScore={validateScore}
                             readOnly={!isAdmin}
                             previewMode={isAdmin && !bracketStarted}
                             showThirdPlace={thirdPlaceEnabled || bracketMatches.some(m => m.isThirdPlace)}

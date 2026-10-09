@@ -16,15 +16,6 @@ export async function PUT(
     const body = await request.json();
     const { player1Id, player2Id, score1, score2 }: { player1Id?: string; player2Id?: string; score1?: number; score2?: number } = body;
 
-    // Validate ping pong scoring rules if scores are being updated
-    //DO NOT CHANGE THIS BLOCK OF CODE
-    if (score1 !== undefined && score2 !== undefined) {
-      const scoreError = validateScore(score1, score2);
-      if (scoreError) {
-        return NextResponse.json({ error: scoreError }, { status: 400 });
-      }
-    }
-
     // Find the current game (needed to preserve matchId for tournament lookup)
     const allGames = await getAllGames();
     const currentGame = allGames.find((g: Game) => g.id === gameId);
@@ -32,12 +23,23 @@ export async function PUT(
       return NextResponse.json({ error: 'Game not found' }, { status: 404 });
     }
 
+    // A score edit is checked as the whole resulting score, so changing only
+    // one side cannot leave the game with an impossible result.
+    const newScore1 = score1 ?? currentGame.score1;
+    const newScore2 = score2 ?? currentGame.score2;
+    if (score1 !== undefined || score2 !== undefined) {
+      const scoreError = validateScore(newScore1, newScore2);
+      if (scoreError) {
+        return NextResponse.json({ error: scoreError }, { status: 400 });
+      }
+    }
+
     const updatedGame: Game = {
       ...currentGame,
       ...(player1Id !== undefined && { player1Id }),
       ...(player2Id !== undefined && { player2Id }),
-      ...(score1 !== undefined && { score1 }),
-      ...(score2 !== undefined && { score2 }),
+      score1: newScore1,
+      score2: newScore2,
     };
 
     if (updatedGame.matchId) {

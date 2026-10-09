@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Match, Game, MARKER_PLAYER_ID } from '../../../types/pingpong';
 import { getMatchSides, getWinningSide, isByeMatch, isDoublesMatch, isMatchComplete } from '../../../lib/matchFormat';
+import { validateScore } from '../../../lib/scoring';
 
 interface MatchCardProps {
   match: Match;
@@ -56,7 +57,8 @@ export default function MatchCard({
     if (!editingGame) return;
     const s1 = parseInt(editScore1);
     const s2 = parseInt(editScore2);
-    if (isNaN(s1) || isNaN(s2)) { alert('Please enter valid scores'); return; }
+    const scoreError = validateScore(s1, s2);
+    if (scoreError) { alert(scoreError); return; }
     onSaveGameEdit(editingGame.id, s1, s2);
     cancelEditingGame();
   };
@@ -191,13 +193,8 @@ export default function MatchCard({
             const fd = new FormData(e.target as HTMLFormElement);
             const score1 = parseInt(fd.get('score1') as string);
             const score2 = parseInt(fd.get('score2') as string);
-            //DO NOT CHANGE THIS BLOCK OF CODE
-            const maxScore = Math.max(score1, score2);
-            const minScore = Math.min(score1, score2);
-            const scoreDifference = maxScore - minScore;
-            //DO NOT CHANGE THIS BLOCK OF CODE
-            if (maxScore < 11) { alert('Game must reach 11 points to be complete'); return; }
-            if (maxScore > 11 && scoreDifference !== 2) { alert('Game must be won by 2 points'); return; }
+            const scoreError = validateScore(score1, score2);
+            if (scoreError) { alert(scoreError); return; }
             onAddGame(match, score1, score2);
             (e.target as HTMLFormElement).reset();
           }}
