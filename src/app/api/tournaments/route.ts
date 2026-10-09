@@ -1,9 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Tournament, Match, BracketConfig, RoundRobinFormat } from '../../../types/pingpong';
+import { Tournament, Match, BracketConfig, PlayInMode, RoundRobinFormat } from '../../../types/pingpong';
 import { getTournaments, saveData, setTournament, getTournament, deleteTournament, registerMatchesIndex, unregisterMatchesIndex, syncTournamentPlayers, setRoundRobinFormatAtomically, TournamentConflictError, TournamentNotFoundError } from '../../../data/data';
-import { createRoundRobinPairings, advanceBracketRound, createBracketMatches, advanceRoundRobinRound, resyncRoundRobinMatches, createThirdPlaceMatch } from '../../../lib/tournament';
+import { createRoundRobinPairings, advanceBracketRound, createBracketMatches, advanceRoundRobinRound, resyncRoundRobinMatches, createThirdPlaceMatch, buildBracketFromPreview, rankPlayersForBracket, InvalidBracketError } from '../../../lib/tournament';
 import { requireAdmin } from '../../../lib/auth';
 import { isMatchComplete } from '../../../lib/matchFormat';
+
+const PLAY_IN_MODES: PlayInMode[] = ['auto', 'force', 'none'];
+
+/** Accepts the bracket settings the preview can choose, with the right types. */
+function parseBracketConfig(value: unknown): { config: BracketConfig } | { error: string } {
+  if (value === undefined) return { config: {} };
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return { error: 'Invalid bracket settings' };
+  }
+  const { playInMode, thirdPlaceMatch } = value as Record<string, unknown>;
+  if (playInMode !== undefined && !PLAY_IN_MODES.includes(playInMode as PlayInMode)) {
+    return { error: 'Invalid play-in mode' };
+  }
+  if (thirdPlaceMatch !== undefined && typeof thirdPlaceMatch !== 'boolean') {
+    return { error: 'Invalid third-place setting' };
+  }
+  return {
+    config: {
+      ...(playInMode !== undefined && { playInMode: playInMode as PlayInMode }),
+      ...(thirdPlaceMatch !== undefined && { thirdPlaceMatch }),
+    },
+  };
+}
 
 export async function GET() {
   try {
@@ -258,67 +281,56 @@ if (action === 'advanceRound') {
       }
 
       const existingBracketMatches = (tournament.matches ?? []).filter(m => m.round === 'bracket');
-       const hasPlayedBracket = existingBracketMatches.some(m =>
-         m.games.length > 0 || (isMatchComplete(m) && m.player1Id !== 'BYE' && m.player2Id !== 'BYE')
-       );
+      const hasPlayedBracket = existingBracketMatches.some(m =>
+        m.games.length > 0 || (isMatchComplete(m) && m.player1Id !== 'BYE' && m.player2Id !== 'BYE')
+      );
       if (hasPlayedBracket) {
         return NextResponse.json({ error: 'Cannot rebuild bracket after bracket games have been played' }, { status: 400 });
       }
 
-      if (existingBracketMatches.length > 0) {
-        const removeIds = existingBracketMatches.map(m => m.id);
-        tournament.matches = (tournament.matches ?? []).filter(m => m.round !== 'bracket');
-        await unregisterMatchesIndex(removeIds);
+      const parsedConfig = parseBracketConfig((body as { bracketConfig?: unknown }).bracketConfig);
+      if ('error' in parsedConfig) {
+        return NextResponse.json({ error: parsedConfig.error }, { status: 400 });
       }
 
-      tournament.status = 'bracket';
-      tournament.bracketStartedAt = tournament.bracketStartedAt ?? new Date().toISOString();
-      tournament.playerRanking = undefined;
+      // Build the new bracket against a copy without any earlier unplayed
+      // bracket, so nothing is changed until the new bracket is known to be valid.
+      const withoutBracket: Tournament = {
+        ...tournament,
+        bracketConfig: { ...(tournament.bracketConfig ?? {}), ...parsedConfig.config },
+        matches: (tournament.matches ?? []).filter(m => m.round !== 'bracket'),
+      };
 
-      // Support committing a user-configured bracket from the live preview in the UI.
-      // The client can send the exact (edited) initial bracket matches (R1 + optional play-in)
-      // and/or a bracketConfig (e.g. playInMode).
-      const initialBracketMatches: Match[] | undefined = (body as { initialBracketMatches?: Match[] }).initialBracketMatches;
-      const incomingConfig = (body as { bracketConfig?: BracketConfig }).bracketConfig;
-      if (incomingConfig) {
-        tournament.bracketConfig = { ...(tournament.bracketConfig ?? {}), ...incomingConfig };
-      }
+      // The client may commit the exact opening matches it showed in the live
+      // preview (after any player or bye changes); otherwise generate them.
+      const submittedMatches = (body as { initialBracketMatches?: unknown }).initialBracketMatches;
       let newBracketMatches: Match[];
-
-      if (initialBracketMatches && Array.isArray(initialBracketMatches) && initialBracketMatches.length > 0) {
-        // Basic validation: only unplayed bracket matches for round 0 (play-in) or 1+
-        const invalid = initialBracketMatches.some(m =>
-          m.round !== 'bracket' ||
-          m.isThirdPlace ||
-          (m.games && m.games.length > 0) ||
-          (m.winnerId && m.player1Id !== 'BYE' && m.player2Id !== 'BYE' && (m.bracketRound ?? 0) > 0)
-        );
-        if (invalid) {
-          return NextResponse.json({ error: 'Invalid initial bracket matches for preview commit' }, { status: 400 });
-        }
-
-        // Run normal creation on a clone purely for side-effects (playerRanking etc.)
+      let playerRanking: string[];
+      if (submittedMatches !== undefined) {
         try {
-          const clone: Tournament = {
-            ...tournament,
-            matches: [...(tournament.matches ?? [])],
-            bracketRounds: tournament.bracketRounds.map(r => ({ ...r })),
-          };
-          createBracketMatches(clone, true);
-          if (clone.playerRanking) tournament.playerRanking = clone.playerRanking;
-        } catch {}
-
-        newBracketMatches = initialBracketMatches.map(m => ({ ...m }));
+          newBracketMatches = buildBracketFromPreview(withoutBracket, submittedMatches);
+        } catch (error) {
+          if (error instanceof InvalidBracketError) {
+            return NextResponse.json({ error: error.message }, { status: 400 });
+          }
+          throw error;
+        }
+        playerRanking = rankPlayersForBracket(withoutBracket);
       } else {
-        newBracketMatches = createBracketMatches(tournament, true);
+        newBracketMatches = createBracketMatches(withoutBracket, true);
+        playerRanking = withoutBracket.playerRanking ?? [];
       }
 
       if (newBracketMatches.length === 0) {
         return NextResponse.json({ error: 'Failed to create bracket matches' }, { status: 400 });
       }
 
-      if (!tournament.matches) tournament.matches = [];
-      tournament.matches.push(...newBracketMatches);
+      tournament.status = 'bracket';
+      tournament.bracketStartedAt = tournament.bracketStartedAt ?? new Date().toISOString();
+      tournament.bracketConfig = withoutBracket.bracketConfig;
+      tournament.playerRanking = playerRanking;
+      tournament.matches = [...(withoutBracket.matches ?? []), ...newBracketMatches];
+      await unregisterMatchesIndex(existingBracketMatches.map(m => m.id));
       await registerMatchesIndex(newBracketMatches);
       await setTournament(tournament);
       await saveData();

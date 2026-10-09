@@ -11,6 +11,12 @@ export interface MatchEditorCallbacks<M extends BracketMatch> {
   onDeleteGame?: (gameId: string) => Promise<void>;
   onChangeBestOf?: (matchId: string, bestOf: number) => Promise<void>;
   onSwapPlayers?: (matchId: string, player1Id: string, player2Id: string) => Promise<void>;
+  /**
+   * Checks a game score before it is recorded or edited. Returns an error
+   * message, or null when the score is valid. Without it, only whole numbers
+   * are required and the host's server has the final say.
+   */
+  validateGameScore?: (score1: number, score2: number) => string | null;
 }
 
 interface MatchEditorProps<M extends BracketMatch> extends MatchEditorCallbacks<M> {
@@ -45,6 +51,7 @@ export function MatchEditor<M extends BracketMatch>({
   onDeleteGame,
   onChangeBestOf,
   onSwapPlayers,
+  validateGameScore,
 }: MatchEditorProps<M>) {
   const byeHolder = getByeHolder(match);
   const isBye = byeHolder !== undefined;
@@ -59,6 +66,9 @@ export function MatchEditor<M extends BracketMatch>({
   const [swapP1, setSwapP1] = useState(byeHolder ?? match.player1Id);
   const [swapP2, setSwapP2] = useState(isBye ? BYE_PLACEHOLDER : match.player2Id);
 
+  const checkScore = (s1: number, s2: number) =>
+    Number.isNaN(s1) || Number.isNaN(s2) ? 'Enter valid scores' : validateGameScore?.(s1, s2) ?? null;
+
   const showSwapForm = swapMode || isBye || previewMode;
   const seriesComplete = match.games.length >= match.bestOf;
   const [side1Wins, side2Wins] = getSeriesScore(match);
@@ -68,14 +78,8 @@ export function MatchEditor<M extends BracketMatch>({
     if (match.games.length >= match.bestOf) return;
     const s1 = parseInt(score1);
     const s2 = parseInt(score2);
-    //DO NOT CHANGE THIS BLOCK OF CODE
-    const maxScore = Math.max(s1, s2);
-    const minScore = Math.min(s1, s2);
-    const scoreDifference = maxScore - minScore;
-    //DO NOT CHANGE THIS BLOCK OF CODE
-    if (isNaN(s1) || isNaN(s2)) { alert('Enter valid scores'); return; }
-    if (maxScore < 11) { alert('Game must reach 11 points to be complete'); return; }
-    if (maxScore > 11 && scoreDifference !== 2) { alert('Game must be won by 2 points'); return; }
+    const scoreError = checkScore(s1, s2);
+    if (scoreError) { alert(scoreError); return; }
     await onAddGame(match, s1, s2);
     setScore1('');
     setScore2('');
@@ -97,7 +101,8 @@ export function MatchEditor<M extends BracketMatch>({
     if (!onSaveGameEdit) return;
     const s1 = parseInt(editScore1);
     const s2 = parseInt(editScore2);
-    if (isNaN(s1) || isNaN(s2)) { alert('Enter valid scores'); return; }
+    const scoreError = checkScore(s1, s2);
+    if (scoreError) { alert(scoreError); return; }
     await onSaveGameEdit(gameId, s1, s2);
     setEditingGameId(null);
   };

@@ -5,6 +5,34 @@ import { cascadeRoundRobinPlayerSwap, cascadeBracketPlayerSwap, cascadeBracketOu
 import { requireAdmin } from '../../../../lib/auth';
 import { isDoublesMatch } from '../../../../lib/matchFormat';
 
+const EDITABLE_FIELDS = ['player1Id', 'player2Id', 'bestOf'] as const;
+
+type MatchUpdate = { player1Id?: string; player2Id?: string; bestOf?: number };
+
+/** Accepts only the fields an admin may change, with the right types. */
+function parseMatchUpdate(body: unknown): { update: MatchUpdate } | { error: string } {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return { error: 'Invalid match update' };
+  }
+  const input = body as Record<string, unknown>;
+  const unknownFields = Object.keys(input).filter(key => !(EDITABLE_FIELDS as readonly string[]).includes(key));
+  if (unknownFields.length > 0) {
+    return { error: `These match fields cannot be changed: ${unknownFields.join(', ')}` };
+  }
+  const { player1Id, player2Id, bestOf } = input;
+  if ([player1Id, player2Id].some(id => id !== undefined && (typeof id !== 'string' || id === ''))) {
+    return { error: 'Player ids must be non-empty strings' };
+  }
+  if (bestOf !== undefined && !(typeof bestOf === 'number' && Number.isInteger(bestOf) && bestOf >= 1 && bestOf % 2 === 1)) {
+    return { error: 'Best of must be an odd whole number' };
+  }
+  const changesPlayers = player1Id !== undefined || player2Id !== undefined;
+  if (changesPlayers === (bestOf !== undefined)) {
+    return { error: 'Change either the players or the number of games' };
+  }
+  return { update: { player1Id, player2Id, bestOf } as MatchUpdate };
+}
+
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -13,7 +41,11 @@ export async function PUT(
   if (denied) return denied;
   try {
     const { id: matchId } = await params;
-    const updates = await request.json();
+    const parsed = parseMatchUpdate(await request.json().catch(() => null));
+    if ('error' in parsed) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 });
+    }
+    const { update } = parsed;
 
     const currentMatch = await getMatch(matchId);
     if (!currentMatch) {
@@ -21,7 +53,7 @@ export async function PUT(
     }
 
     // Player reassignment — cascade changes to other matches in the same round
-    if (updates.player1Id !== undefined || updates.player2Id !== undefined) {
+    if (update.bestOf === undefined) {
       const isRR = currentMatch.round === 'roundRobin';
       const isBracket = currentMatch.round === 'bracket';
 
@@ -35,8 +67,8 @@ export async function PUT(
         return NextResponse.json({ error: 'Cannot change players after games have been played' }, { status: 400 });
       }
 
-      const newP1 = updates.player1Id ?? currentMatch.player1Id;
-      const newP2 = updates.player2Id ?? currentMatch.player2Id;
+      const newP1 = update.player1Id ?? currentMatch.player1Id;
+      const newP2 = update.player2Id ?? currentMatch.player2Id;
 
       if (newP1 === newP2) {
         return NextResponse.json({ error: 'Player 1 and Player 2 must be different' }, { status: 400 });
@@ -55,6 +87,23 @@ export async function PUT(
       const tournament = await getTournament(tournamentId);
       if (!tournament?.matches) {
         return NextResponse.json({ error: 'Tournament not found' }, { status: 404 });
+      }
+
+      // Incoming players must be active in this tournament. The match's current
+      // slots stay valid, and a bracket may move its BYE or a round-robin bye
+      // may gain a marker (checked above).
+      const allowedIds = new Set([
+        ...(tournament.activePlayers ?? tournament.players),
+        currentMatch.player1Id,
+        currentMatch.player2Id,
+        isRR ? MARKER_PLAYER_ID : 'BYE',
+      ]);
+      const unknownPlayers = [newP1, newP2].filter(id => !allowedIds.has(id));
+      if (unknownPlayers.length > 0) {
+        return NextResponse.json(
+          { error: `Not an active player in this tournament: ${unknownPlayers.join(', ')}` },
+          { status: 400 },
+        );
       }
 
       const bracketStarted = Boolean(
@@ -96,23 +145,9 @@ export async function PUT(
       return NextResponse.json(updatedMatch);
     }
 
-    // Non-player update (scores, winnerId, bestOf, etc.) — standard path
-    if (
-      updates.side1PlayerIds !== undefined ||
-      updates.side2PlayerIds !== undefined ||
-      updates.winnerSide !== undefined ||
-      (isDoublesMatch(currentMatch) && updates.games !== undefined) ||
-      (isDoublesMatch(currentMatch) && updates.winnerId !== undefined)
-    ) {
-      return NextResponse.json({ error: 'Participants and winners are derived from the match format and games' }, { status: 400 });
-    }
-    let updatedMatch: Match = { ...currentMatch, ...updates };
-
-    // Changing the number of games in a match may change (or clear) its
-    // winner based on the games already recorded — recompute it.
-    if (updates.bestOf !== undefined) {
-      updatedMatch = recalculateMatchWinner(updatedMatch);
-    }
+    // Changing the number of games may change (or clear) the winner based on
+    // the games already recorded, so recompute it.
+    const updatedMatch: Match = recalculateMatchWinner({ ...currentMatch, bestOf: update.bestOf });
 
     if (updatedMatch.round === 'bracket') {
       // Bracket matches may need to propagate a changed outcome forward to

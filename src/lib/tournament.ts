@@ -10,6 +10,7 @@ import {
 } from './matchFormat';
 import { getRoundRobinStandings, rankPlayersByRoundRobinStandings } from './standings';
 import {
+  BYE_PLACEHOLDER,
   TBD_PLACEHOLDER,
   PLAY_IN_WINNER_PLACEHOLDER,
   getPlayInWinnerPlaceholder,
@@ -701,6 +702,132 @@ function createSeededBracketMatches(
   return [...newMatches.slice(0, half), ...newMatches.slice(half).reverse()];
 }
 
+/**
+ * Seeds active players for the bracket by round-robin standings. Players who
+ * have not played a game yet follow in random order; with no games at all the
+ * whole field is shuffled.
+ */
+export function rankPlayersForBracket(tournament: Tournament): string[] {
+  const roundRobinMatches = (tournament.matches ?? []).filter(m => m.round === 'roundRobin');
+  const activePlayerPool = tournament.activePlayers ?? tournament.players;
+  if (!roundRobinMatches.some(match => match.games.length > 0)) {
+    return shuffle(activePlayerPool);
+  }
+
+  // Count individual results so doubles rounds seed the existing singles bracket
+  // using the same standings shown in the round-robin leaderboard.
+  const standings = rankPlayersByRoundRobinStandings(tournament.players, roundRobinMatches);
+  const standingStats = getRoundRobinStandings(tournament.players, roundRobinMatches);
+  const hasPlayed = (playerId: string) => (standingStats[playerId]?.gamesPlayed ?? 0) > 0;
+  return [
+    ...activePlayerPool.filter(hasPlayed).sort((a, b) => standings.indexOf(a) - standings.indexOf(b)),
+    ...shuffle(activePlayerPool.filter(playerId => !hasPlayed(playerId))),
+  ];
+}
+
+/** Raised when a bracket submitted from the preview is not a valid first round. */
+export class InvalidBracketError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidBracketError';
+  }
+}
+
+/**
+ * Rebuilds the opening bracket matches chosen in the live preview from trusted
+ * data. Only each match's round (0 = play-in, 1 = first main round) and its two
+ * participants come from the client, in the order submitted, which encodes the
+ * bracket positions. Ids, best-of, bye winners and timestamps are set here.
+ *
+ * The submission must place every active player exactly once, feed each play-in
+ * winner into exactly one first-round slot, and give the first round a
+ * power-of-two match count so later rounds pair up cleanly.
+ */
+export function buildBracketFromPreview(tournament: Tournament, submitted: unknown): Match[] {
+  if (!Array.isArray(submitted) || submitted.length === 0) {
+    throw new InvalidBracketError('The bracket preview has no matches');
+  }
+
+  const slots = submitted.map(entry => {
+    const m = entry as Partial<Record<'player1Id' | 'player2Id' | 'bracketRound', unknown>> | null;
+    if (
+      !m || typeof m !== 'object' ||
+      typeof m.player1Id !== 'string' || typeof m.player2Id !== 'string' ||
+      (m.bracketRound !== 0 && m.bracketRound !== 1)
+    ) {
+      throw new InvalidBracketError('Each preview match needs two player ids and a round of 0 or 1');
+    }
+    return { player1Id: m.player1Id, player2Id: m.player2Id, bracketRound: m.bracketRound };
+  });
+
+  const playIns = slots.filter(slot => slot.bracketRound === 0);
+  const firstRound = slots.filter(slot => slot.bracketRound === 1);
+  if (firstRound.length === 0 || (firstRound.length & (firstRound.length - 1)) !== 0) {
+    throw new InvalidBracketError('The first bracket round must have 1, 2, 4, 8… matches');
+  }
+
+  const activePlayers = new Set(tournament.activePlayers ?? tournament.players);
+  const expectedPlaceholders = playIns.map((_, index) => getPlayInWinnerPlaceholder(index, playIns.length));
+  const seenPlayers = new Set<string>();
+  const seenPlaceholders = new Set<string>();
+  const claimPlayer = (playerId: string) => {
+    if (!activePlayers.has(playerId)) {
+      throw new InvalidBracketError(`Not an active player in this tournament: ${playerId}`);
+    }
+    if (seenPlayers.has(playerId)) {
+      throw new InvalidBracketError('A player appears in more than one bracket slot');
+    }
+    seenPlayers.add(playerId);
+  };
+
+  for (const { player1Id, player2Id } of playIns) {
+    claimPlayer(player1Id);
+    claimPlayer(player2Id);
+  }
+  for (const { player1Id, player2Id } of firstRound) {
+    const ids = [player1Id, player2Id];
+    const byeCount = ids.filter(id => id === BYE_PLACEHOLDER).length;
+    if (byeCount === 2 || (byeCount === 1 && ids.some(isPlayInWinnerPlaceholder))) {
+      throw new InvalidBracketError('A bye must be paired with an active player');
+    }
+    for (const id of ids) {
+      if (id === BYE_PLACEHOLDER) continue;
+      if (isPlayInWinnerPlaceholder(id)) {
+        if (!expectedPlaceholders.includes(id) || seenPlaceholders.has(id)) {
+          throw new InvalidBracketError('Each play-in winner must feed exactly one first-round slot');
+        }
+        seenPlaceholders.add(id);
+      } else {
+        claimPlayer(id);
+      }
+    }
+  }
+  if (seenPlaceholders.size !== expectedPlaceholders.length) {
+    throw new InvalidBracketError('Each play-in winner must feed exactly one first-round slot');
+  }
+  if (seenPlayers.size !== activePlayers.size) {
+    throw new InvalidBracketError('Every active player must have a place in the bracket');
+  }
+
+  const mainBestOf = getBestOfForMatchCount(tournament, firstRound.length);
+  const createdAt = new Date().toISOString();
+  return slots.map(({ player1Id, player2Id, bracketRound }) => {
+    const byeWinner = player1Id === BYE_PLACEHOLDER ? player2Id : player2Id === BYE_PLACEHOLDER ? player1Id : undefined;
+    return {
+      id: Date.now().toString() + Math.random(),
+      tournamentId: tournament.id,
+      createdAt,
+      player1Id,
+      player2Id,
+      round: 'bracket',
+      bracketRound,
+      bestOf: bracketRound === 0 || byeWinner ? 1 : mainBestOf,
+      games: [],
+      ...(byeWinner ? { winnerId: byeWinner } : {}),
+    };
+  });
+}
+
 export function createBracketMatches(tournament: Tournament, createMainBracket = true): Match[] {
   const newMatches: Match[] = [];
   // Check if bracket matches already exist for round 1
@@ -713,29 +840,8 @@ export function createBracketMatches(tournament: Tournament, createMainBracket =
     return []; // Already created
   }
 
-  // Get round robin matches to determine rankings
-  const roundRobinMatches = (tournament.matches ?? []).filter(m => m.round === 'roundRobin');
-
-  // Count individual results so doubles rounds seed the existing singles bracket
-  // using the same standings shown in the round-robin leaderboard.
-  const standings = rankPlayersByRoundRobinStandings(tournament.players, roundRobinMatches);
-  const standingStats = getRoundRobinStandings(tournament.players, roundRobinMatches);
-  // Only rank active players for the bracket
-  const activePlayerPool = tournament.activePlayers ?? tournament.players;
-  const hasAnyRoundRobinGames = roundRobinMatches.some(match => match.games.length > 0);
-  const rankedPlayers = !hasAnyRoundRobinGames
-    ? shuffle(activePlayerPool)
-    : [
-        ...[...activePlayerPool]
-          .filter(playerId => standingStats[playerId]?.gamesPlayed > 0)
-          .sort((a, b) => standings.indexOf(a) - standings.indexOf(b)),
-        ...shuffle(activePlayerPool.filter(playerId => (standingStats[playerId]?.gamesPlayed ?? 0) === 0)),
-      ];
-
-  const bracketPlayers = rankedPlayers;
-
-  // Set player ranking on tournament
-  tournament.playerRanking = rankedPlayers;
+  const bracketPlayers = rankPlayersForBracket(tournament);
+  tournament.playerRanking = bracketPlayers;
 
   const bracketConfig = tournament.bracketConfig || {};
   const playInMode = bracketConfig.playInMode || 'auto';

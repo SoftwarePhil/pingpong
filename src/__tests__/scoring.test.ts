@@ -45,7 +45,28 @@ describe('validateScore', () => {
     });
   });
 
+  describe('invalid scores — not whole points', () => {
+    it.each([
+      [-1, 11],
+      [11.5, 9],
+      ['11', 9],
+      [null, 11],
+      [Number.NaN, 11],
+    ])('rejects %p–%p', (score1, score2) => {
+      expect(validateScore(score1, score2)).toBe('Scores must be whole numbers of 0 or more');
+    });
+  });
+
   describe('invalid scores — margin too small or too large', () => {
+    it('rejects 11-10 (a 10-10 deuce must be won by 2)', () => {
+      expect(validateScore(11, 10)).toBe('Game must be won by 2 points');
+    });
+
+    it('rejects 10-11 for player 2', () => {
+      expect(validateScore(10, 11)).toBe('Game must be won by 2 points');
+    });
+
+
     it('rejects 12-11 (only 1 point ahead past 11)', () => {
       expect(validateScore(12, 11)).toBe('Game must be won by 2 points');
     });
