@@ -39,7 +39,7 @@ export function useAuth() {
   return useContext(AuthContext);
 }
 
-export function AuthControls({ embedded = false }: { embedded?: boolean } = {}) {
+export function AuthControls() {
   const { isAdmin, isLoading, refresh } = useAuth();
   const [open, setOpen] = useState(false);
   const [password, setPassword] = useState('');
@@ -55,11 +55,10 @@ export function AuthControls({ embedded = false }: { embedded?: boolean } = {}) 
   const logout = async () => { await fetch('/api/auth/logout', { method: 'POST' }); await refresh(); };
 
   if (isLoading) {
-    return <span className={embedded ? 'settings-menu__status settings-menu__status--loading' : 'auth-controls__button'}>Checking access...</span>;
+    return <span className="settings-menu__status settings-menu__status--loading">Checking access...</span>;
   }
 
   if (isAdmin) {
-    if (!embedded) return <button onClick={logout} className="auth-controls__button">Admin · Sign out</button>;
     return (
       <div className="settings-menu__account">
         <span className="settings-menu__status">Admin signed in</span>
@@ -70,20 +69,14 @@ export function AuthControls({ embedded = false }: { embedded?: boolean } = {}) 
 
   return (
     <>
-      <button onClick={() => setOpen(value => !value)} className={embedded ? 'settings-menu__action' : 'auth-controls__button'}>
-        {embedded ? 'Sign in as admin' : 'Player view · Admin sign in'}
+      <button onClick={() => setOpen(value => !value)} className="settings-menu__action">
+        Sign in as admin
       </button>
-      {!embedded && open && <form onSubmit={login} className="auth-controls__popover">
-          <label className="auth-controls__label">Admin password</label>
-          <input autoFocus type="password" value={password} onChange={event => setPassword(event.target.value)} className="form-control w-full rounded-lg px-2 py-1.5 text-sm" />
-          {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
-          <button type="submit" className="button button-primary mt-2 w-full rounded-lg px-3 py-1.5 text-sm">Sign in</button>
-        </form>}
-      {embedded && open && <form onSubmit={login} className="settings-menu__login-form">
+      {open && <form onSubmit={login} className="settings-menu__login-form">
         <label className="auth-controls__label">Admin password</label>
         <input autoFocus type="password" value={password} onChange={event => setPassword(event.target.value)} className="form-control w-full rounded-lg px-2 py-1.5 text-sm" />
-        {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
-        <button type="submit" className="button button-primary mt-2 w-full rounded-lg px-3 py-1.5 text-sm">Sign in</button>
+        {error && <p className="mt-1 text-xs text-loss">{error}</p>}
+        <button type="submit" className="button button-primary mt-2 w-full">Sign in</button>
       </form>}
     </>
   );

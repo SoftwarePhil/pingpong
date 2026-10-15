@@ -43,11 +43,11 @@ export function SettingsMenu() {
         <div className="settings-menu__popover" role="menu" aria-label="Settings">
           <p className="settings-menu__heading">Settings</p>
           <div className="settings-menu__section" role="none">
-            <ThemeToggle embedded />
+            <ThemeToggle />
           </div>
           <div className="settings-menu__section" role="none">
             <p className="settings-menu__label">Access</p>
-            <AuthControls embedded />
+            <AuthControls />
           </div>
         </div>
       )}

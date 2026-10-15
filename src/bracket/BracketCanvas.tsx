@@ -5,7 +5,6 @@ import { BRACKET_GEOMETRY, BracketLayout, getBracketCardZIndex } from './core/la
 import { BracketCard } from './BracketCard';
 
 const { cardWidth, cardHeight, rowGap, columnGap } = BRACKET_GEOMETRY;
-const CONNECTOR_COLOR = '#CBD5E1';
 
 interface BracketCanvasProps<M extends BracketMatch> {
   layout: BracketLayout<M>;
@@ -37,12 +36,12 @@ export function BracketCanvas<M extends BracketMatch>({ layout, activeMatchId, g
       <div className="flex">
         {hasPlayIn && (
           <div style={{ width: cardWidth + columnGap, flexShrink: 0 }}>
-            <p className="text-center text-xs font-bold text-gray-400 uppercase tracking-widest">Play-in (prelim)</p>
+            <p className="text-center text-xs font-bold text-muted uppercase tracking-widest">Play-in (prelim)</p>
           </div>
         )}
         {rounds.map(round => (
           <div key={round.roundNumber} style={{ width: cardWidth + columnGap, flexShrink: 0 }}>
-            <p className={`text-center text-xs font-bold uppercase tracking-widest ${round.isChampionship ? 'text-amber-600' : 'text-gray-400'}`}>
+            <p className={`text-center text-xs font-bold uppercase tracking-widest ${round.isChampionship ? 'text-gold' : 'text-muted'}`}>
               {round.label}
             </p>
           </div>
@@ -53,7 +52,7 @@ export function BracketCanvas<M extends BracketMatch>({ layout, activeMatchId, g
         <div style={{ position: 'relative', width, height, isolation: 'isolate' }}>
           <svg
             style={{ position: 'absolute', inset: 0, width, height, overflow: 'visible', zIndex: 0 }}
-            className="pointer-events-none"
+            className="pointer-events-none text-line-strong"
             aria-hidden
           >
             {connectors.map(({ d, key, dashed }) => (
@@ -61,7 +60,7 @@ export function BracketCanvas<M extends BracketMatch>({ layout, activeMatchId, g
                 key={key}
                 d={d}
                 fill="none"
-                stroke={CONNECTOR_COLOR}
+                stroke="currentColor"
                 strokeWidth={2}
                 strokeDasharray={dashed ? '6 6' : undefined}
                 strokeLinecap="round"
@@ -117,7 +116,7 @@ export function BracketCanvas<M extends BracketMatch>({ layout, activeMatchId, g
         <div className="overflow-x-auto pt-2">
           <div style={{ width }}>
             <div style={{ marginLeft: thirdPlace.x, width: cardWidth }}>
-              <p className="text-center text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Third place</p>
+              <p className="text-center text-[10px] font-bold text-muted uppercase tracking-widest mb-1">Third place</p>
               {card(thirdPlace.match)}
             </div>
           </div>

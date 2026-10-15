@@ -68,71 +68,74 @@ export default function Leaderboard({ tournament, players, getPlayerName, bracke
     ? players.find(player => player.id === selectedPlayerId) ?? null
     : null;
 
+  const th = 'label-caps px-3 py-2 text-muted';
+
   return (
-    <div className="bg-gray-50 border border-gray-200 rounded-xl overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-200 bg-white">
-        <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wide">Standings</h4>
+    <section className="surface-card overflow-hidden">
+      <div className="border-b border-line px-5 py-3">
+        <h3 className="label-caps text-muted">Standings</h3>
       </div>
-      <table className="min-w-full text-sm">
-        <thead>
-          <tr className="border-b border-gray-200 bg-gray-50">
-            <th className="text-left px-4 py-2 font-semibold text-gray-500 text-xs uppercase tracking-wide">#</th>
-            <th className="text-left px-4 py-2 font-semibold text-gray-500 text-xs uppercase tracking-wide">Player</th>
-            <th className="text-center px-3 py-2 font-semibold text-gray-500 text-xs uppercase tracking-wide">W</th>
-            <th className="text-center px-3 py-2 font-semibold text-gray-500 text-xs uppercase tracking-wide">L</th>
-            <th className="text-center px-3 py-2 font-semibold text-gray-500 text-xs uppercase tracking-wide">+Pts</th>
-            <th className="text-center px-3 py-2 font-semibold text-gray-500 text-xs uppercase tracking-wide">Win%</th>
-          </tr>
-        </thead>
-        <tbody>
-          {standings.map((s, idx) => {
-            const pct = s.played > 0 ? Math.round((s.wins / s.played) * 100) : 0;
-            const isLeader = idx < 2; // top 2 highlighted
-            return (
-              <tr key={s.id} className={`border-b border-gray-100 last:border-0 ${isLeader ? 'bg-amber-50' : 'bg-white'}`}>
-                <td className="px-4 py-2.5 text-gray-400 font-medium text-xs">{idx + 1}</td>
-                <td className="px-4 py-2.5 font-semibold text-gray-900">
-                  {isLeader && <span className="mr-1.5 text-amber-500">★</span>}
-                  <button
-                    type="button"
-                    onClick={() => setSelectedPlayerId(selectedPlayerId === s.id ? null : s.id)}
-                    aria-expanded={selectedPlayerId === s.id}
-                    className="text-left text-blue-700 hover:text-blue-900 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 rounded"
-                  >
-                    {getPlayerName(s.id)}
-                  </button>
-                </td>
-                <td className="text-center px-3 py-2.5 font-bold text-green-700">{s.wins}</td>
-                <td className="text-center px-3 py-2.5 font-bold text-red-500">{s.losses}</td>
-                <td className={`text-center px-3 py-2.5 font-bold text-xs ${s.pointDiff > 0 ? 'text-green-600' : s.pointDiff < 0 ? 'text-red-500' : 'text-gray-400'}`}>
-                  {s.pointDiff > 0 ? `+${s.pointDiff}` : s.pointDiff}
-                </td>
-                <td className="text-center px-3 py-2.5 text-gray-500 text-xs font-medium">{pct}%</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      <div className="overflow-x-auto">
+        <table className="min-w-full text-sm">
+          <thead>
+            <tr className="border-b border-line bg-surface-sunken">
+              <th className={`${th} w-10 pl-5 text-left`}>#</th>
+              <th className={`${th} text-left`}>Player</th>
+              <th className={`${th} text-right`}>W</th>
+              <th className={`${th} text-right`}>L</th>
+              <th className={`${th} text-right`} title="Point difference">+/–</th>
+              <th className={`${th} pr-5 text-right`}>Win %</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-line">
+            {standings.map((s, idx) => {
+              const pct = s.played > 0 ? Math.round((s.wins / s.played) * 100) : 0;
+              const isLeader = idx < 2;
+              return (
+                <tr key={s.id} className={isLeader ? 'bg-table-soft/60' : ''}>
+                  <td className={`font-digits py-2.5 pl-5 pr-3 text-base ${isLeader ? 'text-table' : 'text-muted'}`}>{idx + 1}</td>
+                  <td className="px-3 py-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPlayerId(selectedPlayerId === s.id ? null : s.id)}
+                      aria-expanded={selectedPlayerId === s.id}
+                      className="text-left font-semibold text-ink hover:text-table hover:underline"
+                    >
+                      {getPlayerName(s.id)}
+                    </button>
+                  </td>
+                  <td className="font-digits px-3 py-2.5 text-right text-base text-ink">{s.wins}</td>
+                  <td className="font-digits px-3 py-2.5 text-right text-base text-ink-soft">{s.losses}</td>
+                  <td className={`font-digits px-3 py-2.5 text-right text-base ${s.pointDiff > 0 ? 'text-win' : s.pointDiff < 0 ? 'text-loss' : 'text-muted'}`}>
+                    {s.pointDiff > 0 ? `+${s.pointDiff}` : s.pointDiff}
+                  </td>
+                  <td className="font-digits py-2.5 pl-3 pr-5 text-right text-base text-ink-soft">{pct}%</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
 
       {selectedPlayer && (
-        <div className="border-t border-gray-200 bg-white p-4">
+        <div className="border-t border-line bg-surface-sunken p-5">
           <div className="flex items-start justify-between gap-4">
-            <div className="flex items-center gap-3 min-w-0">
+            <div className="flex min-w-0 items-center gap-4">
               {selectedPlayer.profilePicture ? (
+                // eslint-disable-next-line @next/next/no-img-element -- profile pictures are arbitrary external URLs
                 <img
                   src={selectedPlayer.profilePicture}
                   alt={`${selectedPlayer.name} profile`}
-                  className="w-16 h-16 rounded-full object-cover shrink-0 border border-gray-200"
+                  className="h-14 w-14 shrink-0 rounded-full border border-line object-cover"
                 />
               ) : (
-                <div className="w-16 h-16 rounded-full avatar-gradient flex items-center justify-center text-white text-xl font-bold shrink-0">
+                <div className="avatar-gradient flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-lg font-bold text-white">
                   {playerInitials(selectedPlayer)}
                 </div>
               )}
               <div className="min-w-0">
-                <p className="text-xs font-semibold uppercase tracking-wider text-blue-600">Player profile</p>
-                <h5 className="text-lg font-bold text-gray-900 truncate">{selectedPlayer.name}</h5>
-                <p className="text-sm text-gray-500">
+                <h4 className="truncate text-lg font-bold text-ink">{selectedPlayer.name}</h4>
+                <p className="text-sm text-ink-soft">
                   {[selectedPlayer.firstName, selectedPlayer.lastName].filter(Boolean).join(' ') || 'No full name provided'}
                 </p>
               </div>
@@ -141,25 +144,25 @@ export default function Leaderboard({ tournament, players, getPlayerName, bracke
               type="button"
               onClick={() => setSelectedPlayerId(null)}
               aria-label="Close player profile"
-              className="text-gray-400 hover:text-gray-700 text-xl leading-none"
+              className="text-xl leading-none text-muted hover:text-ink"
             >
               ×
             </button>
           </div>
-          <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
-            <div className="rounded-lg bg-gray-50 border border-gray-100 px-3 py-2">
-              <p className="text-xs text-gray-400">Age</p>
-              <p className="font-semibold text-gray-800">{getPlayerAge(selectedPlayer) ?? 'Not provided'}</p>
+          <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
+            <div className="rounded-lg border border-line bg-surface px-3 py-2">
+              <dt className="text-xs text-muted">Age</dt>
+              <dd className="font-semibold text-ink">{getPlayerAge(selectedPlayer) ?? 'Not provided'}</dd>
             </div>
-            <div className="rounded-lg bg-gray-50 border border-gray-100 px-3 py-2 sm:col-span-2">
-              <p className="text-xs text-gray-400">Birthday</p>
-              <p className="font-semibold text-gray-800">
+            <div className="rounded-lg border border-line bg-surface px-3 py-2">
+              <dt className="text-xs text-muted">Birthday</dt>
+              <dd className="font-semibold text-ink">
                 {selectedPlayer.birthday ? formatBirthday(selectedPlayer.birthday) : 'Not provided'}
-              </p>
+              </dd>
             </div>
-          </div>
+          </dl>
         </div>
       )}
-    </div>
+    </section>
   );
 }

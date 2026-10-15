@@ -48,7 +48,7 @@ export function BracketView<M extends BracketMatch>({
   const playersById = useMemo(() => new Map(players.map(player => [player.id, player])), [players]);
 
   if (!layout) {
-    return <div className="text-center py-16 text-gray-400 text-sm">No bracket matches yet.</div>;
+    return <div className="text-center py-16 text-muted text-sm">No bracket matches yet.</div>;
   }
 
   const activeMatch = bracketMatches.find(match => match.id === activeMatchId);

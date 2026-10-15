@@ -21,6 +21,19 @@ import {
 // tournament logic and its callers share one definition.
 export { TBD_PLACEHOLDER, PLAY_IN_WINNER_PLACEHOLDER, getPlayInWinnerPlaceholder, isPlayInWinnerPlaceholder };
 
+/**
+ * True once a tournament has moved past round robin: the bracket was started,
+ * bracket matches exist, or the tournament is in the bracket or finished.
+ */
+export function hasBracketStarted(tournament: Tournament): boolean {
+  return Boolean(
+    tournament.bracketStartedAt ||
+    (tournament.matches ?? []).some(m => m.round === 'bracket') ||
+    tournament.status === 'bracket' ||
+    tournament.status === 'completed'
+  );
+}
+
 /** Replaces the R1 slot fed by a preliminary match with its winner. */
 export function replacePlayInWinnerSlot(
   matches: Match[],
