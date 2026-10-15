@@ -72,121 +72,96 @@ export default function MatchCard({
   const canSwap = !readOnly && !doubles && match.round === 'roundRobin' && match.games.length === 0 && !isMatchComplete(match) && match.player2Id !== MARKER_PLAYER_ID;
   const isBye = isByeMatch(match);
 
-  return (
-    <div className="bg-white border-2 border-gray-200 rounded-xl shadow-sm overflow-hidden">
-      {/* Card header */}
-      <div className="flex justify-between items-center px-4 py-2 bg-gray-50 border-b border-gray-200">
-        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-          {match.round === 'bracket'
-            ? match.bracketRound === 0 ? 'Play-in' : `Round ${match.bracketRound}`
-            : `RR Round ${match.bracketRound ?? 1}${doubles ? ' · 2v2' : ''}`}
+  const sideWins = [
+    match.games.filter(g => g.score1 > g.score2).length,
+    match.games.filter(g => g.score2 > g.score1).length,
+  ];
+  const canRecord = !readOnly && match.games.length < match.bestOf && !isMatchComplete(match) && !isBye;
+
+  const sideRow = (side: 1 | 2, ids: string[]) => {
+    const won = winningSide === side;
+    const decided = winningSide !== undefined;
+    return (
+      <div className={`flex items-center gap-3 px-4 py-2.5 ${won ? 'bg-win-soft' : ''}`}>
+        <span
+          className={`min-w-0 flex-1 truncate ${won ? 'font-bold text-ink' : decided ? 'text-muted' : 'font-semibold text-ink'}`}
+          title={sideName(ids)}
+        >
+          {sideName(ids)}
         </span>
-        <div className="flex items-center gap-1">
-          <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">
-            Bo{match.bestOf}
-          </span>
+        {won && <span className="label-caps text-win">Won</span>}
+        <span className={`font-digits w-6 text-right text-2xl ${won ? 'text-win' : decided ? 'text-muted' : 'text-ink'}`}>
+          {sideWins[side - 1]}
+        </span>
+      </div>
+    );
+  };
+
+  const iconButton = 'rounded-md px-1.5 py-0.5 text-xs font-semibold text-muted transition-colors hover:bg-surface-sunken hover:text-ink';
+
+  return (
+    <article className="surface-card overflow-hidden">
+      <header className="flex items-center justify-between border-b border-line px-4 py-2">
+        <span className="label-caps text-muted">
+          {match.round === 'bracket'
+            ? match.bracketRound === 0 ? 'Play-in' : `Bracket round ${match.bracketRound}`
+            : doubles ? '2v2' : isBye ? 'Bye' : 'Singles'}
+          <span className="ml-2 font-normal normal-case tracking-normal">best of {match.bestOf}</span>
+        </span>
+        <div className="flex items-center gap-0.5">
           {canSwap && (
             <button
+              type="button"
               onClick={() => { setSwapping(!swapping); setSwapP1(match.player1Id); setSwapP2(match.player2Id); }}
-              className="text-blue-500 hover:text-blue-700 px-1.5 py-0.5 rounded hover:bg-blue-50 text-xs transition-colors"
+              className={iconButton}
               title="Change players"
             >
-              ↔
+              Swap
             </button>
           )}
           {!readOnly && !doubles && match.round === 'roundRobin' && isBye && (
-            <button onClick={() => onAddMarker(match.id)} className="text-amber-600 hover:text-amber-800 px-1.5 py-0.5 rounded hover:bg-amber-50 text-xs font-semibold transition-colors">
+            <button type="button" onClick={() => onAddMarker(match.id)} className={iconButton}>
               Add marker
             </button>
           )}
-          {!readOnly && <button
-            onClick={() => onDeleteMatch(match.id)}
-            className="text-red-400 hover:text-red-600 px-1.5 py-0.5 rounded hover:bg-red-50 text-xs transition-colors"
-            title="Delete match"
-          >
-            ✕
-          </button>}
+          {!readOnly && (
+            <button
+              type="button"
+              onClick={() => onDeleteMatch(match.id)}
+              className={`${iconButton} hover:bg-loss-soft hover:text-loss`}
+              title="Delete match"
+              aria-label="Delete match"
+            >
+              ✕
+            </button>
+          )}
         </div>
-      </div>
+      </header>
 
-      {/* Player swap panel */}
       {swapping && (
-        <div className="px-4 py-3 bg-blue-50 border-b border-blue-200">
-          <p className="text-xs font-semibold text-blue-700 mb-2">Change Players</p>
-          <div className="space-y-1.5">
-            <select value={swapP1} onChange={e => setSwapP1(e.target.value)}
-               className="form-control w-full rounded px-2 py-1 text-sm">
-              {tournamentPlayers.map(pid => (
-                <option key={pid} value={pid}>{getPlayerName(pid)}</option>
-              ))}
-            </select>
-            <div className="text-center text-xs text-gray-400 font-bold">vs</div>
-            <select value={swapP2} onChange={e => setSwapP2(e.target.value)}
-               className="form-control w-full rounded px-2 py-1 text-sm">
-              {tournamentPlayers.map(pid => (
-                <option key={pid} value={pid}>{getPlayerName(pid)}</option>
-              ))}
-            </select>
-            <div className="flex gap-2 pt-1">
-              <button onClick={handleSwapSave}
-                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-xs px-2 py-1.5 rounded font-medium transition-colors">
-                Save
-              </button>
-              <button onClick={() => setSwapping(false)}
-                className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs px-2 py-1.5 rounded font-medium transition-colors">
-                Cancel
-              </button>
-            </div>
+        <div className="space-y-2 border-b border-line bg-table-soft px-4 py-3">
+          <p className="text-sm font-semibold text-ink">Change players</p>
+          <select value={swapP1} onChange={e => setSwapP1(e.target.value)} className="form-control w-full rounded-md px-2 py-1.5 text-sm" aria-label="Player 1">
+            {tournamentPlayers.map(pid => <option key={pid} value={pid}>{getPlayerName(pid)}</option>)}
+          </select>
+          <select value={swapP2} onChange={e => setSwapP2(e.target.value)} className="form-control w-full rounded-md px-2 py-1.5 text-sm" aria-label="Player 2">
+            {tournamentPlayers.map(pid => <option key={pid} value={pid}>{getPlayerName(pid)}</option>)}
+          </select>
+          <div className="flex gap-2">
+            <button type="button" onClick={handleSwapSave} className="button button-primary button-sm flex-1">Save</button>
+            <button type="button" onClick={() => setSwapping(false)} className="button button-secondary button-sm flex-1">Cancel</button>
           </div>
         </div>
       )}
 
-      {/* Players */}
-      <div className="px-4 py-3 space-y-2">
-        <div className={`flex justify-between items-center px-3 py-2 rounded-lg border ${
-          winningSide === 1
-            ? 'bg-green-50 border-green-300 text-green-900'
-            : 'bg-gray-50 border-gray-200 text-gray-900'
-        }`}>
-          <span className="font-medium truncate mr-2 text-sm" title={sideName(side1)}>
-            {sideName(side1)}
-          </span>
-          <span className="text-xs font-bold flex-shrink-0 tabular-nums">
-            {match.games.filter(g => g.score1 > g.score2).length}W
-          </span>
-        </div>
-
-        <div className="text-center text-xs text-gray-400 font-semibold">
-          {isBye ? 'BYE' : 'VS'}
-        </div>
-
-        {!isBye && (
-          <div className={`flex justify-between items-center px-3 py-2 rounded-lg border ${
-            winningSide === 2
-              ? 'bg-green-50 border-green-300 text-green-900'
-              : 'bg-gray-50 border-gray-200 text-gray-900'
-          }`}>
-            <span className="font-medium truncate mr-2 text-sm" title={sideName(side2)}>
-              {sideName(side2)}
-            </span>
-            <span className="text-xs font-bold flex-shrink-0 tabular-nums">
-              {match.games.filter(g => g.score2 > g.score1).length}W
-            </span>
-          </div>
-        )}
+      <div className="divide-y divide-line">
+        {sideRow(1, side1)}
+        {isBye
+          ? <p className="px-4 py-2.5 text-sm text-muted">Bye — advances automatically</p>
+          : sideRow(2, side2)}
       </div>
 
-      {/* Winner badge */}
-      {winningSide && (
-        <div className="px-4 pb-3 text-center">
-          <span className="inline-block bg-amber-100 text-amber-800 border border-amber-300 px-3 py-1 rounded-full text-xs font-bold">
-            🏆 {sideName(winningSide === 1 ? side1 : side2)}
-          </span>
-        </div>
-      )}
-
-      {/* Score entry form */}
-      {!readOnly && match.games.length < match.bestOf && !isMatchComplete(match) && !isBye && (
+      {canRecord && (
         <form
           onSubmit={e => {
             e.preventDefault();
@@ -198,62 +173,47 @@ export default function MatchCard({
             onAddGame(match, score1, score2);
             (e.target as HTMLFormElement).reset();
           }}
-          className="px-4 pb-4 pt-2 border-t border-gray-100 space-y-2"
+          className="flex items-center gap-2 border-t border-line bg-surface-sunken px-4 py-3"
         >
-          <div className="flex gap-2">
-            <input name="score1" type="number" min="0" max="50" required placeholder={sideName(side1).substring(0, 10)}
-               className="form-control flex-1 min-w-0 rounded-lg px-2 py-1.5 text-sm" />
-            <span className="flex items-center text-gray-400 font-bold text-sm">—</span>
-            <input name="score2" type="number" min="0" max="50" required placeholder={sideName(side2).substring(0, 10)}
-               className="form-control flex-1 min-w-0 rounded-lg px-2 py-1.5 text-sm" />
-          </div>
-          <p className="text-xs text-gray-400 text-center">First to 11, win by 2</p>
-          <button type="submit"
-            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm py-2 rounded-lg font-semibold transition-colors">
-            Record Game
-          </button>
+          <input name="score1" type="number" min="0" max="50" required aria-label={`${sideName(side1)} score`} placeholder="0"
+            className="form-control font-digits w-14 rounded-md px-2 py-1 text-center text-lg" />
+          <span className="text-muted">–</span>
+          <input name="score2" type="number" min="0" max="50" required aria-label={`${sideName(side2)} score`} placeholder="0"
+            className="form-control font-digits w-14 rounded-md px-2 py-1 text-center text-lg" />
+          <button type="submit" className="button button-primary button-sm ml-auto">Record game</button>
         </form>
       )}
 
-      {/* Games history */}
       {match.games.length > 0 && (
-        <div className="px-4 pb-4 pt-2 border-t border-gray-100">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Games</p>
-          <div className="space-y-1.5">
-            {match.games.map(game => (
-              <div key={game.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-2 py-1.5 border border-gray-200">
-                {editingGame?.id === game.id ? (
-                  <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                    <input type="number" value={editScore1} onChange={e => setEditScore1(e.target.value)}
-                       className="form-control w-14 rounded px-1.5 py-0.5 text-sm text-center" />
-                    <span className="text-gray-400 text-xs">—</span>
-                    <input type="number" value={editScore2} onChange={e => setEditScore2(e.target.value)}
-                       className="form-control w-14 rounded px-1.5 py-0.5 text-sm text-center" />
-                    <button onClick={handleSaveGameEdit}
-                      className="text-xs text-green-700 font-semibold hover:underline ml-1">Save</button>
-                    <button onClick={cancelEditingGame}
-                      className="text-xs text-gray-500 hover:underline">Cancel</button>
-                  </div>
-                ) : (
-                  <>
-                    <span className={`text-sm font-semibold tabular-nums ${game.score1 > game.score2 ? 'text-green-700' : 'text-red-600'}`}>
-                      {game.score1}–{game.score2}
-                    </span>
-                    <div className="flex gap-1">
-                      {!readOnly && <>
-                        <button onClick={() => startEditingGame(game)}
-                          className="text-blue-400 hover:text-blue-600 text-xs px-1 py-0.5 rounded hover:bg-blue-50">✏️</button>
-                        <button onClick={() => onDeleteGame(game.id)}
-                          className="text-red-400 hover:text-red-600 text-xs px-1 py-0.5 rounded hover:bg-red-50">🗑️</button>
-                      </>}
-                    </div>
-                  </>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
+        <ol className="flex flex-wrap gap-1.5 border-t border-line px-4 py-3">
+          {match.games.map((game, index) => (
+            <li key={game.id}>
+              {editingGame?.id === game.id ? (
+                <span className="flex items-center gap-1.5">
+                  <input type="number" value={editScore1} onChange={e => setEditScore1(e.target.value)} aria-label="Side 1 score"
+                    className="form-control font-digits w-12 rounded-md px-1 py-0.5 text-center" />
+                  <span className="text-muted">–</span>
+                  <input type="number" value={editScore2} onChange={e => setEditScore2(e.target.value)} aria-label="Side 2 score"
+                    className="form-control font-digits w-12 rounded-md px-1 py-0.5 text-center" />
+                  <button type="button" onClick={handleSaveGameEdit} className="text-xs font-semibold text-win hover:underline">Save</button>
+                  <button type="button" onClick={cancelEditingGame} className="text-xs font-semibold text-muted hover:underline">Cancel</button>
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded-md border border-line bg-surface px-2 py-0.5 text-sm">
+                  <span className="text-xs text-muted">G{index + 1}</span>
+                  <span className="font-digits text-ink">{game.score1}–{game.score2}</span>
+                  {!readOnly && (
+                    <>
+                      <button type="button" onClick={() => startEditingGame(game)} className="ml-1 text-xs font-semibold text-table hover:underline">Edit</button>
+                      <button type="button" onClick={() => onDeleteGame(game.id)} aria-label={`Delete game ${index + 1}`} className="text-xs text-muted hover:text-loss">✕</button>
+                    </>
+                  )}
+                </span>
+              )}
+            </li>
+          ))}
+        </ol>
       )}
-    </div>
+    </article>
   );
 }

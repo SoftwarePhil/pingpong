@@ -1,13 +1,23 @@
 import type { Metadata } from "next";
+import { Archivo } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import { AuthProvider } from "../components/AuthProvider";
 import { ThemeProvider } from "../components/ThemeProvider";
-import { SettingsMenu } from "../components/SettingsMenu";
+import { SiteHeader } from "../components/SiteHeader";
+
+// One variable family: its width axis gives both the wide display headings
+// and the condensed scoreboard digits.
+const archivo = Archivo({
+  subsets: ["latin"],
+  axes: ["wdth"],
+  variable: "--font-archivo",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
-  title: "Ping Pong Tracker",
-  description: "Track ping pong games for your weekly group",
+  title: "pingpong.beer",
+  description: "Weekly ping pong tournaments, tracked.",
 };
 
 const themeInitScript = `(() => {
@@ -27,15 +37,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className={archivo.variable} suppressHydrationWarning>
       <head>
         <Script id="theme-init" strategy="beforeInteractive">{themeInitScript}</Script>
       </head>
       <body className="antialiased">
         <ThemeProvider>
           <AuthProvider>
+            <SiteHeader />
             {children}
-            <SettingsMenu />
           </AuthProvider>
         </ThemeProvider>
       </body>

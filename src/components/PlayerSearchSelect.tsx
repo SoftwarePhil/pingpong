@@ -74,20 +74,20 @@ export function PlayerSearchSelect({ players, games, selected, onChange, suggest
           className="form-control w-full rounded-lg px-4 py-3 text-lg"
         />
         {query && (
-          <div className="absolute z-10 mt-2 w-full bg-white border-2 border-blue-300 rounded-lg shadow-lg overflow-hidden">
+          <div className="absolute z-10 mt-2 w-full bg-surface border border-table/30 rounded-lg overflow-hidden">
             {searchResults.length > 0 ? (
               searchResults.map(p => (
                 <button
                   key={p.id}
                   type="button"
                   onClick={() => addPlayer(p.id)}
-                  className="w-full text-left px-4 py-3 hover:bg-blue-50 transition-colors text-gray-900 font-medium border-b border-gray-100 last:border-b-0"
+                  className="w-full text-left px-4 py-3 hover:bg-table-soft transition-colors text-ink font-medium border-b border-line last:border-b-0"
                 >
                   {p.name}
                 </button>
               ))
             ) : (
-              <div className="px-4 py-3 text-gray-500">No matching players</div>
+              <div className="px-4 py-3 text-muted">No matching players</div>
             )}
           </div>
         )}
@@ -96,14 +96,14 @@ export function PlayerSearchSelect({ players, games, selected, onChange, suggest
       {!query && suggestions.length > 0 && (
         <div className="mt-3">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+            <p className="text-xs font-semibold text-muted uppercase tracking-wider">
               {showAll ? 'All Players' : 'Most Active'}
             </p>
             {!showAll && availablePlayers.length > suggestions.length && (
               <button
                 type="button"
                 onClick={() => setShowAll(true)}
-                className="text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors"
+                className="text-xs font-semibold text-table hover:text-table-hover transition-colors"
               >
                 Show all players
               </button>
@@ -115,11 +115,11 @@ export function PlayerSearchSelect({ players, games, selected, onChange, suggest
                 key={p.id}
                 type="button"
                 onClick={() => addPlayer(p.id)}
-                className="flex items-center gap-1.5 bg-gray-50 hover:bg-blue-50 border-2 border-gray-200 hover:border-blue-300 text-gray-800 rounded-full pl-3 pr-3 py-1.5 text-sm font-medium transition-colors"
+                className="flex items-center gap-1.5 bg-surface-sunken hover:bg-table-soft border border-line hover:border-table/30 text-ink rounded-full pl-3 pr-3 py-1.5 text-sm font-medium transition-colors"
               >
-                <span className="text-blue-600">+</span> {p.name}
+                <span className="text-table">+</span> {p.name}
                 {gamesPlayedById[p.id] > 0 && (
-                  <span className="text-gray-400 text-xs">({gamesPlayedById[p.id]})</span>
+                  <span className="text-muted text-xs">({gamesPlayedById[p.id]})</span>
                 )}
               </button>
             ))}
@@ -128,7 +128,7 @@ export function PlayerSearchSelect({ players, games, selected, onChange, suggest
             <button
               type="button"
               onClick={() => setShowAll(false)}
-              className="text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors mt-2"
+              className="text-xs font-semibold text-table hover:text-table-hover transition-colors mt-2"
             >
               Show fewer
             </button>
@@ -138,18 +138,18 @@ export function PlayerSearchSelect({ players, games, selected, onChange, suggest
 
       <div className="flex flex-wrap gap-2 mt-4">
         {selectedPlayers.length === 0 && (
-          <p className="text-gray-500 text-sm py-1">No players selected yet — search or pick a suggestion above.</p>
+          <p className="text-muted text-sm py-1">No players selected yet — search or pick a suggestion above.</p>
         )}
         {selectedPlayers.map(p => (
           <span
             key={p.id}
-            className="flex items-center gap-2 bg-blue-50 border-2 border-blue-200 text-gray-900 rounded-full pl-4 pr-2 py-2 font-medium"
+            className="flex items-center gap-2 bg-table-soft border border-table/30 text-ink rounded-full pl-4 pr-2 py-2 font-medium"
           >
             {p.name}
             <button
               type="button"
               onClick={() => removePlayer(p.id)}
-              className="w-6 h-6 flex items-center justify-center rounded-full bg-blue-600 text-white hover:bg-blue-700 text-sm transition-colors"
+              className="w-6 h-6 flex items-center justify-center rounded-full bg-table text-surface hover:bg-table-hover text-sm transition-colors"
               aria-label={`Remove ${p.name}`}
             >
               ×

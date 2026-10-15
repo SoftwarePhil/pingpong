@@ -129,36 +129,36 @@ function TournamentHistoryContent() {
       const p2Won = winningSide === 2;
       const sideName = (side: string[]) => side.map(getPlayerName).join(' + ');
       return (
-        <div key={match.id} className="border border-gray-200 rounded-lg overflow-hidden">
-          <div className="flex items-center justify-between bg-gray-50 px-4 py-2 text-sm">
-            <span className={`font-semibold ${p1Won ? 'text-green-700' : 'text-gray-700'}`}>
+        <div key={match.id} className="border border-line rounded-lg overflow-hidden">
+          <div className="flex items-center justify-between bg-surface-sunken px-4 py-2 text-sm">
+            <span className={`font-semibold ${p1Won ? 'text-win' : 'text-ink-soft'}`}>
               {sideName(side1)}{p1Won && ' 🏆'}
             </span>
-            <span className="text-gray-400 font-medium">vs</span>
-            <span className={`font-semibold ${p2Won ? 'text-green-700' : 'text-gray-700'}`}>
+            <span className="text-muted font-medium">vs</span>
+            <span className={`font-semibold ${p2Won ? 'text-win' : 'text-ink-soft'}`}>
               {sideName(side2)}{p2Won && ' 🏆'}
             </span>
           </div>
           {match.games.length > 0 && (
-            <div className="divide-y divide-gray-100">
+            <div className="divide-y divide-line">
               {match.games.map((game, gi) => {
                 const g1Won = game.score1 > game.score2;
                 return (
                   <div key={game.id} className="flex items-center justify-between px-4 py-2 text-sm">
-                    <span className="text-gray-500 w-14">Game {gi + 1}</span>
+                    <span className="text-muted w-14">Game {gi + 1}</span>
                     <div className="flex items-center gap-3">
-                      <span className={`font-medium w-16 text-right ${g1Won ? 'text-green-600' : 'text-gray-600'}`}>{getGameSides(game)[0].map(getPlayerName).join(' + ')}</span>
-                      <span className="font-bold text-gray-900 tabular-nums">{game.score1} – {game.score2}</span>
-                      <span className={`font-medium w-16 ${!g1Won ? 'text-green-600' : 'text-gray-600'}`}>{getGameSides(game)[1].map(getPlayerName).join(' + ')}</span>
+                      <span className={`font-medium w-16 text-right ${g1Won ? 'text-win' : 'text-ink-soft'}`}>{getGameSides(game)[0].map(getPlayerName).join(' + ')}</span>
+                      <span className="font-bold text-ink tabular-nums">{game.score1} – {game.score2}</span>
+                      <span className={`font-medium w-16 ${!g1Won ? 'text-win' : 'text-ink-soft'}`}>{getGameSides(game)[1].map(getPlayerName).join(' + ')}</span>
                     </div>
-                    <span className="text-gray-400 text-xs w-20 text-right">{new Date(game.date).toLocaleDateString()}</span>
+                    <span className="text-muted text-xs w-20 text-right">{new Date(game.date).toLocaleDateString()}</span>
                   </div>
                 );
               })}
             </div>
           )}
-          {match.games.length === 0 && (side1.includes('BYE') || side2.includes('BYE')) && <div className="px-4 py-2 text-sm text-gray-400 italic">Bye round</div>}
-          {match.games.length === 0 && !(side1.includes('BYE') || side2.includes('BYE')) && <div className="px-4 py-2 text-sm text-gray-400 italic">No games recorded</div>}
+          {match.games.length === 0 && (side1.includes('BYE') || side2.includes('BYE')) && <div className="px-4 py-2 text-sm text-muted italic">Bye round</div>}
+          {match.games.length === 0 && !(side1.includes('BYE') || side2.includes('BYE')) && <div className="px-4 py-2 text-sm text-muted italic">No games recorded</div>}
         </div>
       );
     };
@@ -177,28 +177,25 @@ function TournamentHistoryContent() {
               </>
             }
             actions={
-              <button
-                onClick={closeDetail}
-                className="button button-secondary"
-              >
-                ← Back to History
+              <button type="button" onClick={closeDetail} className="text-sm font-semibold text-table hover:underline">
+                ← All tournaments
               </button>
             }
           />
           {champName && (
-            <div className="mb-8 inline-flex items-center gap-2 bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-1.5 text-sm font-semibold text-yellow-800">
-              🥇 Champion: {champName}
+            <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-gold/40 bg-gold-soft px-3 py-1 text-sm font-semibold text-ink">
+              <span className="label-caps text-gold">Champion</span> {champName}
             </div>
           )}
 
           {/* Tabs */}
-          <div className="flex gap-1 mb-6 bg-white rounded-xl shadow-sm border border-gray-200 p-1 w-fit">
+          <div className="flex gap-1 mb-6 bg-surface rounded-xl border border-line p-1 w-fit">
             {(['overview', 'matches'] as DetailTab[]).map(tab => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
                 className={`px-5 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  activeTab === tab ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'
+                  activeTab === tab ? 'bg-table text-surface' : 'text-ink-soft hover:bg-surface-sunken'
                 }`}
               >
                 {tab === 'overview' ? '🏆 Bracket & Standings' : 'Matches'}
@@ -218,14 +215,14 @@ function TournamentHistoryContent() {
                   readOnly
                 />
               ) : (
-                <p className="text-gray-400 text-sm text-center py-4">No bracket matches recorded.</p>
+                <p className="text-muted text-sm text-center py-4">No bracket matches recorded.</p>
               )}
 
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">Standings</h4>
+              <div className="bg-surface rounded-xl border border-line p-6">
+                <h4 className="text-sm font-semibold text-muted uppercase tracking-wider mb-4">Standings</h4>
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b-2 border-gray-200 text-gray-600">
+                    <tr className="border-b-2 border-line text-ink-soft">
                       <th className="text-left py-2 pr-4 font-semibold w-10">Rank</th>
                       <th className="text-left py-2 pr-4 font-semibold">Player</th>
                       <th className="text-center py-2 px-3 font-semibold">Wins</th>
@@ -236,13 +233,13 @@ function TournamentHistoryContent() {
                   </thead>
                   <tbody>
                     {getPlayerStandings(selectedTournament).map((s, i) => (
-                      <tr key={s.playerId} className={`border-b border-gray-100 ${i === 0 ? 'bg-yellow-50 font-semibold' : i === 1 ? 'bg-gray-50' : ''}`}>
+                      <tr key={s.playerId} className={`border-b border-line ${i === 0 ? 'bg-gold-soft font-semibold' : i === 1 ? 'bg-surface-sunken' : ''}`}>
                         <td className="py-3 pr-4 text-lg">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}`}</td>
-                        <td className="py-3 pr-4 font-medium text-gray-900">{getPlayerName(s.playerId)}</td>
-                        <td className="text-center py-3 px-3 text-green-600 font-medium">{s.wins}</td>
-                        <td className="text-center py-3 px-3 text-red-500 font-medium">{s.losses}</td>
-                        <td className="text-center py-3 px-3 text-gray-700">{s.totalGames > 0 ? Math.round((s.wins / s.totalGames) * 100) : 0}%</td>
-                        <td className="text-center py-3 px-3 text-gray-500">{s.totalGames}</td>
+                        <td className="py-3 pr-4 font-medium text-ink">{getPlayerName(s.playerId)}</td>
+                        <td className="text-center py-3 px-3 text-win font-medium">{s.wins}</td>
+                        <td className="text-center py-3 px-3 text-loss font-medium">{s.losses}</td>
+                        <td className="text-center py-3 px-3 text-ink-soft">{s.totalGames > 0 ? Math.round((s.wins / s.totalGames) * 100) : 0}%</td>
+                        <td className="text-center py-3 px-3 text-muted">{s.totalGames}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -254,9 +251,9 @@ function TournamentHistoryContent() {
                     { label: 'Games', value: getTournamentGames(selectedTournament).length },
                     { label: 'Players', value: selectedTournament.players.length },
                   ].map(stat => (
-                    <div key={stat.label} className="bg-gray-50 rounded-lg p-4 text-center border border-gray-200">
-                      <div className="text-2xl font-bold text-gray-900">{stat.value}</div>
-                      <div className="text-sm text-gray-500">{stat.label}</div>
+                    <div key={stat.label} className="bg-surface-sunken rounded-lg p-4 text-center border border-line">
+                      <div className="text-2xl font-bold text-ink">{stat.value}</div>
+                      <div className="text-sm text-muted">{stat.label}</div>
                     </div>
                   ))}
                 </div>
@@ -268,18 +265,18 @@ function TournamentHistoryContent() {
           {activeTab === 'matches' && (
             <div className="space-y-6">
               {rrMatches.length > 0 && (
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                  <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Round Robin</h4>
+                <div className="bg-surface rounded-xl border border-line p-6">
+                  <h4 className="text-sm font-semibold text-muted uppercase tracking-wider mb-3">Round Robin</h4>
                   <div className="space-y-2">{rrMatches.map(renderMatch)}</div>
                 </div>
               )}
               {brMatches.length > 0 && (
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                  <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Bracket</h4>
+                <div className="bg-surface rounded-xl border border-line p-6">
+                  <h4 className="text-sm font-semibold text-muted uppercase tracking-wider mb-3">Bracket</h4>
                   <div className="space-y-4">
                     {Array.from(new Set(brMatches.map(m => m.bracketRound || 0))).sort((a, b) => a - b).map(round => (
                       <div key={round}>
-                        <div className="text-xs text-gray-400 font-medium mb-2 ml-1">
+                        <div className="text-xs text-muted font-medium mb-2 ml-1">
                           {brMatches.some(m => (m.bracketRound || 0) === round && m.isThirdPlace)
                             ? brMatches.some(m => (m.bracketRound || 0) === round && !m.isThirdPlace)
                               ? 'Final and third place'
@@ -292,7 +289,7 @@ function TournamentHistoryContent() {
                   </div>
                 </div>
               )}
-              {allMatches.length === 0 && <p className="text-gray-500 text-center py-8">No matches recorded.</p>}
+              {allMatches.length === 0 && <p className="text-muted text-center py-8">No matches recorded.</p>}
             </div>
           )}
 
@@ -308,18 +305,11 @@ function TournamentHistoryContent() {
 
         {/* Header */}
         <PageHeader
-          title="🏆 Tournament History"
+          title="Tournament history"
           description={`${visibleTournaments.length} completed tournament${visibleTournaments.length !== 1 ? 's' : ''}`}
-          actions={
-            <>
-              <Link href="/" className="button button-secondary">← Home</Link>
-              {activeTournament ? (
-                <Link href="/tournaments/active" className="button button-primary">⚡ Active Tournament</Link>
-              ) : (
-                <Link href="/tournaments/new" className="button button-primary">+ New Tournament</Link>
-              )}
-            </>
-          }
+          actions={activeTournament && (
+            <Link href="/tournaments/active" className="button button-primary">Go to the live tournament</Link>
+          )}
         />
 
         {completedTournaments.length > 0 && (
@@ -335,19 +325,17 @@ function TournamentHistoryContent() {
 
         {/* Tournament Cards */}
         {completedTournaments.length === 0 ? (
-          <div className="text-center py-20 bg-white rounded-xl shadow border border-gray-200">
-            <div className="text-6xl mb-4">🏆</div>
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">No completed tournaments yet</h3>
-            <p className="text-gray-500 mb-6">Complete some tournaments to see them here.</p>
-            <Link href={activeTournament ? '/tournaments/active' : '/tournaments/new'} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors">
-              {activeTournament ? '⚡ Active Tournament' : '+ New Tournament'}
+          <div className="text-center py-20 bg-surface rounded-xl shadow border border-line">
+            <h3 className="text-xl font-semibold text-ink mb-2">No completed tournaments yet</h3>
+            <p className="text-muted mb-6">Complete some tournaments to see them here.</p>
+            <Link href={activeTournament ? '/tournaments/active' : '/tournaments/new'} className="bg-table hover:bg-table-hover text-surface px-6 py-3 rounded-lg font-medium transition-colors">
+              {activeTournament ? 'Go to the live tournament' : 'Start a tournament'}
             </Link>
           </div>
         ) : visibleTournaments.length === 0 ? (
-          <div className="text-center py-16 bg-white rounded-xl shadow border border-gray-200">
-            <div className="text-5xl mb-4">📅</div>
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">No tournaments in this date range</h3>
-            <p className="text-gray-500 mb-6">Adjust the dates above to see completed tournaments.</p>
+          <div className="text-center py-16 bg-surface rounded-xl shadow border border-line">
+            <h3 className="text-xl font-semibold text-ink mb-2">No tournaments in this date range</h3>
+            <p className="text-muted mb-6">Adjust the dates above to see completed tournaments.</p>
             <button
               type="button"
               onClick={() => { setFromDate(''); setToDate(''); }}
@@ -368,15 +356,15 @@ function TournamentHistoryContent() {
               return (
                 <div
                   key={tournament.id}
-                  className={`bg-white rounded-xl shadow-sm border-2 transition-shadow hover:shadow-md ${isLatest ? 'border-yellow-300' : 'border-gray-200'}`}
+                  className={`bg-surface rounded-xl border transition-shadow ${isLatest ? 'border-gold/40' : 'border-line'}`}
                 >
                   {/* Card Header */}
-                  <div className={`px-6 py-4 rounded-t-xl flex justify-between items-center ${isLatest ? 'bg-yellow-50' : 'bg-gray-50'}`}>
+                  <div className={`px-6 py-4 rounded-t-xl flex justify-between items-center ${isLatest ? 'bg-gold-soft' : 'bg-surface-sunken'}`}>
                     <div className="flex items-center gap-3">
-                      {isLatest && <span className="text-xs font-bold bg-yellow-400 text-yellow-900 px-2 py-0.5 rounded-full uppercase tracking-wide">Latest</span>}
-                      <h2 className="text-lg font-bold text-gray-900">{tournament.name}</h2>
+                      {isLatest && <span className="text-xs font-bold bg-gold text-ink px-2 py-0.5 rounded-full uppercase tracking-wide">Latest</span>}
+                      <h2 className="text-lg font-bold text-ink">{tournament.name}</h2>
                     </div>
-                    <div className="flex items-center gap-4 text-sm text-gray-500">
+                    <div className="flex items-center gap-4 text-sm text-muted">
                       <span>{tournament.players.length} players</span>
                       <span>{new Date(tournament.startDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
                     </div>
@@ -386,20 +374,20 @@ function TournamentHistoryContent() {
                   <div className="px-6 py-5 flex flex-col md:flex-row gap-6">
 
                     {/* Champion */}
-                    <div className="flex-shrink-0 flex flex-col items-center justify-center bg-gradient-to-br from-yellow-50 to-amber-100 border border-yellow-200 rounded-xl px-8 py-5 min-w-[160px]">
+                    <div className="flex-shrink-0 flex flex-col items-center justify-center bg-gold-soft border border-gold/40 rounded-xl px-8 py-5 min-w-[160px]">
                       <div className="text-4xl mb-1">🥇</div>
-                      <div className="text-xs font-semibold text-yellow-700 uppercase tracking-wider mb-1">Champion</div>
-                      <div className="text-base font-bold text-gray-900 text-center">
+                      <div className="text-xs font-semibold text-gold uppercase tracking-wider mb-1">Champion</div>
+                      <div className="text-base font-bold text-ink text-center">
                         {champion ?? '—'}
                       </div>
                     </div>
 
                     {/* Standings */}
                     <div className="flex-1">
-                      <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Final Standings</div>
+                      <div className="text-xs font-semibold text-muted uppercase tracking-wider mb-2">Final Standings</div>
                       <table className="w-full text-sm">
                         <thead>
-                          <tr className="text-gray-500 border-b border-gray-100">
+                          <tr className="text-muted border-b border-line">
                             <th className="text-left py-1 pr-3 font-medium w-8">#</th>
                             <th className="text-left py-1 pr-3 font-medium">Player</th>
                             <th className="text-center py-1 px-2 font-medium w-12">W</th>
@@ -409,14 +397,14 @@ function TournamentHistoryContent() {
                         </thead>
                         <tbody>
                           {standings.map((s, i) => (
-                            <tr key={s.playerId} className={`border-b border-gray-50 ${i === 0 ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>
-                              <td className="py-1 pr-3 text-gray-400">
+                            <tr key={s.playerId} className={`border-b border-line ${i === 0 ? 'font-semibold text-ink' : 'text-ink-soft'}`}>
+                              <td className="py-1 pr-3 text-muted">
                                 {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}`}
                               </td>
                               <td className="py-1 pr-3">{getPlayerName(s.playerId)}</td>
-                              <td className="text-center py-1 px-2 text-green-600">{s.wins}</td>
-                              <td className="text-center py-1 px-2 text-red-500">{s.losses}</td>
-                              <td className="text-center py-1 px-2 text-gray-500">
+                              <td className="text-center py-1 px-2 text-win">{s.wins}</td>
+                              <td className="text-center py-1 px-2 text-loss">{s.losses}</td>
+                              <td className="text-center py-1 px-2 text-muted">
                                 {s.totalGames > 0 ? Math.round((s.wins / s.totalGames) * 100) : 0}%
                               </td>
                             </tr>
@@ -428,18 +416,18 @@ function TournamentHistoryContent() {
                     {/* Quick Stats + Details Button */}
                     <div className="flex-shrink-0 flex flex-col justify-between gap-4 min-w-[130px]">
                       <div className="space-y-2">
-                        <div className="bg-gray-50 rounded-lg px-4 py-3 text-center">
-                          <div className="text-2xl font-bold text-gray-900">{completedMatches.length}</div>
-                          <div className="text-xs text-gray-500">Matches</div>
+                        <div className="bg-surface-sunken rounded-lg px-4 py-3 text-center">
+                          <div className="text-2xl font-bold text-ink">{completedMatches.length}</div>
+                          <div className="text-xs text-muted">Matches</div>
                         </div>
-                        <div className="bg-gray-50 rounded-lg px-4 py-3 text-center">
-                          <div className="text-2xl font-bold text-gray-900">{tournamentGames.length}</div>
-                          <div className="text-xs text-gray-500">Games</div>
+                        <div className="bg-surface-sunken rounded-lg px-4 py-3 text-center">
+                          <div className="text-2xl font-bold text-ink">{tournamentGames.length}</div>
+                          <div className="text-xs text-muted">Games</div>
                         </div>
                       </div>
                       <button
                         onClick={() => openDetail(tournament)}
-                        className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
+                        className="w-full bg-table hover:bg-table-hover text-surface py-2 px-4 rounded-lg text-sm font-medium transition-colors"
                       >
                         View Details
                       </button>

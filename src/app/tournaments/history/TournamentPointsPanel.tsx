@@ -87,16 +87,16 @@ export default function TournamentPointsPanel({
     : null;
 
   return (
-    <section className="tournament-points-panel bg-white rounded-xl shadow-sm border-2 border-indigo-200 overflow-hidden mb-8">
-      <div className="tournament-points-panel__header px-6 py-5 border-b border-indigo-100">
+    <section className="tournament-points-panel bg-surface rounded-xl border border-table/30 overflow-hidden mb-8">
+      <div className="tournament-points-panel__header px-6 py-5 border-b border-table/30">
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
           <div>
-            <p className="text-xs font-bold uppercase tracking-widest text-indigo-600">Multi-tournament championship</p>
-            <h2 className="text-2xl font-bold text-gray-900 mt-1">Points leaderboard</h2>
-            <p className="text-sm text-gray-600 mt-1">Choose a date range and combine tournament placements into one winner.</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-table">Multi-tournament championship</p>
+            <h2 className="text-2xl font-bold text-ink mt-1">Points leaderboard</h2>
+            <p className="text-sm text-ink-soft mt-1">Choose a date range and combine tournament placements into one winner.</p>
           </div>
-          <div className="tournament-points-panel__summary rounded-lg border border-indigo-100 px-4 py-3 text-sm text-gray-600">
-            <div className="font-semibold text-gray-900">{selectedTournaments.length} tournament{selectedTournaments.length === 1 ? '' : 's'} selected</div>
+          <div className="tournament-points-panel__summary rounded-lg border border-table/30 px-4 py-3 text-sm text-ink-soft">
+            <div className="font-semibold text-ink">{selectedTournaments.length} tournament{selectedTournaments.length === 1 ? '' : 's'} selected</div>
             {latestSelectedTournament && (
               <div className="mt-1">Latest: {latestSelectedTournament.name}</div>
             )}
@@ -104,7 +104,7 @@ export default function TournamentPointsPanel({
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mt-5">
-          <label className="text-sm font-semibold text-gray-700">
+          <label className="text-sm font-semibold text-ink-soft">
             From
             <input
               type="date"
@@ -115,7 +115,7 @@ export default function TournamentPointsPanel({
               className="form-control mt-1 block w-full rounded-lg px-3 py-2 text-sm"
             />
           </label>
-          <label className="text-sm font-semibold text-gray-700">
+          <label className="text-sm font-semibold text-ink-soft">
             To
             <input
               type="date"
@@ -126,7 +126,7 @@ export default function TournamentPointsPanel({
               className="form-control mt-1 block w-full rounded-lg px-3 py-2 text-sm"
             />
           </label>
-          <label className="text-sm font-semibold text-gray-700">
+          <label className="text-sm font-semibold text-ink-soft">
             1st place points
             <input
               type="number"
@@ -137,7 +137,7 @@ export default function TournamentPointsPanel({
               className="form-control mt-1 block w-full rounded-lg px-3 py-2 text-sm"
             />
           </label>
-          <label className="text-sm font-semibold text-gray-700">
+          <label className="text-sm font-semibold text-ink-soft">
             2nd place points
             <input
               type="number"
@@ -148,7 +148,7 @@ export default function TournamentPointsPanel({
               className="form-control mt-1 block w-full rounded-lg px-3 py-2 text-sm"
             />
           </label>
-          <label className="text-sm font-semibold text-gray-700">
+          <label className="text-sm font-semibold text-ink-soft">
             3rd place points
             <input
               type="number"
@@ -161,36 +161,36 @@ export default function TournamentPointsPanel({
           </label>
         </div>
 
-        <label className="mt-4 flex items-start gap-3 text-sm text-gray-700 cursor-pointer w-fit">
+        <label className="mt-4 flex items-start gap-3 text-sm text-ink-soft cursor-pointer w-fit">
           <input
             type="checkbox"
             checked={doubleLastTournament}
             onChange={event => setDoubleLastTournament(event.target.checked)}
-            className="mt-0.5 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+            className="mt-0.5 h-4 w-4 rounded border-line-strong text-table focus:ring-table"
           />
           <span>
             <span className="font-semibold">Double points for the latest tournament in this range</span>
-            <span className="block text-xs text-gray-500 mt-0.5">The latest tournament is determined by its start date.</span>
+            <span className="block text-xs text-muted mt-0.5">The latest tournament is determined by its start date.</span>
           </span>
         </label>
 
         {(rangeError || pointInputError) && (
-          <p className="mt-3 text-sm font-medium text-red-600">{rangeError ?? pointInputError}</p>
+          <p className="mt-3 text-sm font-medium text-loss">{rangeError ?? pointInputError}</p>
         )}
       </div>
 
       {selectedTournaments.length === 0 ? (
-        <p className="px-6 py-8 text-center text-sm text-gray-500">No completed tournaments fall within this date range.</p>
+        <p className="px-6 py-8 text-center text-sm text-muted">No completed tournaments fall within this date range.</p>
       ) : result ? (
         <div className="p-6 space-y-6">
           {winner && (
-            <div className="tournament-points-panel__winner rounded-xl border border-yellow-200 px-5 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="tournament-points-panel__winner rounded-xl border border-gold/40 px-5 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
                 <p className="tournament-points-panel__winner-label text-xs font-bold uppercase tracking-widest">Overall winner</p>
                 <p className="tournament-points-panel__winner-name text-2xl font-bold mt-1">{getPlayerName(winner.playerId)}</p>
               </div>
               <div className="sm:text-right">
-                <p className="tournament-points-panel__winner-score text-3xl font-black tabular-nums">{winner.totalPoints}</p>
+                <p className="tournament-points-panel__winner-score text-3xl font-extrabold tabular-nums">{winner.totalPoints}</p>
                 <p className="tournament-points-panel__winner-label text-xs font-semibold uppercase tracking-wide">points</p>
               </div>
             </div>
@@ -199,19 +199,19 @@ export default function TournamentPointsPanel({
           <div>
             <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2 mb-3">
               <div>
-                <h3 className="text-sm font-bold uppercase tracking-wider text-gray-600">Leaderboard</h3>
-                <p className="text-xs text-gray-500 mt-1">
+                <h3 className="text-sm font-bold uppercase tracking-wider text-ink-soft">Leaderboard</h3>
+                <p className="text-xs text-muted mt-1">
                   Scoring: {pointValues.firstPlacePoints} for 1st, {pointValues.secondPlacePoints} for 2nd, {pointValues.thirdPlacePoints} for 3rd.
                 </p>
               </div>
               {doubleLastTournament && latestSelectedTournament && (
-                <p className="text-xs font-semibold text-indigo-700">2x applied to {latestSelectedTournament.name}</p>
+                <p className="text-xs font-semibold text-table">2x applied to {latestSelectedTournament.name}</p>
               )}
             </div>
-            <div className="overflow-x-auto rounded-lg border border-gray-200">
+            <div className="overflow-x-auto rounded-lg border border-line">
               <table className="w-full text-sm min-w-[620px]">
                 <thead>
-                  <tr className="border-b-2 border-gray-200 bg-gray-50 text-gray-600">
+                  <tr className="border-b-2 border-line bg-surface-sunken text-ink-soft">
                     <th className="text-left py-3 px-3 font-semibold w-14">Rank</th>
                     <th className="text-left py-3 px-3 font-semibold">Player</th>
                     <th className="text-center py-3 px-3 font-semibold">Points</th>
@@ -225,15 +225,15 @@ export default function TournamentPointsPanel({
                   {result.leaderboard.map((entry, index) => (
                     <tr
                       key={entry.playerId}
-                      className={`border-b border-gray-100 last:border-0 ${index === 0 ? 'tournament-points-panel__leaderboard-row--winner font-semibold' : 'bg-white'}`}
+                      className={`border-b border-line last:border-0 ${index === 0 ? 'tournament-points-panel__leaderboard-row--winner font-semibold' : 'bg-surface'}`}
                     >
-                      <td className="py-3 px-3 text-gray-500">{getRankLabel(index + 1)}</td>
-                      <td className="py-3 px-3 font-medium text-gray-900">{getPlayerName(entry.playerId)}</td>
-                      <td className="py-3 px-3 text-center font-bold text-indigo-700 tabular-nums">{entry.totalPoints}</td>
-                      <td className="py-3 px-3 text-center text-gray-700 tabular-nums">{entry.firstPlaces}</td>
-                      <td className="py-3 px-3 text-center text-gray-700 tabular-nums">{entry.secondPlaces}</td>
-                      <td className="py-3 px-3 text-center text-gray-700 tabular-nums">{entry.thirdPlaces}</td>
-                      <td className="py-3 px-3 text-center text-gray-500 tabular-nums">{entry.tournamentsPlayed}</td>
+                      <td className="py-3 px-3 text-muted">{getRankLabel(index + 1)}</td>
+                      <td className="py-3 px-3 font-medium text-ink">{getPlayerName(entry.playerId)}</td>
+                      <td className="py-3 px-3 text-center font-bold text-table tabular-nums">{entry.totalPoints}</td>
+                      <td className="py-3 px-3 text-center text-ink-soft tabular-nums">{entry.firstPlaces}</td>
+                      <td className="py-3 px-3 text-center text-ink-soft tabular-nums">{entry.secondPlaces}</td>
+                      <td className="py-3 px-3 text-center text-ink-soft tabular-nums">{entry.thirdPlaces}</td>
+                      <td className="py-3 px-3 text-center text-muted tabular-nums">{entry.tournamentsPlayed}</td>
                     </tr>
                   ))}
                 </tbody>
