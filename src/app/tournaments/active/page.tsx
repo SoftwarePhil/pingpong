@@ -10,6 +10,7 @@ import { validateScore } from '../../../lib/scoring';
 import Leaderboard from './Leaderboard';
 import { createBracketMatches, cascadeBracketPlayerSwap, getCompletedSemifinalMatches, hasBracketStarted, isPlayInWinnerPlaceholder } from '../../../lib/tournament';
 import { useAuth } from '../../../components/AuthProvider';
+import { useConfirm } from '../../../components/ConfirmDialog';
 import { getRoundRobinFormat, isMatchComplete, isValidDoublesRoster } from '../../../lib/matchFormat';
 import { TournamentHeader, TournamentMenuAction } from './TournamentHeader';
 import { EditTournamentPanel, PairingStrategy } from './EditTournamentPanel';
@@ -20,6 +21,7 @@ import { PastRoundsSummary } from './PastRoundsSummary';
 export default function ActiveTournamentsPage() {
   const router = useRouter();
   const { isAdmin } = useAuth();
+  const confirm = useConfirm();
   const [tournaments, setTournaments]           = useState<Tournament[]>([]);
   const [players, setPlayers]                   = useState<Player[]>([]);
   const [games, setGames]                       = useState<Game[]>([]);
@@ -82,14 +84,24 @@ export default function ActiveTournamentsPage() {
   };
 
   const deleteMatch = async (matchId: string) => {
-    if (!confirm('Delete this match and all its games?')) return;
+    if (!await confirm({
+      title: 'Delete this match?',
+      message: 'The match and any games recorded in it are removed.',
+      confirmLabel: 'Delete match',
+      tone: 'danger',
+    })) return;
     const res = await fetch(`/api/matches/${matchId}`, { method: 'DELETE' });
     if (res.ok) { fetchTournaments(); fetchGames(); }
     else alert('Failed to delete match');
   };
 
   const deleteGame = async (gameId: string) => {
-    if (!confirm('Delete this game?')) return;
+    if (!await confirm({
+      title: 'Delete this game?',
+      message: 'The match result is recalculated from the remaining games.',
+      confirmLabel: 'Delete game',
+      tone: 'danger',
+    })) return;
     const res = await fetch(`/api/games/${gameId}`, { method: 'DELETE' });
     if (res.ok) { fetchGames(); fetchTournaments(); }
     else alert('Failed to delete game');
@@ -249,7 +261,11 @@ export default function ActiveTournamentsPage() {
     const currentFormat = getRoundRobinFormat(tournament, currentRound);
     const label = format === 'doubles' ? '2v2' : '1v1';
     if (currentFormat === format) return;
-    if (!confirm(`Change Round ${currentRound} to ${label}? All unplayed matches in this round will be replaced.`)) return;
+    if (!await confirm({
+      title: `Play round ${currentRound} as ${label}?`,
+      message: 'All unplayed matches in this round are replaced with new pairings.',
+      confirmLabel: `Switch to ${label}`,
+    })) return;
 
     const res = await fetch('/api/tournaments', {
       method: 'PUT',
@@ -471,7 +487,23 @@ export default function ActiveTournamentsPage() {
   };
 
   const endTournament = async (t: Tournament) => {
-    if (!confirm('End this tournament?')) return;
+    const unplayed = (t.matches ?? []).filter(m => !isMatchComplete(m)).length;
+    const ended = await confirm({
+      title: `End ${t.name}?`,
+      message: (
+        <>
+          <p>The tournament moves to History with the results it has now, and no more games can be recorded. This can&apos;t be undone.</p>
+          {unplayed > 0 && (
+            <p className="mt-2 font-semibold text-loss">
+              {unplayed} {unplayed === 1 ? 'match hasn\u2019t' : 'matches haven\u2019t'} been played yet.
+            </p>
+          )}
+        </>
+      ),
+      confirmLabel: 'End tournament',
+      tone: 'danger',
+    });
+    if (!ended) return;
     const res = await fetch('/api/tournaments', {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: t.id, status: 'completed' }),
@@ -480,7 +512,12 @@ export default function ActiveTournamentsPage() {
   };
 
   const deleteTournament = async (t: Tournament) => {
-    if (!confirm('Delete this tournament? This cannot be undone.')) return;
+    if (!await confirm({
+      title: `Delete ${t.name}?`,
+      message: 'The tournament, its matches and its games are removed for good. Player stats will no longer include it. This can\u2019t be undone.',
+      confirmLabel: 'Delete tournament',
+      tone: 'danger',
+    })) return;
     const res = await fetch(`/api/tournaments?id=${t.id}`, { method: 'DELETE' });
     if (res.ok) { fetchTournaments(); fetchGames(); } else alert('Failed to delete tournament');
   };

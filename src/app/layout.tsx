@@ -5,6 +5,7 @@ import "./globals.css";
 import { AuthProvider } from "../components/AuthProvider";
 import { ThemeProvider } from "../components/ThemeProvider";
 import { SiteHeader } from "../components/SiteHeader";
+import { ConfirmProvider } from "../components/ConfirmDialog";
 
 // One variable family: its width axis gives both the wide display headings
 // and the condensed scoreboard digits.
@@ -44,8 +45,10 @@ export default function RootLayout({
       <body className="antialiased">
         <ThemeProvider>
           <AuthProvider>
-            <SiteHeader />
-            {children}
+            <ConfirmProvider>
+              <SiteHeader />
+              {children}
+            </ConfirmProvider>
           </AuthProvider>
         </ThemeProvider>
       </body>

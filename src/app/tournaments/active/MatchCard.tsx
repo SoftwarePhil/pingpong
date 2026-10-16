@@ -97,6 +97,9 @@ export default function MatchCard({
     );
   };
 
+  // Typed scores use the scoreboard digits; the placeholder is the player's name.
+  const scoreInputClass = 'form-control font-digits min-w-0 flex-1 rounded-md px-2 py-1.5 text-center text-lg placeholder:text-sm placeholder:font-semibold placeholder:[font-stretch:100%]';
+
   const iconButton = 'rounded-md px-1.5 py-0.5 text-xs font-semibold text-muted transition-colors hover:bg-surface-sunken hover:text-ink';
 
   return (
@@ -173,14 +176,19 @@ export default function MatchCard({
             onAddGame(match, score1, score2);
             (e.target as HTMLFormElement).reset();
           }}
-          className="flex items-center gap-2 border-t border-line bg-surface-sunken px-4 py-3"
+          className="space-y-2 border-t border-line bg-surface-sunken px-4 py-3"
         >
-          <input name="score1" type="number" min="0" max="50" required aria-label={`${sideName(side1)} score`} placeholder="0"
-            className="form-control font-digits w-14 rounded-md px-2 py-1 text-center text-lg" />
-          <span className="text-muted">–</span>
-          <input name="score2" type="number" min="0" max="50" required aria-label={`${sideName(side2)} score`} placeholder="0"
-            className="form-control font-digits w-14 rounded-md px-2 py-1 text-center text-lg" />
-          <button type="submit" className="button button-primary button-sm ml-auto">Record game</button>
+          {/* Each box is labelled with its player so scores can't be entered the wrong way round. */}
+          <div className="flex items-center gap-2">
+            <input name="score1" type="number" min="0" max="50" required
+              aria-label={`${sideName(side1)} score`} placeholder={sideName(side1)} title={sideName(side1)}
+              className={scoreInputClass} />
+            <span className="text-muted">–</span>
+            <input name="score2" type="number" min="0" max="50" required
+              aria-label={`${sideName(side2)} score`} placeholder={sideName(side2)} title={sideName(side2)}
+              className={scoreInputClass} />
+          </div>
+          <button type="submit" className="button button-primary button-sm w-full">Record game</button>
         </form>
       )}
 
