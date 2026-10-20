@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from 'react';
 
-/** One-time bouncing ping-pong ball that plays on app load, then disappears. */
+/** Small bounce that settles near the header logo on load. */
 export function BouncingBall() {
   const [visible, setVisible] = useState(true);
 
   useEffect(() => {
-    const timer = setTimeout(() => setVisible(false), 2900);
+    const timer = setTimeout(() => setVisible(false), 1800);
     return () => clearTimeout(timer);
   }, []);
 
