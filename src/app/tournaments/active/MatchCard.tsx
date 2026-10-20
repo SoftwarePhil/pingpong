@@ -90,8 +90,10 @@ export default function MatchCard({
           {sideName(ids)}
         </span>
         {won && <span className="label-caps text-win">Won</span>}
-        <span className={`font-digits w-6 text-right text-2xl ${won ? 'text-win' : decided ? 'text-muted' : 'text-ink'}`}>
-          {sideWins[side - 1]}
+        <span className={`score-flip ${won ? 'is-winner' : ''}`}>
+          <span className={`score-flip__inner font-digits text-2xl ${won ? 'text-win' : decided ? 'text-muted' : 'text-ink'}`}>
+            {sideWins[side - 1]}
+          </span>
         </span>
       </div>
     );
@@ -207,9 +209,13 @@ export default function MatchCard({
                   <button type="button" onClick={cancelEditingGame} className="text-xs font-semibold text-muted hover:underline">Cancel</button>
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1 rounded-md border border-line bg-surface px-2 py-0.5 text-sm">
+                <span className="inline-flex items-center gap-1">
                   <span className="text-xs text-muted">G{index + 1}</span>
-                  <span className="font-digits text-ink">{game.score1}–{game.score2}</span>
+                  <span className="score-flip">
+                    <span className="score-flip__inner font-digits text-sm text-ink">
+                      {game.score1}–{game.score2}
+                    </span>
+                  </span>
                   {!readOnly && (
                     <>
                       <button type="button" onClick={() => startEditingGame(game)} className="ml-1 text-xs font-semibold text-table hover:underline">Edit</button>
