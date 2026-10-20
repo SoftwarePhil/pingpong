@@ -15,18 +15,14 @@
 }
 
 .site-header__inner {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   align-items: center;
-  justify-content: space-between;
-  gap: 1.5rem;
-  max-width: 80rem;
   height: 4.25rem;
-  margin-inline: auto;
-  padding-inline: 1.5rem;
   position: relative;
 }
 
-/* Center divider — truly centered on the header */
+/* Center divider — the split between the two header halves. */
 .site-header__inner::before {
   content: "";
   position: absolute;
@@ -45,13 +41,14 @@
 }
 
 .site-header__brand {
-  display: inline-flex;
+  display: flex;
   align-items: center;
+  justify-content: center;
   gap: 0.75rem;
   color: #ffffff;
   font-size: 1.25rem;
   white-space: nowrap;
-  flex-shrink: 0;
+  min-width: 0;
   z-index: 2;
 }
 
@@ -67,8 +64,9 @@
 .site-header__nav {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 0.25rem;
-  margin-left: auto;
+  min-width: 0;
   z-index: 2;
 }
 
@@ -562,15 +560,20 @@
 @media (max-width: 640px) {
   .site-header__inner {
     height: 3.75rem;
-    padding-inline: 1rem;
-    gap: 0.75rem;
+    grid-template-columns: auto 1fr;
+    padding-inline: 0.75rem;
   }
 
   .site-header__inner::before { display: none; }
 
+  .site-header__brand {
+    justify-content: flex-start;
+    padding-left: 0.25rem;
+  }
+
   .site-header__brand .font-display { display: none; }
 
-  .site-header__link { padding: 0.4rem 0.5rem; }
+  .site-header__link { padding: 0.4rem 0.45rem; font-size: 0.8rem; }
 
   .table-banner {
     grid-template-columns: 1fr;
