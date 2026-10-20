@@ -7,7 +7,7 @@ export function BouncingBall() {
   const [visible, setVisible] = useState(true);
 
   useEffect(() => {
-    const timer = setTimeout(() => setVisible(false), 3200);
+    const timer = setTimeout(() => setVisible(false), 2900);
     return () => clearTimeout(timer);
   }, []);
 
