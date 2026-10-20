@@ -6,6 +6,7 @@ import { AuthProvider } from "../components/AuthProvider";
 import { ThemeProvider } from "../components/ThemeProvider";
 import { SiteHeader } from "../components/SiteHeader";
 import { ConfirmProvider } from "../components/ConfirmDialog";
+import { BouncingBall } from "../components/BouncingBall";
 
 // One variable family: its width axis gives both the wide display headings
 // and the condensed scoreboard digits.
@@ -46,6 +47,7 @@ export default function RootLayout({
         <ThemeProvider>
           <AuthProvider>
             <ConfirmProvider>
+              <BouncingBall />
               <SiteHeader />
               {children}
             </ConfirmProvider>
