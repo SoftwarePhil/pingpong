@@ -117,6 +117,8 @@ export default function Home() {
           </section>
         )}
 
+        <div className="net-divider" aria-hidden="true" />
+
         {summary && (
           <div className="grid gap-6 md:grid-cols-2">
             <section className="surface-card p-6">
