@@ -324,10 +324,24 @@
   font-variant-numeric: tabular-nums;
 }
 
+.table-banner__cell:has(.table-banner__open) {
+  padding: 0.55rem;
+}
+
 .table-banner__open {
-  padding: 0.5rem 0.7rem;
-  font-size: 0.82rem;
-  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  width: 100%;
+  height: auto;
+  max-height: 100%;
+  border-radius: 0.45rem;
+  padding: 0.35rem;
+  font-size: 0.78rem;
+  line-height: 1.15;
+  text-align: center;
+  white-space: normal;
 }
 
 .table-halves {
@@ -395,6 +409,34 @@
   border-color: var(--win);
   background: linear-gradient(180deg, var(--win-soft) 0%, color-mix(in srgb, var(--win-soft) 70%, var(--surface)) 100%);
   color: var(--win);
+}
+
+.score-entry {
+  width: 2.75rem;
+  height: 2.75rem;
+  flex-shrink: 0;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 0.35rem;
+  background: var(--surface);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  font-size: 1.25rem;
+  font-weight: 700;
+  text-align: center;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.score-entry::-webkit-outer-spin-button,
+.score-entry::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.score-entry:focus {
+  border-color: var(--table);
+  outline: 2px solid color-mix(in srgb, var(--table) 22%, transparent);
+  outline-offset: 0;
 }
 
 /* ── Forms ───────────────────────────────────────────────────────── */
