@@ -44,11 +44,9 @@ function LiveTournament({ tournament, name }: { tournament: Tournament; name: (i
         {slots.map(slot => {
           if (slot === 4) {
             return (
-              <div key="open" className="table-banner__cell">
-                <Link href="/tournaments/active" className="button button-accent table-banner__open">
-                  Open tournament →
-                </Link>
-              </div>
+              <Link key="open" href="/tournaments/active" className="table-banner__cell table-banner__open">
+                Open tournament →
+              </Link>
             );
           }
           const playerIndex = slot < 4 ? slot : slot - 1;

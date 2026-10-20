@@ -324,24 +324,18 @@
   font-variant-numeric: tabular-nums;
 }
 
-.table-banner__cell:has(.table-banner__open) {
-  padding: 0.55rem;
+.table-banner__open {
+  background: var(--ball);
+  color: var(--surface);
+  padding: 0.5rem;
+  font-weight: 800;
+  font-size: 0.95rem;
+  line-height: 1.15;
+  text-decoration: none;
 }
 
-.table-banner__open {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  aspect-ratio: 1;
-  width: 100%;
-  height: auto;
-  max-height: 100%;
-  border-radius: 0.45rem;
-  padding: 0.35rem;
-  font-size: 0.78rem;
-  line-height: 1.15;
-  text-align: center;
-  white-space: normal;
+.table-banner__open:hover {
+  filter: brightness(0.94);
 }
 
 .table-halves {
@@ -600,11 +594,6 @@
   }
 
   .table-banner__board { min-height: 16rem; }
-
-  .table-banner__open {
-    white-space: normal;
-    text-align: center;
-  }
 
   .page-header {
     align-items: flex-start;
