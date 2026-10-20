@@ -24,39 +24,45 @@ function LiveTournament({ tournament, name }: { tournament: Tournament; name: (i
   const playerIds = tournament.activePlayers ?? tournament.players;
   const rrMatches = (tournament.matches ?? []).filter(m => m.round === 'roundRobin');
   const stats = getRoundRobinStandings(playerIds, rrMatches);
-  const top = rankPlayersByRoundRobinStandings(playerIds, rrMatches).slice(0, 4);
+  const top = rankPlayersByRoundRobinStandings(playerIds, rrMatches).slice(0, 8);
   const gamesPlayed = (tournament.matches ?? []).reduce((total, m) => total + m.games.length, 0);
+  const slots = [0, 1, 2, 3, 4, 5, 6, 7, 8];
 
   return (
-    <section className="scoreboard overflow-hidden">
-      <div className="flex flex-wrap items-start justify-between gap-6 p-6 sm:p-8">
-        <div className="min-w-0">
-          <p className="label-caps flex items-center gap-2 text-ball">
-            <span className="h-2 w-2 rounded-full bg-ball animate-pulse" aria-hidden="true" />
-            Live now
-          </p>
-          <h1 className="font-display mt-2 text-3xl sm:text-4xl text-board-ink">{tournament.name}</h1>
-          <p className="mt-2 text-board-muted">
-            {stageLabel(tournament)} · {playerIds.length} players · {gamesPlayed} games played
-          </p>
-        </div>
-        <Link href="/tournaments/active" className="button button-accent px-5 py-3 text-base">
-          Open tournament →
-        </Link>
+    <section className="table-banner table-banner--live">
+      <div className="table-banner__left">
+        <p className="label-caps flex items-center gap-2 text-ball">
+          <span className="h-2 w-2 rounded-full bg-ball" aria-hidden="true" />
+          Live now
+        </p>
+        <h1 className="font-display mt-2 text-3xl sm:text-4xl text-board-ink">{tournament.name}</h1>
+        <p className="mt-2 text-board-muted">
+          {stageLabel(tournament)} · {playerIds.length} players · {gamesPlayed} games played
+        </p>
       </div>
-      <ol className="grid grid-cols-2 lg:grid-cols-4 border-t border-white/10">
-        {top.map((playerId, index) => (
-          <li key={playerId} className="flex items-center gap-3 px-6 py-4 border-white/10 [&:not(:first-child)]:border-l">
-            <span className="font-digits text-2xl text-board-muted">{index + 1}</span>
-            <span className="min-w-0">
-              <span className="block truncate font-semibold">{name(playerId)}</span>
-              <span className="font-digits text-sm text-board-muted">
+      <div className="table-banner__board">
+        {slots.map(slot => {
+          if (slot === 4) {
+            return (
+              <Link key="open" href="/tournaments/active" className="table-banner__cell table-banner__open">
+                Open tournament →
+              </Link>
+            );
+          }
+          const playerIndex = slot < 4 ? slot : slot - 1;
+          const playerId = top[playerIndex];
+          if (!playerId) return <div key={slot} className="table-banner__cell" />;
+          return (
+            <div key={playerId} className="table-banner__cell">
+              <span className="table-banner__rank">{playerIndex + 1}</span>
+              <span className="table-banner__name">{name(playerId)}</span>
+              <span className="table-banner__record">
                 {stats[playerId].wins}–{stats[playerId].losses}
               </span>
-            </span>
-          </li>
-        ))}
-      </ol>
+            </div>
+          );
+        })}
+      </div>
     </section>
   );
 }
@@ -97,29 +103,32 @@ export default function Home() {
     <main className="app-shell">
       <div className="page-container page-container--home space-y-6">
         {!summary ? (
-          <div className="scoreboard h-48 animate-pulse" aria-label="Loading" />
+          <div className="table-banner h-48 animate-pulse" aria-label="Loading" />
         ) : summary.active ? (
           <LiveTournament tournament={summary.active} name={summary.name} />
         ) : (
-          <section className="scoreboard flex flex-wrap items-center justify-between gap-6 p-6 sm:p-8">
-            <div>
+          <section className="table-banner">
+            <div className="table-banner__left">
               <p className="label-caps text-board-muted">Between tournaments</p>
               <h1 className="font-display mt-2 text-3xl sm:text-4xl">No tournament running</h1>
               <p className="mt-2 text-board-muted">
                 {summary.completedCount} tournaments played so far.
               </p>
             </div>
-            {isAdmin && (
-              <Link href="/tournaments/new" className="button button-accent px-5 py-3 text-base">
-                Start a tournament →
-              </Link>
-            )}
+            <div className="table-banner__divider" aria-hidden="true" />
+            <div className="table-banner__right">
+              {isAdmin && (
+                <Link href="/tournaments/new" className="button button-accent px-5 py-3 text-base">
+                  Start a tournament →
+                </Link>
+              )}
+            </div>
           </section>
         )}
 
         {summary && (
-          <div className="grid gap-6 md:grid-cols-2">
-            <section className="surface-card p-6">
+          <div className="table-halves">
+            <section className="table-half">
               <p className="label-caps text-muted">Latest champion</p>
               {summary.latest && summary.latestPlacements?.firstPlaceId ? (
                 <>
@@ -143,7 +152,7 @@ export default function Home() {
               )}
             </section>
 
-            <section className="surface-card p-6">
+            <section className="table-half">
               <div className="flex items-baseline justify-between">
                 <p className="label-caps text-muted">Most titles</p>
                 <Link href="/players" className="text-sm font-semibold text-table hover:underline">All players →</Link>

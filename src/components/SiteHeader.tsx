@@ -2,15 +2,15 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { SettingsMenu } from './SettingsMenu';
 
 const NAV_LINKS = [
   { href: '/tournaments/active', label: 'Tournament' },
   { href: '/tournaments/history', label: 'History' },
   { href: '/players', label: 'Players' },
+  { href: '/settings', label: 'Settings' },
 ];
 
-/** App-wide top bar: wordmark, primary sections and settings. */
+/** App-wide top bar: wordmark on the left half, sections on the right half. */
 export function SiteHeader() {
   const pathname = usePathname();
 
@@ -23,7 +23,7 @@ export function SiteHeader() {
         </Link>
         <nav aria-label="Main" className="site-header__nav">
           {NAV_LINKS.map(link => {
-            const active = pathname.startsWith(link.href);
+            const active = pathname === link.href || pathname.startsWith(`${link.href}/`);
             return (
               <Link
                 key={link.href}
@@ -36,7 +36,6 @@ export function SiteHeader() {
             );
           })}
         </nav>
-        <SettingsMenu />
       </div>
     </header>
   );

@@ -77,6 +77,17 @@ export default function MatchCard({
     match.games.filter(g => g.score2 > g.score1).length,
   ];
   const canRecord = !readOnly && match.games.length < match.bestOf && !isMatchComplete(match) && !isBye;
+  const recordInline = canRecord && match.round === 'roundRobin';
+
+  const submitScores = (form: HTMLFormElement) => {
+    const fd = new FormData(form);
+    const score1 = parseInt(fd.get('score1') as string);
+    const score2 = parseInt(fd.get('score2') as string);
+    const scoreError = validateScore(score1, score2);
+    if (scoreError) { alert(scoreError); return; }
+    onAddGame(match, score1, score2);
+    form.reset();
+  };
 
   const sideRow = (side: 1 | 2, ids: string[]) => {
     const won = winningSide === side;
@@ -90,9 +101,24 @@ export default function MatchCard({
           {sideName(ids)}
         </span>
         {won && <span className="label-caps text-win">Won</span>}
-        <span className={`font-digits w-6 text-right text-2xl ${won ? 'text-win' : decided ? 'text-muted' : 'text-ink'}`}>
-          {sideWins[side - 1]}
-        </span>
+        {recordInline ? (
+          <input
+            name={side === 1 ? 'score1' : 'score2'}
+            type="number"
+            inputMode="numeric"
+            min={0}
+            max={50}
+            required
+            aria-label={`${sideName(ids)} score`}
+            className="score-entry font-digits"
+          />
+        ) : (
+          <span className={`score-flip ${won ? 'is-winner' : ''}`}>
+            <span className={`score-flip__inner font-digits text-2xl ${won ? 'text-win' : decided ? 'text-muted' : 'text-ink'}`}>
+              {sideWins[side - 1]}
+            </span>
+          </span>
+        )}
       </div>
     );
   };
@@ -157,28 +183,38 @@ export default function MatchCard({
         </div>
       )}
 
-      <div className="divide-y divide-line">
-        {sideRow(1, side1)}
-        {isBye
-          ? <p className="px-4 py-2.5 text-sm text-muted">Bye — advances automatically</p>
-          : sideRow(2, side2)}
-      </div>
-
-      {canRecord && (
+      {recordInline ? (
         <form
           onSubmit={e => {
             e.preventDefault();
-            const fd = new FormData(e.target as HTMLFormElement);
-            const score1 = parseInt(fd.get('score1') as string);
-            const score2 = parseInt(fd.get('score2') as string);
-            const scoreError = validateScore(score1, score2);
-            if (scoreError) { alert(scoreError); return; }
-            onAddGame(match, score1, score2);
-            (e.target as HTMLFormElement).reset();
+            submitScores(e.currentTarget);
+          }}
+        >
+          <div className="divide-y divide-line">
+            {sideRow(1, side1)}
+            {sideRow(2, side2)}
+          </div>
+          <div className="border-t border-line px-4 py-3">
+            <button type="submit" className="button button-primary button-sm w-full">Record game</button>
+          </div>
+        </form>
+      ) : (
+        <div className="divide-y divide-line">
+          {sideRow(1, side1)}
+          {isBye
+            ? <p className="px-4 py-2.5 text-sm text-muted">Bye — advances automatically</p>
+            : sideRow(2, side2)}
+        </div>
+      )}
+
+      {canRecord && !recordInline && (
+        <form
+          onSubmit={e => {
+            e.preventDefault();
+            submitScores(e.currentTarget);
           }}
           className="space-y-2 border-t border-line bg-surface-sunken px-4 py-3"
         >
-          {/* Each box is labelled with its player so scores can't be entered the wrong way round. */}
           <div className="flex items-center gap-2">
             <input name="score1" type="number" min="0" max="50" required
               aria-label={`${sideName(side1)} score`} placeholder={sideName(side1)} title={sideName(side1)}
@@ -207,9 +243,13 @@ export default function MatchCard({
                   <button type="button" onClick={cancelEditingGame} className="text-xs font-semibold text-muted hover:underline">Cancel</button>
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1 rounded-md border border-line bg-surface px-2 py-0.5 text-sm">
+                <span className="inline-flex items-center gap-1">
                   <span className="text-xs text-muted">G{index + 1}</span>
-                  <span className="font-digits text-ink">{game.score1}–{game.score2}</span>
+                  <span className="score-flip">
+                    <span className="score-flip__inner font-digits text-sm text-ink">
+                      {game.score1}–{game.score2}
+                    </span>
+                  </span>
                   {!readOnly && (
                     <>
                       <button type="button" onClick={() => startEditingGame(game)} className="ml-1 text-xs font-semibold text-table hover:underline">Edit</button>
