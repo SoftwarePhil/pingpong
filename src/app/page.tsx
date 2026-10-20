@@ -24,11 +24,12 @@ function LiveTournament({ tournament, name }: { tournament: Tournament; name: (i
   const playerIds = tournament.activePlayers ?? tournament.players;
   const rrMatches = (tournament.matches ?? []).filter(m => m.round === 'roundRobin');
   const stats = getRoundRobinStandings(playerIds, rrMatches);
-  const top = rankPlayersByRoundRobinStandings(playerIds, rrMatches).slice(0, 4);
+  const top = rankPlayersByRoundRobinStandings(playerIds, rrMatches).slice(0, 8);
   const gamesPlayed = (tournament.matches ?? []).reduce((total, m) => total + m.games.length, 0);
+  const slots = [0, 1, 2, 3, 4, 5, 6, 7, 8];
 
   return (
-    <section className="table-banner">
+    <section className="table-banner table-banner--live">
       <div className="table-banner__left">
         <p className="label-caps flex items-center gap-2 text-ball">
           <span className="h-2 w-2 rounded-full bg-ball" aria-hidden="true" />
@@ -39,11 +40,30 @@ function LiveTournament({ tournament, name }: { tournament: Tournament; name: (i
           {stageLabel(tournament)} · {playerIds.length} players · {gamesPlayed} games played
         </p>
       </div>
-      <div className="table-banner__divider" aria-hidden="true" />
-      <div className="table-banner__right">
-        <Link href="/tournaments/active" className="button button-accent px-5 py-3 text-base">
-          Open tournament →
-        </Link>
+      <div className="table-banner__board">
+        {slots.map(slot => {
+          if (slot === 4) {
+            return (
+              <div key="open" className="table-banner__cell">
+                <Link href="/tournaments/active" className="button button-accent table-banner__open">
+                  Open tournament →
+                </Link>
+              </div>
+            );
+          }
+          const playerIndex = slot < 4 ? slot : slot - 1;
+          const playerId = top[playerIndex];
+          if (!playerId) return <div key={slot} className="table-banner__cell" />;
+          return (
+            <div key={playerId} className="table-banner__cell">
+              <span className="table-banner__rank">{playerIndex + 1}</span>
+              <span className="table-banner__name">{name(playerId)}</span>
+              <span className="table-banner__record">
+                {stats[playerId].wins}–{stats[playerId].losses}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </section>
   );
