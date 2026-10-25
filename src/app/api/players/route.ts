@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Player } from '../../../types/pingpong';
+import { newId } from '../../../lib/random';
 import { getPlayers, setPlayers, saveData } from '../../../data/data';
 import { requireAdmin } from '../../../lib/auth';
 import { decoratePlayerName, parsePlayerProfileFields, stripBirthdayCake } from '../../../lib/player';
@@ -31,9 +32,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `A player named "${duplicate.name}" already exists` }, { status: 409 });
     }
     const newPlayer: Player = {
-      id: Date.now().toString(),
+      id: newId(),
       name,
       tournamentIds: [],
+      createdAt: new Date().toISOString(),
       ...(fields.firstName !== undefined && { firstName: fields.firstName }),
       ...(fields.lastName !== undefined && { lastName: fields.lastName }),
       ...(fields.birthday !== undefined && { birthday: fields.birthday }),

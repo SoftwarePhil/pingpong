@@ -8,7 +8,7 @@ import {
 } from 'recharts';
 import { wilsonLowerBound } from '../../lib/stats';
 import { useAuth } from '../../components/AuthProvider';
-import { getPlayerAge } from '../../lib/player';
+import { getPlayerAge, getPlayerJoinedDate } from '../../lib/player';
 import { PageHeader } from '../../components/PageHeader';
 import {
   getGamePlayerIds,
@@ -440,7 +440,9 @@ export default function PlayersPage() {
                 <div className="flex-1">
                   <h3 className="text-xl font-bold text-ink">{player.name}</h3>
                   {playerProfileSummary(player) && <p className="text-muted text-sm">{playerProfileSummary(player)}</p>}
-                  <p className="text-ink-soft text-sm">Player since {new Date(parseInt(player.id)).toLocaleDateString()}</p>
+                  {getPlayerJoinedDate(player) && (
+                    <p className="text-ink-soft text-sm">Player since {getPlayerJoinedDate(player)!.toLocaleDateString()}</p>
+                  )}
                   <p className="text-table text-sm font-medium mt-1 cursor-pointer hover:text-table-hover">
                     View details →
                   </p>
@@ -633,9 +635,11 @@ export default function PlayersPage() {
                     <div>
                       <h2 className="text-2xl font-bold text-ink">{selectedPlayer.name}</h2>
                       {playerProfileSummary(selectedPlayer) && <p className="text-sm text-ink-soft">{playerProfileSummary(selectedPlayer)}</p>}
-                      <p className="text-sm text-muted">
-                        Player since {new Date(parseInt(selectedPlayer.id)).toLocaleDateString()}
-                      </p>
+                      {getPlayerJoinedDate(selectedPlayer) && (
+                        <p className="text-sm text-muted">
+                          Player since {getPlayerJoinedDate(selectedPlayer)!.toLocaleDateString()}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-start gap-3">

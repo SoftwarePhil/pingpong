@@ -61,6 +61,17 @@ export function decoratePlayerName(player: Player, today = new Date()): Player {
   return { ...player, name: isBirthdayWeek(player, today) ? `${name} ${BIRTHDAY_CAKE}` : name };
 }
 
+/**
+ * When the player was added. Newer players store `createdAt`; older ones used
+ * the creation timestamp as their id. Returns undefined when neither is known.
+ */
+export function getPlayerJoinedDate(player: Pick<Player, 'id' | 'createdAt'>): Date | undefined {
+  const date = player.createdAt
+    ? new Date(player.createdAt)
+    : /^\d{12,}$/.test(player.id) ? new Date(Number(player.id)) : undefined;
+  return date && !Number.isNaN(date.getTime()) ? date : undefined;
+}
+
 /** Returns a player's current age, calculated from their birthday. */
 export function getPlayerAge(player: Pick<Player, 'birthday'>, today = todayUtc()): number | undefined {
   if (!player.birthday) return undefined;

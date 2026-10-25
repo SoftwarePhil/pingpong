@@ -1,5 +1,6 @@
 import { RoundRobinFormat, Tournament, Match } from '../types/pingpong';
 import { orderPlayersForSwissPairing } from './swissPairing';
+import { newId, shuffle } from './random';
 import {
   getMatchPlayerIds,
   getRoundRobinFormat,
@@ -407,6 +408,28 @@ export function cascadeBracketPlayerSwap(
   });
 }
 
+type NewMatchFields = Omit<Match, 'id' | 'createdAt' | 'games'>;
+
+/**
+ * Creates a match with a fresh id, a creation time and no games.
+ *
+ * A singles match against a BYE gets the real player as its winner so the
+ * player advances and the round counts as complete. It is bookkeeping, not a
+ * result: standings, player stats and tournament points all skip bye matches.
+ */
+export function createMatch(fields: NewMatchFields, createdAt = new Date().toISOString()): Match {
+  const byeWinner = fields.player1Id === BYE_PLACEHOLDER ? fields.player2Id
+    : fields.player2Id === BYE_PLACEHOLDER ? fields.player1Id
+    : undefined;
+  return {
+    id: newId(),
+    createdAt,
+    games: [],
+    ...(byeWinner !== undefined && fields.winnerId === undefined && { winnerId: byeWinner }),
+    ...fields,
+  };
+}
+
 // Helper function to create a single round of round robin pairings
 export function createRoundRobinPairings(
   players: string[],
@@ -427,10 +450,8 @@ export function createRoundRobinPairings(
     for (let i = 0; i < shuffled.length; i += 4) {
       const side1 = [shuffled[i], shuffled[i + 3]];
       const side2 = [shuffled[i + 1], shuffled[i + 2]];
-      newMatches.push({
-        id: Date.now().toString() + Math.random(),
+      newMatches.push(createMatch({
         tournamentId,
-        createdAt: new Date().toISOString(),
         // Keep deterministic representative IDs for legacy consumers. The
         // side arrays are authoritative for doubles matches.
         player1Id: side1[0],
@@ -440,8 +461,7 @@ export function createRoundRobinPairings(
         round: 'roundRobin',
         bracketRound,
         bestOf,
-        games: [],
-      });
+      }));
     }
     return newMatches;
   }
@@ -454,35 +474,26 @@ export function createRoundRobinPairings(
 
   // Pair the remaining players
   for (let i = 0; i < shuffled.length; i += 2) {
-    const newMatch: Match = {
-      id: Date.now().toString() + Math.random(),
+    newMatches.push(createMatch({
       tournamentId,
-      createdAt: new Date().toISOString(),
       player1Id: shuffled[i],
       player2Id: shuffled[i + 1],
       round: 'roundRobin',
-      bracketRound: bracketRound,
-      bestOf: bestOf,
-      games: [],
-    };
-    newMatches.push(newMatch);
+      bracketRound,
+      bestOf,
+    }));
   }
 
-  // Create bye match if any
+  // The odd player out gets a bye, which createMatch records as an automatic win.
   if (byePlayer) {
-    const byeMatch: Match = {
-      id: Date.now().toString() + Math.random(),
+    newMatches.push(createMatch({
       tournamentId,
-      createdAt: new Date().toISOString(),
       player1Id: byePlayer,
-      player2Id: 'BYE',
+      player2Id: BYE_PLACEHOLDER,
       round: 'roundRobin',
-      bracketRound: bracketRound,
-      bestOf: bestOf,
-      games: [],
-      winnerId: byePlayer, // Automatic win
-    };
-    newMatches.push(byeMatch);
+      bracketRound,
+      bestOf,
+    }));
   }
 
   return newMatches;
@@ -543,20 +554,15 @@ export function advanceBracketRound(tournament: Tournament): Match[] {
   for (let i = 0; i + 1 < winners.length; i += 2) {
     const p1 = winners[i];
     const p2 = winners[i + 1];
-    const isBye = p1 === 'BYE' || p2 === 'BYE';
-    const newMatch: Match = {
-      id: Date.now().toString() + Math.random(),
+    const isBye = p1 === BYE_PLACEHOLDER || p2 === BYE_PLACEHOLDER;
+    newMatches.push(createMatch({
       tournamentId: tournament.id,
-      createdAt: new Date().toISOString(),
       player1Id: p1,
       player2Id: p2,
       round: 'bracket',
       bracketRound: currentRound + 1,
       bestOf: isBye ? 1 : bestOf,
-      games: [],
-      ...(isBye ? { winnerId: p1 === 'BYE' ? p2 : p1 } : {}),
-    };
-    newMatches.push(newMatch);
+    }));
   }
 
   // The semifinal round is the only round with exactly two standard matches.
@@ -630,18 +636,15 @@ export function createThirdPlaceMatch(tournament: Tournament): Match | null {
   }
 
   const semifinalRound = semifinalMatches[0].bracketRound ?? 1;
-  return {
-    id: Date.now().toString() + Math.random(),
+  return createMatch({
     tournamentId: tournament.id,
-    createdAt: new Date().toISOString(),
     player1Id: semifinalLosers[0],
     player2Id: semifinalLosers[1],
     round: 'bracket',
     bracketRound: semifinalRound + 1,
     bestOf: getBestOfForMatchCount(tournament, semifinalMatches.length),
-    games: [],
     isThirdPlace: true,
-  };
+  });
 }
 
 /**
@@ -668,15 +671,6 @@ function getPlayInMatchCount(playerCount: number): number {
   return playerCount === lowerPowerOfTwo ? 1 : playerCount - lowerPowerOfTwo;
 }
 
-function shuffle<T>(items: T[]): T[] {
-  const shuffled = [...items];
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-  }
-  return shuffled;
-}
-
 /**
  * Creates R1 bracket matches for an even-sized player pool using standard seeding.
  * BYE is used for slots beyond the pool size; bye matches are auto-won.
@@ -696,19 +690,15 @@ function createSeededBracketMatches(
   for (let i = 0; i < seeding.length; i += 2) {
     const p1 = seeding[i]     <= n ? players[seeding[i] - 1]     : 'BYE';
     const p2 = seeding[i + 1] <= n ? players[seeding[i + 1] - 1] : 'BYE';
-    const isBye = p2 === 'BYE' || p1 === 'BYE';
-    newMatches.push({
-       id: Date.now().toString() + Math.random(),
-       tournamentId: tournament.id,
-        createdAt: new Date().toISOString(),
+    const isBye = p1 === BYE_PLACEHOLDER || p2 === BYE_PLACEHOLDER;
+    newMatches.push(createMatch({
+      tournamentId: tournament.id,
       player1Id: p1,
       player2Id: p2,
       round: 'bracket',
       bracketRound,
       bestOf: isBye ? 1 : bestOf,
-      games: [],
-      ...(isBye ? { winnerId: p1 === 'BYE' ? p2 : p1 } : {}),
-    });
+    }));
   }
   // Reverse the bottom half so that seed 1 is at the top and seed 2 is at the bottom
   const half = newMatches.length / 2;
@@ -825,19 +815,15 @@ export function buildBracketFromPreview(tournament: Tournament, submitted: unkno
   const mainBestOf = getBestOfForMatchCount(tournament, firstRound.length);
   const createdAt = new Date().toISOString();
   return slots.map(({ player1Id, player2Id, bracketRound }) => {
-    const byeWinner = player1Id === BYE_PLACEHOLDER ? player2Id : player2Id === BYE_PLACEHOLDER ? player1Id : undefined;
-    return {
-      id: Date.now().toString() + Math.random(),
+    const isBye = player1Id === BYE_PLACEHOLDER || player2Id === BYE_PLACEHOLDER;
+    return createMatch({
       tournamentId: tournament.id,
-      createdAt,
       player1Id,
       player2Id,
       round: 'bracket',
       bracketRound,
-      bestOf: bracketRound === 0 || byeWinner ? 1 : mainBestOf,
-      games: [],
-      ...(byeWinner ? { winnerId: byeWinner } : {}),
-    };
+      bestOf: bracketRound === 0 || isBye ? 1 : mainBestOf,
+    }, createdAt);
   });
 }
 
@@ -871,17 +857,14 @@ export function createBracketMatches(tournament: Tournament, createMainBracket =
       const directEntrantCount = bracketPlayers.length - playInMatchCount * 2;
       for (let i = 0; i < playInMatchCount; i++) {
         const pairStart = directEntrantCount + i * 2;
-        newMatches.push({
-          id: Date.now().toString() + Math.random(),
+        newMatches.push(createMatch({
           tournamentId: tournament.id,
-          createdAt: new Date().toISOString(),
           player1Id: bracketPlayers[pairStart],
           player2Id: bracketPlayers[pairStart + 1],
           round: 'bracket',
           bracketRound: 0,
           bestOf: 1,
-          games: [],
-        });
+        }));
       }
 
       if (createMainBracket) {
@@ -921,7 +904,7 @@ export function orderPlayersForRoundRobin(
   if (strategy === 'swiss') {
     return orderPlayersForSwissPairing(players, matches);
   }
-  return [...players].sort(() => Math.random() - 0.5);
+  return shuffle(players);
 }
 
 // Function to advance to next round robin round

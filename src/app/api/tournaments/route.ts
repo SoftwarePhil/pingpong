@@ -3,6 +3,7 @@ import { Tournament, Match, BracketConfig, PlayInMode, RoundRobinFormat } from '
 import { getTournaments, saveData, setTournament, getTournament, deleteTournament, registerMatchesIndex, unregisterMatchesIndex, syncTournamentPlayers, setRoundRobinFormatAtomically, TournamentConflictError, TournamentNotFoundError } from '../../../data/data';
 import { createRoundRobinPairings, advanceBracketRound, createBracketMatches, advanceRoundRobinRound, resyncRoundRobinMatches, createThirdPlaceMatch, buildBracketFromPreview, rankPlayersForBracket, InvalidBracketError } from '../../../lib/tournament';
 import { requireAdmin } from '../../../lib/auth';
+import { newId, shuffle } from '../../../lib/random';
 import { isMatchComplete } from '../../../lib/matchFormat';
 
 const PLAY_IN_MODES: PlayInMode[] = ['auto', 'force', 'none'];
@@ -56,7 +57,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `There is already an active tournament: "${activeTournament.name}". Complete or end it before creating a new one.` }, { status: 409 });
     }
     const newTournament: Tournament = {
-      id: Date.now().toString(),
+      id: newId(),
       name,
       startDate: new Date().toISOString(),
       status: 'roundRobin',
@@ -70,7 +71,7 @@ export async function POST(request: NextRequest) {
     };
 
     // Create first round robin pairings
-    const shuffledPlayers = [...uniquePlayers].sort(() => Math.random() - 0.5);
+    const shuffledPlayers = shuffle(uniquePlayers);
     const embeddedMatches = createRoundRobinPairings(shuffledPlayers, newTournament.id, 1, newTournament.rrBestOf);
 
     // Embed matches in tournament document

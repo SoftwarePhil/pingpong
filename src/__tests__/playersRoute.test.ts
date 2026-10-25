@@ -84,9 +84,10 @@ describe('POST /api/players', () => {
 
     expect(response.status).toBe(201);
     expect(body).toEqual({
-      id: expect.any(String),
+      id: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/),
       name: 'New Player',
       tournamentIds: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
     });
     expect(mockedSetPlayers).toHaveBeenCalledWith([body]);
     expect(mockedSaveData).toHaveBeenCalledTimes(1);
@@ -116,6 +117,7 @@ describe('POST /api/players', () => {
       birthday: '1990-05-10',
       profilePicture: 'https://example.com/profile.jpg',
       tournamentIds: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
     });
   });
 

@@ -6,6 +6,8 @@ export interface Player {
   birthday?: string; // ISO calendar date (YYYY-MM-DD)
   profilePicture?: string;
   tournamentIds: string[]; // Tournaments this player has participated in
+  /** When the player was added. Older players omit it; their id is the creation timestamp. */
+  createdAt?: string;
 }
 
 export interface Game {

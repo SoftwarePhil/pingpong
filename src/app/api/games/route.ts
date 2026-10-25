@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Game } from '../../../types/pingpong';
 import { getAllGames, addGameToMatch, setTournament, getMatch, getTournament } from '../../../data/data';
 import { validateScore } from '../../../lib/scoring';
+import { newId } from '../../../lib/random';
 import { replacePlayInWinnerSlot } from '../../../lib/tournament';
 import { requireAdmin } from '../../../lib/auth';
 import { getMatchSides, isDoublesMatch } from '../../../lib/matchFormat';
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest) {
 
     const [side1, side2] = getMatchSides(existingMatch);
     const newGame: Game = {
-      id: Date.now().toString(),
+      id: newId(),
       matchId,
       // These required legacy fields remain deterministic compatibility
       // references; side arrays are authoritative for doubles.
