@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Match } from '../../../types/pingpong';
 import { getAllMatches, getMatchesForTournament, addMatchToTournament, saveData } from '../../../data/data';
 import { requireAdmin } from '../../../lib/auth';
+import { createMatch } from '../../../lib/tournament';
 
 export async function GET(request: NextRequest) {
   try {
@@ -34,18 +34,15 @@ export async function POST(request: NextRequest) {
     if (!tournamentId || !player1Id || !player2Id || !round || !bestOf) {
       return NextResponse.json({ error: 'All fields are required' }, { status: 400 });
     }
-    const newMatch: Match = {
-      id: Date.now().toString(),
+    const newMatch = createMatch({
       tournamentId,
-      createdAt: new Date().toISOString(),
       player1Id,
       player2Id,
       round,
       bracketRound,
       bestOf,
-      games: [],
       ...(winnerId && { winnerId }),
-    };
+    });
     await addMatchToTournament(newMatch);
     await saveData();
     return NextResponse.json(newMatch, { status: 201 });
