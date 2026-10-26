@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPlayers, saveData, setPlayers } from '../../../../data/data';
+import { getPlayers, setPlayers } from '../../../../data/data';
 import { requireAdmin } from '../../../../lib/auth';
 import { decoratePlayerName, parsePlayerProfileFields, stripBirthdayCake } from '../../../../lib/player';
 import { Player } from '../../../../types/pingpong';
@@ -44,7 +44,6 @@ export async function PATCH(
     }
 
     await setPlayers(players.map(candidate => candidate.id === id ? updatedPlayer : candidate));
-    await saveData();
     return NextResponse.json(decoratePlayerName(updatedPlayer));
   } catch (error) {
     console.error('Error updating player:', error);

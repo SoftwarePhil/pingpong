@@ -6,14 +6,12 @@ import { adminRequest, playerRequest } from './authTestUtils';
 jest.mock('../data/data', () => ({
   getPlayers: jest.fn(),
   setPlayers: jest.fn(),
-  saveData: jest.fn(),
 }));
 
-import { getPlayers, setPlayers, saveData } from '../data/data';
+import { getPlayers, setPlayers } from '../data/data';
 
 const mockedGetPlayers = getPlayers as jest.MockedFunction<typeof getPlayers>;
 const mockedSetPlayers = setPlayers as jest.MockedFunction<typeof setPlayers>;
-const mockedSaveData = saveData as jest.MockedFunction<typeof saveData>;
 
 beforeEach(() => {
   jest.useFakeTimers();
@@ -90,7 +88,6 @@ describe('POST /api/players', () => {
       createdAt: '2026-01-01T00:00:00.000Z',
     });
     expect(mockedSetPlayers).toHaveBeenCalledWith([body]);
-    expect(mockedSaveData).toHaveBeenCalledTimes(1);
   });
 
   it('creates a player with optional profile fields', async () => {
@@ -179,7 +176,6 @@ describe('PATCH /api/players/[id]', () => {
       tournamentIds: ['t1'],
     });
     expect(mockedSetPlayers).toHaveBeenCalledWith([body]);
-    expect(mockedSaveData).toHaveBeenCalledTimes(1);
   });
 
   it('clears optional profile fields when the admin submits empty values', async () => {

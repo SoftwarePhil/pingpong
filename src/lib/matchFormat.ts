@@ -24,12 +24,6 @@ export function getRoundRobinFormat(tournament: Tournament, round: number): Roun
   return tournament.roundRobinFormats?.[round] ?? 'singles';
 }
 
-export function getWinningPlayerIds(match: Match): string[] {
-  const winningSide = getWinningSide(match);
-  if (!winningSide) return [];
-  return getMatchSides(match)[winningSide - 1];
-}
-
 export function getMatchPlayerIds(match: Match): string[] {
   return getMatchSides(match).flat();
 }

@@ -72,6 +72,5 @@ export type PlayInMode = 'auto' | 'force' | 'none';
 
 export interface BracketConfig {
   playInMode?: PlayInMode;
-  byePlayerIds?: string[];
   thirdPlaceMatch?: boolean;
 }

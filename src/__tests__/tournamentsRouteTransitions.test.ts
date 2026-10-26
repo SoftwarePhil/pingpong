@@ -3,7 +3,6 @@ import { adminRequest } from './authTestUtils';
 
 jest.mock('../data/data', () => ({
   getTournaments: jest.fn(),
-  saveData: jest.fn(),
   setTournament: jest.fn(),
   getTournament: jest.fn(),
   deleteTournament: jest.fn(),
@@ -23,7 +22,6 @@ jest.mock('../lib/tournament', () => ({
 import {
   getTournament,
   setTournament,
-  saveData,
   registerMatchesIndex,
 } from '../data/data';
 import { advanceRoundRobinRound, createBracketMatches, createThirdPlaceMatch } from '../lib/tournament';
@@ -31,7 +29,6 @@ import { Tournament, Match } from '../types/pingpong';
 
 const mockedGetTournament = getTournament as jest.MockedFunction<typeof getTournament>;
 const mockedSetTournament = setTournament as jest.MockedFunction<typeof setTournament>;
-const mockedSaveData = saveData as jest.MockedFunction<typeof saveData>;
 const mockedRegisterMatchesIndex = registerMatchesIndex as jest.MockedFunction<typeof registerMatchesIndex>;
 const mockedAdvanceRoundRobinRound = advanceRoundRobinRound as jest.MockedFunction<typeof advanceRoundRobinRound>;
 const mockedCreateBracketMatches = createBracketMatches as jest.MockedFunction<typeof createBracketMatches>;
@@ -90,7 +87,6 @@ describe('tournaments route transitions', () => {
     expect(body.roundRobinRounds).toBe(3);
     expect(mockedRegisterMatchesIndex).toHaveBeenCalledTimes(1);
     expect(mockedSetTournament).toHaveBeenCalledTimes(1);
-    expect(mockedSaveData).toHaveBeenCalledTimes(1);
   });
 
   it('starts bracket explicitly via action and stamps lifecycle', async () => {

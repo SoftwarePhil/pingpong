@@ -1,5 +1,5 @@
 import { Match } from '../types/pingpong';
-import { getGameSides, getMatchSides, getWinningSide, isPlayerId } from './matchFormat';
+import { getGameSides, getMatchSides, getWinningSide } from './matchFormat';
 
 export interface PlayerStandings {
   wins: number;
@@ -38,10 +38,9 @@ export function getIndividualStandings(
       const side1Players = side1.filter(playerId => playerSet.has(playerId));
       const side2Players = side2.filter(playerId => playerSet.has(playerId));
 
-      // Automatic byes do not count as a match or a point result. Marker games
-      // are retained for the real player's seed, but have no opposing player.
+      // Automatic byes do not count as a match or a point result. A marker is
+      // not in the player set, so a marker game credits only the real player.
       const isBye = side1.includes('BYE') || side2.includes('BYE');
-      const hasMarker = side1.includes('MARKER') || side2.includes('MARKER');
       if (isBye) return;
 
       match.games.forEach(game => {
@@ -64,20 +63,10 @@ export function getIndividualStandings(
       const winnerPlayers = winningSide === 1 ? side1Players : side2Players;
       const loserPlayers = winningSide === 1 ? side2Players : side1Players;
 
-      if (hasMarker && winnerPlayers.length > 0) {
-        winnerPlayers.forEach(playerId => {
-          standings[playerId].wins++;
-          standings[playerId].played++;
-        });
-        return;
-      }
-
-      if (winnerPlayers.length > 0) {
-        winnerPlayers.forEach(playerId => {
-          standings[playerId].wins++;
-          standings[playerId].played++;
-        });
-      }
+      winnerPlayers.forEach(playerId => {
+        standings[playerId].wins++;
+        standings[playerId].played++;
+      });
       loserPlayers.forEach(playerId => {
         standings[playerId].losses++;
         standings[playerId].played++;
@@ -104,9 +93,4 @@ export function rankPlayersByRoundRobinStandings(
     }
     return a.localeCompare(b);
   });
-}
-
-/** True when every supplied ID is a real player and none is a synthetic slot. */
-export function hasOnlyRealPlayers(ids: string[]): boolean {
-  return ids.length > 0 && ids.every(isPlayerId);
 }

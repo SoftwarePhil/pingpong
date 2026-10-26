@@ -11,7 +11,6 @@ jest.mock('../data/data', () => ({
   removeMatchFromTournament: jest.fn(),
   removeGamesFromHistory: jest.fn(),
   recalculateMatchWinner: jest.fn((match: Match) => match),
-  saveData: jest.fn(),
 }));
 
 import { getMatch, getTournament, getTournamentIdForMatch, setTournament, updateMatchInTournament } from '../data/data';

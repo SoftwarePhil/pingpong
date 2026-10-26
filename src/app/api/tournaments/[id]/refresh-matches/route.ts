@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTournament, setTournament, saveData, registerMatchesIndex, unregisterMatchesIndex } from '../../../../../data/data';
+import { getTournament, setTournament, registerMatchesIndex, unregisterMatchesIndex } from '../../../../../data/data';
 import { resyncRoundRobinMatches } from '../../../../../lib/tournament';
 import { requireAdmin } from '../../../../../lib/auth';
 
@@ -42,7 +42,6 @@ export async function POST(
     await unregisterMatchesIndex(removedMatchIds);
     await registerMatchesIndex(addedMatches);
     await setTournament(tournament);
-    await saveData();
 
     return NextResponse.json(tournament);
   } catch (error) {

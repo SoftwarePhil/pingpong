@@ -4,7 +4,6 @@ import { Match, Tournament } from '../types/pingpong';
 
 jest.mock('../data/data', () => ({
   getTournaments: jest.fn(),
-  saveData: jest.fn(),
   setTournament: jest.fn(),
   getTournament: jest.fn(),
   deleteTournament: jest.fn(),
