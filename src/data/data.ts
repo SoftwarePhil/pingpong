@@ -713,5 +713,66 @@ export async function removeGameFromMatch(
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Export — every stored record, for admins to download
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface DataExport {
+  /** Bumped when the file's shape changes, so older exports can still be read. */
+  formatVersion: 1;
+  exportedAt: string;
+  environment: string;
+  counts: { players: number; tournaments: number; activeTournaments: number; games: number };
+  players: Player[];
+  /** Active tournaments (from Redis) first, then completed ones (from MongoDB). */
+  tournaments: Tournament[];
+  /** The MongoDB game history; games are also embedded in their tournament's matches. */
+  games: Game[];
+}
+
+function withId<T extends { _id: string }>({ _id, ...rest }: T) {
+  return { id: _id, ...rest };
+}
+
+/**
+ * Reads every player, tournament and game exactly as stored. Unlike the
+ * read helpers above it does not swallow errors: a failed read must fail the
+ * export rather than produce a file that silently has missing records.
+ */
+export async function exportAllData(): Promise<DataExport> {
+  if (!redisClient) await initRedis();
+  if (!db) await initMongo();
+
+  const [playerDocs, gameDocs, completedDocs, activeIds] = await Promise.all([
+    playersCol().find({}).sort({ _id: 1 }).toArray(),
+    gamesCol().find({}).sort({ date: 1 }).toArray(),
+    tournamentsCol().find({}).sort({ startDate: 1 }).toArray(),
+    redisClient.zRange(ACTIVE_TOURNAMENTS_KEY, 0, -1),
+  ]);
+  const activeDocs = await Promise.all(activeIds.map(id => redisClient.get(tournamentKey(id))));
+  const active = activeDocs
+    .filter((doc): doc is string => doc !== null)
+    .map(doc => JSON.parse(doc) as Tournament);
+
+  const players = playerDocs.map(withId) as Player[];
+  const tournaments = [...active, ...(completedDocs.map(withId) as Tournament[])];
+  const games = gameDocs.map(withId) as Game[];
+
+  return {
+    formatVersion: 1,
+    exportedAt: new Date().toISOString(),
+    environment: ENV_PREFIX,
+    counts: {
+      players: players.length,
+      tournaments: tournaments.length,
+      activeTournaments: active.length,
+      games: games.length,
+    },
+    players,
+    tournaments,
+    games,
+  };
+}
+
 // Initialize on module load
 loadData().catch(console.error);
