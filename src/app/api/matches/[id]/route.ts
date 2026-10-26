@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Match, MARKER_PLAYER_ID } from '../../../../types/pingpong';
-import { getMatch, getTournamentIdForMatch, getTournament, setTournament, updateMatchInTournament, removeMatchFromTournament, removeGamesFromHistory, recalculateMatchWinner, saveData } from '../../../../data/data';
+import { getMatch, getTournamentIdForMatch, getTournament, setTournament, updateMatchInTournament, removeMatchFromTournament, removeGamesFromHistory, recalculateMatchWinner } from '../../../../data/data';
 import { cascadeRoundRobinPlayerSwap, cascadeBracketPlayerSwap, cascadeBracketOutcomeChange } from '../../../../lib/tournament';
 import { requireAdmin } from '../../../../lib/auth';
 import { isDoublesMatch } from '../../../../lib/matchFormat';
@@ -139,7 +139,6 @@ export async function PUT(
       }
 
       await setTournament(tournament);
-      await saveData();
 
       const updatedMatch = tournament.matches.find(m => m.id === matchId)!;
       return NextResponse.json(updatedMatch);

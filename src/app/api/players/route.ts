@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Player } from '../../../types/pingpong';
 import { newId } from '../../../lib/random';
-import { getPlayers, setPlayers, saveData } from '../../../data/data';
+import { getPlayers, setPlayers } from '../../../data/data';
 import { requireAdmin } from '../../../lib/auth';
 import { decoratePlayerName, parsePlayerProfileFields, stripBirthdayCake } from '../../../lib/player';
 
@@ -43,7 +43,6 @@ export async function POST(request: NextRequest) {
     };
     players.push(newPlayer);
     await setPlayers(players);
-    await saveData();
     return NextResponse.json(decoratePlayerName(newPlayer), { status: 201 });
   } catch (error) {
     console.error(error);

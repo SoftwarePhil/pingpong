@@ -5,7 +5,6 @@ import { adminRequest } from './authTestUtils';
 jest.mock('../data/data', () => ({
   getTournament: jest.fn(),
   setTournament: jest.fn(),
-  saveData: jest.fn(),
   registerMatchesIndex: jest.fn(),
   unregisterMatchesIndex: jest.fn(),
 }));
@@ -17,7 +16,6 @@ jest.mock('../lib/tournament', () => ({
 import {
   getTournament,
   setTournament,
-  saveData,
   registerMatchesIndex,
   unregisterMatchesIndex,
 } from '../data/data';
@@ -25,7 +23,6 @@ import { resyncRoundRobinMatches } from '../lib/tournament';
 
 const mockedGetTournament = getTournament as jest.MockedFunction<typeof getTournament>;
 const mockedSetTournament = setTournament as jest.MockedFunction<typeof setTournament>;
-const mockedSaveData = saveData as jest.MockedFunction<typeof saveData>;
 const mockedRegisterMatchesIndex = registerMatchesIndex as jest.MockedFunction<typeof registerMatchesIndex>;
 const mockedUnregisterMatchesIndex = unregisterMatchesIndex as jest.MockedFunction<typeof unregisterMatchesIndex>;
 const mockedResync = resyncRoundRobinMatches as jest.MockedFunction<typeof resyncRoundRobinMatches>;
@@ -95,7 +92,6 @@ describe('POST /api/tournaments/[id]/refresh-matches', () => {
     expect(mockedUnregisterMatchesIndex).toHaveBeenCalledWith(['m-old']);
     expect(mockedRegisterMatchesIndex).toHaveBeenCalledWith(added);
     expect(mockedSetTournament).toHaveBeenCalledTimes(1);
-    expect(mockedSaveData).toHaveBeenCalledTimes(1);
     expect(body.matches).toEqual(added);
     // Roster fields are never touched by this endpoint
     expect(body.players).toEqual(tournament.players);

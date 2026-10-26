@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Tournament, Match, BracketConfig, PlayInMode, RoundRobinFormat } from '../../../types/pingpong';
-import { getTournaments, saveData, setTournament, getTournament, deleteTournament, registerMatchesIndex, unregisterMatchesIndex, syncTournamentPlayers, setRoundRobinFormatAtomically, TournamentConflictError, TournamentNotFoundError } from '../../../data/data';
+import { getTournaments, setTournament, getTournament, deleteTournament, registerMatchesIndex, unregisterMatchesIndex, syncTournamentPlayers, setRoundRobinFormatAtomically, TournamentConflictError, TournamentNotFoundError } from '../../../data/data';
 import { createRoundRobinPairings, advanceBracketRound, createBracketMatches, advanceRoundRobinRound, resyncRoundRobinMatches, createThirdPlaceMatch, buildBracketFromPreview, rankPlayersForBracket, InvalidBracketError } from '../../../lib/tournament';
 import { requireAdmin } from '../../../lib/auth';
 import { newId, shuffle } from '../../../lib/random';
@@ -81,7 +81,6 @@ export async function POST(request: NextRequest) {
     await setTournament(newTournament);
     await syncTournamentPlayers(newTournament);
     await registerMatchesIndex(embeddedMatches);
-    await saveData();
 
     return NextResponse.json(newTournament, { status: 201 });
   } catch (error) {
@@ -119,7 +118,6 @@ export async function PUT(request: NextRequest) {
 
       try {
         const updatedTournament = await setRoundRobinFormatAtomically(id, requestedRound, format);
-        await saveData();
         return NextResponse.json(updatedTournament);
       } catch (error) {
         if (error instanceof TournamentNotFoundError) {
@@ -166,7 +164,6 @@ export async function PUT(request: NextRequest) {
       }
 
       await setTournament(tournament);
-      await saveData();
       return NextResponse.json(tournament);
     }
 
@@ -188,7 +185,6 @@ export async function PUT(request: NextRequest) {
       tournament.matches.push(thirdPlaceMatch);
       await registerMatchesIndex([thirdPlaceMatch]);
       await setTournament(tournament);
-      await saveData();
       return NextResponse.json(tournament);
     }
 
@@ -226,7 +222,6 @@ if (action === 'advanceRound') {
         await registerMatchesIndex(newMatches);
 
         await setTournament(tournament);
-        await saveData();
       } else if (bracketStarted && tournament.status !== 'completed') {
         // Advance bracket round
         const standardBracketMatches = (tournament.matches ?? []).filter(m =>
@@ -262,7 +257,6 @@ if (action === 'advanceRound') {
         }
 
         await setTournament(tournament);
-        await saveData();
       }
     }
 
@@ -334,7 +328,6 @@ if (action === 'advanceRound') {
       await unregisterMatchesIndex(existingBracketMatches.map(m => m.id));
       await registerMatchesIndex(newBracketMatches);
       await setTournament(tournament);
-      await saveData();
       return NextResponse.json(tournament);
     }
 
@@ -356,7 +349,6 @@ if (action === 'advanceRound') {
       tournament.matches.push(...newMatches);
       await registerMatchesIndex(newMatches);
       await setTournament(tournament);
-      await saveData();
       return NextResponse.json(tournament);
     }
 
@@ -371,7 +363,6 @@ if (action === 'advanceRound') {
     }
 
     await setTournament(tournament);
-    await saveData();
     return NextResponse.json(tournament);
   } catch (error) {
     console.error(error);

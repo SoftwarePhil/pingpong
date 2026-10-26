@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAllMatches, getMatchesForTournament, addMatchToTournament, saveData } from '../../../data/data';
-import { requireAdmin } from '../../../lib/auth';
-import { createMatch } from '../../../lib/tournament';
+import { getAllMatches, getMatchesForTournament } from '../../../data/data';
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,40 +12,5 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error(error);
     return NextResponse.json({ error: 'Failed to read matches' }, { status: 500 });
-  }
-}
-
-export async function POST(request: NextRequest) {
-  const denied = requireAdmin(request);
-  if (denied) return denied;
-  try {
-    const body = await request.json();
-    const { tournamentId, player1Id, player2Id, round, bracketRound, bestOf, winnerId }: {
-      tournamentId: string;
-      player1Id: string;
-      player2Id: string;
-      round: 'roundRobin' | 'bracket';
-      bracketRound?: number;
-      bestOf: number;
-      winnerId?: string;
-    } = body;
-    if (!tournamentId || !player1Id || !player2Id || !round || !bestOf) {
-      return NextResponse.json({ error: 'All fields are required' }, { status: 400 });
-    }
-    const newMatch = createMatch({
-      tournamentId,
-      player1Id,
-      player2Id,
-      round,
-      bracketRound,
-      bestOf,
-      ...(winnerId && { winnerId }),
-    });
-    await addMatchToTournament(newMatch);
-    await saveData();
-    return NextResponse.json(newMatch, { status: 201 });
-  } catch (error) {
-    console.error(error);
-    return NextResponse.json({ error: 'Failed to add match' }, { status: 500 });
   }
 }

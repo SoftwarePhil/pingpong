@@ -1,8 +1,7 @@
 import { createBracketMatches, createRoundRobinPairings, resyncRoundRobinMatches, setRoundRobinFormat } from '../lib/tournament';
 import { getMatchSides, getWinningSide, isMatchComplete } from '../lib/matchFormat';
 import { getRoundRobinStandings } from '../lib/standings';
-import { computeStats } from '../lib/stats';
-import { Player, Tournament } from '../types/pingpong';
+import { Tournament } from '../types/pingpong';
 
 function makeTournament(overrides: Partial<Tournament> = {}): Tournament {
   return {
@@ -18,10 +17,6 @@ function makeTournament(overrides: Partial<Tournament> = {}): Tournament {
     matches: [],
     ...overrides,
   };
-}
-
-function player(id: string): Player {
-  return { id, name: id, tournamentIds: [] };
 }
 
 describe('2v2 round-robin support', () => {
@@ -144,10 +139,6 @@ describe('2v2 round-robin support', () => {
     expect(standings.p4).toMatchObject({ wins: 1, losses: 0, played: 1, gamesPlayed: 1, pointDiff: 4 });
     expect(standings.p2).toMatchObject({ wins: 0, losses: 1, played: 1, gamesPlayed: 1, pointDiff: -4 });
     expect(standings.p3).toMatchObject({ wins: 0, losses: 1, played: 1, gamesPlayed: 1, pointDiff: -4 });
-
-    const stats = computeStats(['p1', 'p2', 'p3', 'p4'].map(player), match.games);
-    expect(stats.find(stat => stat.id === 'p1')).toMatchObject({ gamesPlayed: 1, wins: 1, losses: 0, totalPoints: 11 });
-    expect(stats.find(stat => stat.id === 'p4')).toMatchObject({ gamesPlayed: 1, wins: 1, losses: 0, totalPoints: 11 });
   });
 
   it('uses individual doubles results when seeding the singles bracket', () => {

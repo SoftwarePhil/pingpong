@@ -118,11 +118,6 @@ export async function loadData() {
   }
 }
 
-// Save data (no-op since both stores save immediately on changes)
-export async function saveData() {
-  console.log('Data saved (Redis + MongoDB)');
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Tournament functions — Redis (real-time state)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -344,20 +339,6 @@ export async function getActiveTournamentIds(): Promise<string[]> {
   }
 }
 
-export async function getCompletedTournamentIds(): Promise<string[]> {
-  try {
-    if (!db) await initMongo();
-    const docs = await tournamentsCol()
-      .find({ status: 'completed' }, { projection: { _id: 1 } })
-      .sort({ startDate: 1 })
-      .toArray();
-    return docs.map(d => d._id);
-  } catch (error) {
-    console.error('Error getting completed tournament IDs:', error);
-    return [];
-  }
-}
-
 // Getters
 export async function getTournaments(): Promise<Tournament[]> {
   try {
@@ -380,15 +361,6 @@ export async function getTournaments(): Promise<Tournament[]> {
   }
 }
 
-export async function setTournaments(data: Tournament[]): Promise<void> {
-  try {
-    await Promise.all(data.map(t => setTournament(t)));
-  } catch (error) {
-    console.error('Error setting tournaments:', error);
-    throw error;
-  }
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Match index — Redis hash (fast O(1) matchId → tournamentId lookup)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -400,16 +372,6 @@ export async function getTournamentIdForMatch(matchId: string): Promise<string |
   } catch (error) {
     console.error('Error getting tournament ID for match:', error);
     return null;
-  }
-}
-
-export async function registerMatchIndex(matchId: string, tournamentId: string): Promise<void> {
-  try {
-    if (!redisClient) await initRedis();
-    await redisClient.hSet(MATCH_INDEX_KEY, matchId, tournamentId);
-  } catch (error) {
-    console.error('Error registering match index:', error);
-    throw error;
   }
 }
 
@@ -524,20 +486,6 @@ export async function getMatch(matchId: string): Promise<Match | null> {
   } catch (error) {
     console.error('Error getting match:', error);
     return null;
-  }
-}
-
-export async function addMatchToTournament(match: Match): Promise<void> {
-  try {
-    const tournament = await getTournament(match.tournamentId);
-    if (!tournament) throw new Error(`Tournament ${match.tournamentId} not found`);
-    if (!tournament.matches) tournament.matches = [];
-    tournament.matches.push(match);
-    await setTournament(tournament);
-    await registerMatchIndex(match.id, match.tournamentId);
-  } catch (error) {
-    console.error('Error adding match to tournament:', error);
-    throw error;
   }
 }
 

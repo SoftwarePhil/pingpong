@@ -5,7 +5,6 @@ import { adminRequest } from './authTestUtils';
 jest.mock('../data/data', () => ({
   getTournament: jest.fn(),
   setTournament: jest.fn(),
-  saveData: jest.fn(),
   registerMatchesIndex: jest.fn(),
   unregisterMatchesIndex: jest.fn(),
   syncTournamentPlayers: jest.fn(),
@@ -19,7 +18,6 @@ jest.mock('../lib/tournament', () => ({
 import {
   getTournament,
   setTournament,
-  saveData,
   registerMatchesIndex,
   unregisterMatchesIndex,
   syncTournamentPlayers,
@@ -29,7 +27,6 @@ import { resyncRoundRobinMatches } from '../lib/tournament';
 
 const mockedGetTournament = getTournament as jest.MockedFunction<typeof getTournament>;
 const mockedSetTournament = setTournament as jest.MockedFunction<typeof setTournament>;
-const mockedSaveData = saveData as jest.MockedFunction<typeof saveData>;
 const mockedRegisterMatchesIndex = registerMatchesIndex as jest.MockedFunction<typeof registerMatchesIndex>;
 const mockedUnregisterMatchesIndex = unregisterMatchesIndex as jest.MockedFunction<typeof unregisterMatchesIndex>;
 const mockedSyncTournamentPlayers = syncTournamentPlayers as jest.MockedFunction<typeof syncTournamentPlayers>;
@@ -144,7 +141,6 @@ describe('PATCH /api/tournaments/[id]/players', () => {
     expect(mockedUnregisterMatchesIndex).toHaveBeenCalledWith([]);
     expect(mockedSyncTournamentPlayers).toHaveBeenCalledTimes(1);
     expect(mockedSetTournament).toHaveBeenCalledTimes(1);
-    expect(mockedSaveData).toHaveBeenCalledTimes(1);
   });
 
   it('deactivates a removed player without deleting them from the permanent roster', async () => {

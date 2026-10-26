@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   getTournament,
   setTournament,
-  saveData,
   registerMatchesIndex,
   unregisterMatchesIndex,
   syncTournamentPlayers,
@@ -124,7 +123,6 @@ export async function PATCH(
 
     await syncTournamentPlayers(tournament);
     await setTournament(tournament);
-    await saveData();
 
     return NextResponse.json(tournament);
   } catch (error) {

@@ -4,7 +4,6 @@ import { Match, Tournament } from '../types/pingpong';
 
 jest.mock('../data/data', () => ({
   getTournaments: jest.fn(),
-  saveData: jest.fn(),
   setTournament: jest.fn(),
   getTournament: jest.fn(),
   deleteTournament: jest.fn(),
@@ -28,7 +27,6 @@ jest.mock('../lib/tournament', () => ({
 import {
   getTournament,
   setTournament,
-  saveData,
   registerMatchesIndex,
   unregisterMatchesIndex,
   setRoundRobinFormatAtomically,
@@ -37,7 +35,6 @@ import {
 
 const mockedGetTournament = getTournament as jest.MockedFunction<typeof getTournament>;
 const mockedSetTournament = setTournament as jest.MockedFunction<typeof setTournament>;
-const mockedSaveData = saveData as jest.MockedFunction<typeof saveData>;
 const mockedRegisterMatchesIndex = registerMatchesIndex as jest.MockedFunction<typeof registerMatchesIndex>;
 const mockedUnregisterMatchesIndex = unregisterMatchesIndex as jest.MockedFunction<typeof unregisterMatchesIndex>;
 const mockedSetFormat = setRoundRobinFormatAtomically as jest.MockedFunction<typeof setRoundRobinFormatAtomically>;
@@ -116,7 +113,6 @@ describe('setRoundRobinFormat tournament action', () => {
     expect(mockedUnregisterMatchesIndex).not.toHaveBeenCalled();
     expect(mockedRegisterMatchesIndex).not.toHaveBeenCalled();
     expect(mockedSetTournament).not.toHaveBeenCalled();
-    expect(mockedSaveData).toHaveBeenCalledTimes(1);
     expect(body.roundRobinFormats).toEqual({ 1: 'doubles' });
   });
 
