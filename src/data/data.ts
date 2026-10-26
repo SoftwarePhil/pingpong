@@ -1,8 +1,9 @@
 import { createClient, RedisClientType, WatchError } from 'redis';
 import { MongoClient, Db, Collection } from 'mongodb';
-import { Player, Tournament, Match, Game, RoundRobinFormat } from '../types/pingpong';
+import { Club, Player, Tournament, Match, Game, RoundRobinFormat } from '../types/pingpong';
 import { cascadeBracketOutcomeChange, setRoundRobinFormat } from '../lib/tournament';
 import { getMatchSides, isDoublesMatch } from '../lib/matchFormat';
+import { newId } from '../lib/random';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Environment isolation
@@ -45,10 +46,12 @@ let db: Db;
 const PLAYERS_COLLECTION = 'players';
 const GAMES_COLLECTION = 'games';
 const TOURNAMENTS_COLLECTION = 'tournaments';
+const CLUBS_COLLECTION = 'clubs';
 
 type PlayerDoc = Omit<Player, 'id'> & { _id: string };
 type GameDoc = Omit<Game, 'id'> & { _id: string };
 type TournamentDoc = Omit<Tournament, 'id'> & { _id: string };
+type ClubDoc = Omit<Club, 'id'> & { _id: string };
 
 // Database name is environment-scoped (e.g. pingpong_test, pingpong_development, pingpong_production)
 export function dbName(): string {
@@ -80,6 +83,51 @@ function gamesCol(): Collection<GameDoc> {
 
 function tournamentsCol(): Collection<TournamentDoc> {
   return db.collection<TournamentDoc>(TOURNAMENTS_COLLECTION);
+}
+
+function clubsCol(): Collection<ClubDoc> {
+  return db.collection<ClubDoc>(CLUBS_COLLECTION);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Clubs — MongoDB
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The slug of the club everything belongs to while the app runs one club. */
+export const DEFAULT_CLUB_SLUG = 'dallas';
+
+let defaultClubPromise: Promise<Club> | null = null;
+
+/**
+ * The club new players, tournaments and games belong to. It is created on
+ * first use if the migration hasn't run yet, and cached for the process.
+ */
+export function getDefaultClub(): Promise<Club> {
+  defaultClubPromise ??= (async () => {
+    if (!db) await initMongo();
+    // Several server instances can reach this at once before the migration
+    // has run. The unique slug index makes sure only one club is created; an
+    // instance that loses the race reads the winner's club instead.
+    await clubsCol().createIndex({ slug: 1 }, { unique: true });
+    let doc: ClubDoc | null;
+    try {
+      doc = await clubsCol().findOneAndUpdate(
+        { slug: DEFAULT_CLUB_SLUG },
+        { $setOnInsert: { _id: newId(), name: DEFAULT_CLUB_SLUG, slug: DEFAULT_CLUB_SLUG, createdAt: new Date().toISOString() } },
+        { upsert: true, returnDocument: 'after' },
+      );
+    } catch (error) {
+      if ((error as { code?: number }).code !== 11000) throw error; // 11000: duplicate key
+      doc = await clubsCol().findOne({ slug: DEFAULT_CLUB_SLUG });
+    }
+    if (!doc) throw new Error(`Could not load the ${DEFAULT_CLUB_SLUG} club`);
+    const { _id, ...club } = doc;
+    return { id: _id, ...club };
+  })().catch(error => {
+    defaultClubPromise = null; // retry on the next call instead of caching the failure
+    throw error;
+  });
+  return defaultClubPromise;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -301,6 +349,7 @@ export async function deleteTournament(id: string): Promise<void> {
     if (!redisClient) await initRedis();
     const tournament = await getTournament(id);
     if (tournament) {
+      await removeGamesFromHistory((tournament.matches ?? []).flatMap(m => m.games.map(g => g.id)));
       await redisClient.zRem(ACTIVE_TOURNAMENTS_KEY, id);
       const matchIds = (tournament.matches ?? []).map(m => m.id);
       if (matchIds.length > 0) {
@@ -423,6 +472,7 @@ export async function getPlayers(): Promise<Player[]> {
     const docs = await playersCol().find({}).toArray();
     return docs.map(({ _id, ...player }) => ({
       id: _id,
+      ...(player.clubId !== undefined && { clubId: player.clubId }),
       name: player.name,
       tournamentIds: player.tournamentIds ?? [],
       ...(player.firstName !== undefined && { firstName: player.firstName }),
@@ -519,6 +569,7 @@ export async function removeMatchFromTournament(
     const [match] = tournament.matches.splice(idx, 1);
     await setTournament(tournament);
     await unregisterMatchIndex(matchId);
+    await removeGamesFromHistory(match.games.map(g => g.id));
     return { match, tournament };
   } catch (error) {
     console.error('Error removing match from tournament:', error);
@@ -619,15 +670,17 @@ export async function addGameToMatch(
     if (matchIdx === -1) return null;
     const match = tournament.matches[matchIdx];
     const [side1, side2] = getMatchSides(match);
-    const persistedGame = isDoublesMatch(match)
+    const clubId = tournament.clubId ?? (await getDefaultClub()).id;
+    const persistedGame: Game = isDoublesMatch(match)
       ? {
           ...game,
+          clubId,
           player1Id: side1[0],
           player2Id: side2[0],
           side1PlayerIds: side1,
           side2PlayerIds: side2,
         }
-      : game;
+      : { ...game, clubId };
     tournament.matches[matchIdx] = recalculateMatchWinner({
       ...match,
       games: [...match.games, persistedGame],
@@ -722,7 +775,8 @@ export interface DataExport {
   formatVersion: 1;
   exportedAt: string;
   environment: string;
-  counts: { players: number; tournaments: number; activeTournaments: number; games: number };
+  counts: { clubs: number; players: number; tournaments: number; activeTournaments: number; games: number };
+  clubs: Club[];
   players: Player[];
   /** Active tournaments (from Redis) first, then completed ones (from MongoDB). */
   tournaments: Tournament[];
@@ -743,7 +797,8 @@ export async function exportAllData(): Promise<DataExport> {
   if (!redisClient) await initRedis();
   if (!db) await initMongo();
 
-  const [playerDocs, gameDocs, completedDocs, activeIds] = await Promise.all([
+  const [clubDocs, playerDocs, gameDocs, completedDocs, activeIds] = await Promise.all([
+    clubsCol().find({}).sort({ createdAt: 1 }).toArray(),
     playersCol().find({}).sort({ _id: 1 }).toArray(),
     gamesCol().find({}).sort({ date: 1 }).toArray(),
     tournamentsCol().find({}).sort({ startDate: 1 }).toArray(),
@@ -754,6 +809,7 @@ export async function exportAllData(): Promise<DataExport> {
     .filter((doc): doc is string => doc !== null)
     .map(doc => JSON.parse(doc) as Tournament);
 
+  const clubs = clubDocs.map(withId) as Club[];
   const players = playerDocs.map(withId) as Player[];
   const tournaments = [...active, ...(completedDocs.map(withId) as Tournament[])];
   const games = gameDocs.map(withId) as Game[];
@@ -763,11 +819,13 @@ export async function exportAllData(): Promise<DataExport> {
     exportedAt: new Date().toISOString(),
     environment: ENV_PREFIX,
     counts: {
+      clubs: clubs.length,
       players: players.length,
       tournaments: tournaments.length,
       activeTournaments: active.length,
       games: games.length,
     },
+    clubs,
     players,
     tournaments,
     games,

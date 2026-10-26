@@ -1,7 +1,10 @@
 import { POST as postGame } from '../app/api/games/route';
 import { DELETE as deleteGame, PUT as updateGame } from '../app/api/games/[id]/route';
+import { DELETE as deleteTournamentRoute } from '../app/api/tournaments/route';
+import { DELETE as deleteMatchRoute } from '../app/api/matches/[id]/route';
 import {
   getAllGames,
+  getDefaultClub,
   getMatch,
   registerMatchesIndex,
   setTournament,
@@ -19,6 +22,8 @@ const mockRedisHashes = new Map<string, Map<string, string>>();
 const mockRedisSortedSets = new Map<string, Map<string, number>>();
 const mockMongoGames = new Map<string, StoredDocument>();
 const mockMongoTournaments = new Map<string, StoredDocument>();
+const mockMongoClubs = new Map<string, StoredDocument>();
+const mockMongoPlayers = new Map<string, StoredDocument>();
 const mockTransactionCommands: string[][] = [];
 const mockWatchedKeys: (string | string[])[] = [];
 let mockAbortNextTransaction = false;
@@ -180,7 +185,10 @@ jest.mock('redis', () => {
 });
 
 function collectionFor(name: string) {
-  const documents = name === 'games' ? mockMongoGames : mockMongoTournaments;
+  const documents = name === 'games' ? mockMongoGames
+    : name === 'clubs' ? mockMongoClubs
+    : name === 'players' ? mockMongoPlayers
+    : mockMongoTournaments;
 
   const cursorFor = (query: StoredDocument = {}) => {
     const matchingDocuments = [...documents.entries()]
@@ -217,9 +225,25 @@ function collectionFor(name: string) {
         documents.clear();
         return { deletedCount: count };
       }
+      const ids = (filter._id as { $in?: string[] } | undefined)?.$in;
+      if (ids) {
+        const deleted = ids.filter(id => documents.delete(id)).length;
+        return { deletedCount: deleted };
+      }
       return { deletedCount: 0 };
     }),
     bulkWrite: jest.fn().mockResolvedValue({}),
+    createIndex: jest.fn().mockResolvedValue('index'),
+    // Enough of findOneAndUpdate for the default-club upsert: match on plain
+    // fields, insert $setOnInsert when nothing matches.
+    findOneAndUpdate: jest.fn(async (filter: StoredDocument, update: { $setOnInsert?: StoredDocument }) => {
+      const found = [...documents.entries()].find(([, document]) =>
+        Object.entries(filter).every(([key, value]) => document[key] === value));
+      if (found) return { _id: found[0], ...clone(found[1]) };
+      const { _id, ...fields } = update.$setOnInsert ?? {};
+      documents.set(String(_id), clone(fields));
+      return { _id, ...clone(fields) };
+    }),
   };
 }
 
@@ -233,9 +257,10 @@ jest.mock('mongodb', () => ({
   })),
 }));
 
-function makeTournament(match: Match, format: 'singles' | 'doubles' = 'doubles'): Tournament {
+function makeTournament(match: Match, format: 'singles' | 'doubles' = 'doubles', clubId?: string): Tournament {
   return {
     id: 't1',
+    ...(clubId && { clubId }),
     name: 'Doubles persistence',
     startDate: new Date().toISOString(),
     status: 'roundRobin',
@@ -249,7 +274,7 @@ function makeTournament(match: Match, format: 'singles' | 'doubles' = 'doubles')
   };
 }
 
-async function seedMatch(format: 'singles' | 'doubles' = 'doubles') {
+async function seedMatch(format: 'singles' | 'doubles' = 'doubles', clubId?: string) {
   const [match] = createRoundRobinPairings(
     ['p1', 'p2', 'p3', 'p4'],
     't1',
@@ -257,7 +282,7 @@ async function seedMatch(format: 'singles' | 'doubles' = 'doubles') {
     3,
     format,
   );
-  await setTournament(makeTournament(match, format));
+  await setTournament(makeTournament(match, format, clubId));
   await registerMatchesIndex([match]);
   return match;
 }
@@ -305,6 +330,8 @@ describe('doubles game persistence', () => {
     mockRedisSortedSets.clear();
     mockMongoGames.clear();
     mockMongoTournaments.clear();
+    mockMongoClubs.clear();
+    mockMongoPlayers.clear();
     mockTransactionCommands.length = 0;
     mockWatchedKeys.length = 0;
     mockAbortNextTransaction = false;
@@ -405,6 +432,67 @@ describe('doubles game persistence', () => {
     expect(savedMatch?.games[0].side1PlayerIds).toEqual(['p1', 'p4']);
     expect(history).toHaveLength(1);
     expect(history[0].side2PlayerIds).toEqual(['p2', 'p3']);
+  });
+
+  it('records the club on each game, using the default club for tournaments without one', async () => {
+    const match = await seedDoublesMatch();
+
+    await postGame(postRequest(match.id, 11, 5));
+
+    // The default club is created once and cached for the process.
+    const club = await getDefaultClub();
+    expect(club).toMatchObject({ name: 'dallas', slug: 'dallas' });
+    const [game] = await getAllGames();
+    expect(game.clubId).toBe(club.id);
+  });
+
+  it('records a tournament\'s own club on its games and keeps it on the tournament', async () => {
+    const match = await seedMatch('singles', 'club-austin');
+
+    await postGame(postRequest(match.id, 11, 5));
+
+    const [game] = await getAllGames();
+    expect(game.clubId).toBe('club-austin');
+    const stored = JSON.parse(mockRedisStrings.get('test:pingpong:tournament:t1')!);
+    expect(stored.clubId).toBe('club-austin');
+  });
+
+  it('keeps the club on a game after its score is edited', async () => {
+    const match = await seedMatch('singles', 'club-austin');
+    const created = await (await postGame(postRequest(match.id, 11, 5))).json();
+
+    const response = await updateRequest(created.id, { score1: 11, score2: 8 });
+
+    expect(response.status).toBe(200);
+    const [game] = await getAllGames();
+    expect(game).toMatchObject({ score2: 8, clubId: 'club-austin' });
+  });
+
+  it('removes a deleted tournament\'s games from the game history', async () => {
+    const match = await seedDoublesMatch();
+    await postGame(postRequest(match.id, 11, 5));
+    await postGame(postRequest(match.id, 11, 7));
+    mockMongoGames.set('other-tournament-game', { matchId: 'elsewhere', player1Id: 'x', player2Id: 'y', score1: 11, score2: 3, date: '2026-01-01' });
+
+    const response = await deleteTournamentRoute(
+      adminRequest('http://localhost/api/tournaments?id=t1', { method: 'DELETE' }) as never,
+    );
+
+    expect(response.status).toBe(200);
+    expect((await getAllGames()).map(game => game.id)).toEqual(['other-tournament-game']);
+  });
+
+  it('removes a deleted match\'s games from the game history', async () => {
+    const match = await seedDoublesMatch();
+    await postGame(postRequest(match.id, 11, 5));
+
+    const response = await deleteMatchRoute(
+      adminRequest(`http://localhost/api/matches/${match.id}`, { method: 'DELETE' }) as never,
+      { params: Promise.resolve({ id: match.id }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await getAllGames()).toEqual([]);
   });
 
   it('commits the tournament document and match index changes in one watched transaction', async () => {

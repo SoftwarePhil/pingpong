@@ -1,5 +1,20 @@
+/** A club: the group whose players, tournaments and games these are. */
+export interface Club {
+  id: string;
+  name: string;
+  /** Unique, URL-safe name used in the club's public page address. */
+  slug: string;
+  /** Free text for the public page. Empty until an admin writes it. */
+  about?: string;
+  createdAt: string;
+}
+
+// clubId is optional on Player, Tournament and Game only until the clubs
+// migration (scripts/migrate-clubs.mjs) has filled it in on existing records.
+
 export interface Player {
   id: string;
+  clubId?: string;
   name: string;
   firstName?: string;
   lastName?: string;
@@ -12,6 +27,7 @@ export interface Player {
 
 export interface Game {
   id: string;
+  clubId?: string;
   matchId?: string;
   player1Id: string;
   player2Id: string;
@@ -27,6 +43,7 @@ export type RoundRobinFormat = 'singles' | 'doubles';
 
 export interface Tournament {
   id: string;
+  clubId?: string;
   name: string;
   startDate: string;
   status: 'roundRobin' | 'bracket' | 'completed';

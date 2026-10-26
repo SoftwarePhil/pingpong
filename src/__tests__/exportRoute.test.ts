@@ -14,8 +14,9 @@ const sample: DataExport = {
   formatVersion: 1,
   exportedAt: '2026-10-26T15:30:00.000Z',
   environment: 'production',
-  counts: { players: 1, tournaments: 1, activeTournaments: 0, games: 1 },
-  players: [{ id: 'p1', name: 'Phil', tournamentIds: ['t1'] }],
+  counts: { clubs: 1, players: 1, tournaments: 1, activeTournaments: 0, games: 1 },
+  clubs: [{ id: 'c1', name: 'dallas', slug: 'dallas', createdAt: '2026-10-26T00:00:00.000Z' }],
+  players: [{ id: 'p1', clubId: 'c1', name: 'Phil', tournamentIds: ['t1'] }],
   tournaments: [{
     id: 't1', name: 'Week 1', startDate: '2026-10-01T00:00:00.000Z', status: 'completed',
     roundRobinRounds: 1, rrBestOf: 1, bracketRounds: [], players: ['p1'], matches: [],
