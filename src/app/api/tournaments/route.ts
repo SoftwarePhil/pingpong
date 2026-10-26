@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Tournament, Match, BracketConfig, PlayInMode, RoundRobinFormat } from '../../../types/pingpong';
-import { getTournaments, setTournament, getTournament, deleteTournament, registerMatchesIndex, unregisterMatchesIndex, syncTournamentPlayers, setRoundRobinFormatAtomically, TournamentConflictError, TournamentNotFoundError } from '../../../data/data';
+import { getTournaments, setTournament, getTournament, deleteTournament, registerMatchesIndex, unregisterMatchesIndex, syncTournamentPlayers, setRoundRobinFormatAtomically, TournamentConflictError, TournamentNotFoundError, getDefaultClub } from '../../../data/data';
 import { createRoundRobinPairings, advanceBracketRound, createBracketMatches, advanceRoundRobinRound, resyncRoundRobinMatches, createThirdPlaceMatch, buildBracketFromPreview, rankPlayersForBracket, InvalidBracketError } from '../../../lib/tournament';
 import { requireAdmin } from '../../../lib/auth';
 import { newId, shuffle } from '../../../lib/random';
@@ -52,12 +52,18 @@ export async function POST(request: NextRequest) {
 
     // Prevent creating a tournament if one is already active
     const existingTournaments = await getTournaments();
-    const activeTournament = existingTournaments.find(t => t.status !== 'completed');
+    // One active tournament per club. Tournaments from before the clubs
+    // migration have no clubId and belong to the default club.
+    const club = await getDefaultClub();
+    const activeTournament = existingTournaments.find(t =>
+      t.status !== 'completed' && (t.clubId ?? club.id) === club.id
+    );
     if (activeTournament) {
       return NextResponse.json({ error: `There is already an active tournament: "${activeTournament.name}". Complete or end it before creating a new one.` }, { status: 409 });
     }
     const newTournament: Tournament = {
       id: newId(),
+      clubId: club.id,
       name,
       startDate: new Date().toISOString(),
       status: 'roundRobin',

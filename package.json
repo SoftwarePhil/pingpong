@@ -13,6 +13,7 @@
     "build-run": "npm run build && npm start",
     "lint": "eslint",
     "test": "jest",
+    "migrate:clubs": "node --env-file=.env.local scripts/migrate-clubs.mjs",
     "db:start": "docker compose up -d redis mongodb",
     "db:stop": "docker compose down",
     "redis:start": "docker compose up -d redis",

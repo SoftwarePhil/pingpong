@@ -83,6 +83,21 @@ The application uses **two stores in parallel**, each optimised for its access p
 
 See [docs/hybrid-storage-architecture.md](docs/hybrid-storage-architecture.md) for full schema details.
 
+## Clubs migration
+
+Every player, tournament and game belongs to a club. Records created before clubs existed are moved into the first club, `dallas`, by a one-off script. It is a dry run unless you pass `--apply`, and running it again is safe.
+
+1. Deploy the code first. It treats records without a `clubId` as part of `dallas`, so the site works before and after the migration.
+2. Export a backup: **Settings → Export all data**.
+3. Dry run, then apply, naming the environment explicitly:
+
+```bash
+npm run migrate:clubs -- --env production
+npm run migrate:clubs -- --env production --apply
+```
+
+The script creates the club, deletes games left behind by deleted tournaments or matches, sets `clubId` everywhere, and adds the indexes.
+
 ## Docs
 
 | File | Description |

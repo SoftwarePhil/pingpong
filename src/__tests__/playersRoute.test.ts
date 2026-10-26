@@ -4,6 +4,7 @@ import { getPlayerAge, isBirthdayWeek } from '../lib/player';
 import { adminRequest, playerRequest } from './authTestUtils';
 
 jest.mock('../data/data', () => ({
+  getDefaultClub: jest.fn().mockResolvedValue({ id: 'club-dallas', name: 'dallas', slug: 'dallas', createdAt: '2026-01-01T00:00:00.000Z' }),
   getPlayers: jest.fn(),
   setPlayers: jest.fn(),
 }));
@@ -83,6 +84,7 @@ describe('POST /api/players', () => {
     expect(response.status).toBe(201);
     expect(body).toEqual({
       id: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/),
+      clubId: 'club-dallas',
       name: 'New Player',
       tournamentIds: [],
       createdAt: '2026-01-01T00:00:00.000Z',
@@ -108,6 +110,7 @@ describe('POST /api/players', () => {
     expect(response.status).toBe(201);
     expect(body).toEqual({
       id: expect.any(String),
+      clubId: 'club-dallas',
       name: 'Profile Player',
       firstName: 'Profile',
       lastName: 'Player',
@@ -176,6 +179,18 @@ describe('PATCH /api/players/[id]', () => {
       tournamentIds: ['t1'],
     });
     expect(mockedSetPlayers).toHaveBeenCalledWith([body]);
+  });
+
+  it('keeps the player in their club when the profile is edited', async () => {
+    mockedGetPlayers.mockResolvedValue([{ id: 'p1', clubId: 'club-dallas', name: 'Phil', tournamentIds: ['t1'] }]);
+
+    const response = await PATCH(adminRequest('http://localhost/api/players/p1', {
+      method: 'PATCH',
+      body: JSON.stringify({ name: 'Philip' }),
+    }), { params: Promise.resolve({ id: 'p1' }) });
+
+    expect(response.status).toBe(200);
+    expect(mockedSetPlayers).toHaveBeenCalledWith([{ id: 'p1', clubId: 'club-dallas', name: 'Philip', tournamentIds: ['t1'] }]);
   });
 
   it('clears optional profile fields when the admin submits empty values', async () => {
