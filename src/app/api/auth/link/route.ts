@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createLoginLink, getAdminByEmail, isValidEmail, normalizeEmail } from '../../../../data/admins';
+import { createLoginLink, getAdminByEmail, checkEmail, normalizeEmail } from '../../../../data/admins';
 import { allowAttempt } from '../../../../data/rateLimit';
 import { sendLoginLinkEmail } from '../../../../lib/email';
 
@@ -27,9 +27,8 @@ function appOrigin(request: NextRequest): string {
  */
 export async function POST(request: NextRequest) {
   const { email } = await request.json().catch(() => ({}));
-  if (typeof email !== 'string' || !isValidEmail(email)) {
-    return NextResponse.json({ error: "That doesn't look like an email address. Check it for typos, like a comma instead of a period." }, { status: 400 });
-  }
+  const emailError = checkEmail(email);
+  if (emailError) return NextResponse.json({ error: emailError }, { status: 400 });
   const address = normalizeEmail(email);
   const ip = request.headers.get('x-forwarded-for')?.split(',')[0].trim() || 'unknown';
 

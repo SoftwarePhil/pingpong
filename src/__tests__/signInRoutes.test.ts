@@ -104,11 +104,14 @@ describe('POST /api/auth/link', () => {
   });
 
   it('rejects a missing or malformed email', async () => {
+    const empty = await requestLink(post('http://localhost/api/auth/link', { email: '  ' }));
+    expect(empty.status).toBe(400);
+    expect((await empty.json()).error).toBe('Enter an email address');
     expect((await requestLink(post('http://localhost/api/auth/link', {}))).status).toBe(400);
     expect((await requestLink(post('http://localhost/api/auth/link', { email: 'not-an-email' }))).status).toBe(400);
     const typo = await requestLink(post('http://localhost/api/auth/link', { email: 'p@phildimarco,com' }));
     expect(typo.status).toBe(400);
-    expect((await typo.json()).error).toMatch(/comma instead of a period/);
+    expect((await typo.json()).error).toBe('This email address is invalid');
   });
 
   it('reports a failure to send instead of claiming it worked', async () => {

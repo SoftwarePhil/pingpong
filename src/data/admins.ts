@@ -63,6 +63,12 @@ export function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(email));
 }
 
+/** The message to show for a missing or invalid email, or null if it's fine. */
+export function checkEmail(email: unknown): string | null {
+  if (typeof email !== 'string' || !normalizeEmail(email)) return 'Enter an email address';
+  return isValidEmail(email) ? null : 'This email address is invalid';
+}
+
 export async function getAdminById(id: string): Promise<Admin | null> {
   const { admins } = await collections();
   const doc = await admins.findOne({ _id: id });
