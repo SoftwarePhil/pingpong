@@ -40,7 +40,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const denied = requireAdmin(request);
+  const denied = await requireAdmin(request);
   if (denied) return denied;
   try {
     const body = await request.json();
@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
-  const denied = requireAdmin(request);
+  const denied = await requireAdmin(request);
   if (denied) return denied;
   try {
     const body = await request.json();
@@ -377,7 +377,7 @@ if (action === 'advanceRound') {
 }
 
 export async function DELETE(request: NextRequest) {
-  const denied = requireAdmin(request);
+  const denied = await requireAdmin(request);
   if (denied) return denied;
   try {
     const { searchParams } = new URL(request.url);

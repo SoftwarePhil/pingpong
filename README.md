@@ -35,27 +35,35 @@ REDIS_URL=redis://:YOUR_REDIS_PASSWORD@localhost:6379
 # MongoDB (players + game history)
 MONGODB_URL=mongodb://YOUR_MONGO_USER:YOUR_MONGO_PASSWORD@localhost:27017
 
-# Shared admin password
-ADMIN_PASSWORD=choose-a-strong-password
-
-# Secret used to sign admin sessions
+# Secret used to sign admin sessions (required in production)
 AUTH_SECRET=choose-a-long-random-secret
+
+# Sign-in emails (optional locally: without a key the link is logged to the console)
+RESEND_API_KEY=
+EMAIL_FROM="Ping Pong <signin@pingpong.beer>"
+
+# Base URL for sign-in links (optional: Vercel's URL is used when unset)
+APP_URL=
 ```
 
 The Docker Compose setup uses `REDIS_PASSWORD` (default `mypassword`) and `MONGO_USERNAME` / `MONGO_PASSWORD` (defaults `admin` / `mypassword`). Make sure the URLs in `.env.local` match.
 
 ### Authentication
 
-The app currently uses a simple shared-password model:
-
 - Visitors are `player` users by default and can view tournaments, results, brackets, history, and stats.
-- Players cannot record or edit games, change rosters, configure brackets, create players, edit player profiles, or manage tournaments.
-- Admins select **Admin sign in** in the page header and enter the configured `ADMIN_PASSWORD` to unlock the existing management controls.
-- Admin access is stored in a signed, HTTP-only session cookie. Use **Sign out** when finished.
+- Admins belong to one club and can record games, manage rosters and brackets, edit players, and run tournaments. **Owners** can also add and remove admins in **Settings → Admins**.
+- Admins sign in with an emailed link: **Settings → Sign in as admin**, enter your email, and open the link. It works once, for 15 minutes. Links are sent with [Resend](https://resend.com) and requests are rate-limited.
+- Signing in starts a signed, HTTP-only session cookie that lasts 90 days. The admin's account is checked on every request, so removing an admin signs them out everywhere.
 
-Set `ADMIN_PASSWORD` in `.env.local` before starting the app. Set `AUTH_SECRET` to a long, random value in deployed environments; it is used to sign the admin session cookie. Changing either value invalidates existing admin sessions after the app restarts.
+Set `AUTH_SECRET` to a long, random value in deployed environments; changing it signs everyone out. Never commit `.env.local`.
 
-Never commit `.env.local` or share the admin password. The role/session boundary is centralized so the shared password can later be replaced with individual accounts or an external auth provider.
+Add the first owner, and get a sign-in link without email if it ever breaks, with `scripts/admins.mjs`:
+
+```bash
+npm run admins -- add --env development --email you@example.com --name "You" --role owner
+npm run admins -- link --env development --email you@example.com --url http://localhost:3000
+npm run admins -- list --env development
+```
 
 ### Running the Development Server
 
@@ -97,6 +105,26 @@ npm run migrate:clubs -- --env production --apply
 ```
 
 The script creates the club, deletes games left behind by deleted tournaments or matches, sets `clubId` everywhere, and adds the indexes.
+
+## Switching production to sign-in links
+
+Admin sign-in moved from a shared `ADMIN_PASSWORD` to emailed links. Once this code is deployed the password stops working, so do these steps **before** deploying, or nobody will be able to sign in:
+
+1. **Resend:** verify the sending domain (`pingpong.beer`) by adding the DNS records Resend lists. Then add `RESEND_API_KEY` in Vercel, using separate keys for Production and Preview. Set `EMAIL_FROM` if you don't want `Ping Pong <signin@pingpong.beer>`.
+2. **`AUTH_SECRET`:** make sure it is set in Vercel to a long random value. Production refuses admin sign-in without it (the old code fell back to `ADMIN_PASSWORD`).
+3. **First owner:** add yourself. This is safe to do before deploying, because the current code ignores the admins list.
+
+   ```bash
+   npm run admins -- add --env production --email you@example.com --name "Your Name" --role owner
+   ```
+
+4. **Deploy.** Existing admin sessions end, so everyone signs in once with a link. Then delete `ADMIN_PASSWORD` from Vercel.
+
+If email isn't working, print a single-use sign-in link instead:
+
+```bash
+npm run admins -- link --env production --email you@example.com --url https://pingpong.beer
+```
 
 ## Docs
 

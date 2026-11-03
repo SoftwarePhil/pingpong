@@ -1,58 +1,74 @@
 import { createHmac, timingSafeEqual } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
+import { getAdminById } from '../data/admins';
+import { Admin } from '../types/pingpong';
 
 export type UserRole = 'player' | 'admin';
 
 export const AUTH_COOKIE = 'pingpong_session';
+export const SESSION_DAYS = 90;
+const SESSION_SECONDS = SESSION_DAYS * 24 * 60 * 60;
 
 function secret() {
-  return process.env.AUTH_SECRET || process.env.ADMIN_PASSWORD || 'development-only-secret';
+  const configured = process.env.AUTH_SECRET;
+  if (configured) return configured;
+  if (process.env.NODE_ENV === 'production') throw new Error('AUTH_SECRET is not set');
+  return 'development-only-secret';
 }
 
 function sign(value: string) {
   return createHmac('sha256', secret()).update(value).digest('hex');
 }
 
-export function createSessionToken(role: UserRole) {
-  return `${role}.${sign(role)}`;
+/** `<adminId>.<issued at, unix seconds>.<signature>` */
+export function createSessionToken(adminId: string, issuedAt = Math.floor(Date.now() / 1000)) {
+  return `${adminId}.${issuedAt}.${sign(`session|${adminId}|${issuedAt}`)}`;
 }
 
-export function getRole(request: NextRequest): UserRole {
-  const value = request.cookies.get(AUTH_COOKIE)?.value;
-  if (!value) return 'player';
+/** The admin id in a validly signed, unexpired session cookie, or null. Doesn't check the admin still exists. */
+export function readSessionAdminId(request: NextRequest): string | null {
+  const parts = request.cookies.get(AUTH_COOKIE)?.value.split('.') ?? [];
+  if (parts.length !== 3) return null;
+  const [adminId, issuedAtText, signature] = parts;
+  const issuedAt = Number(issuedAtText);
+  if (!adminId || !Number.isInteger(issuedAt)) return null;
 
-  const [role, signature] = value.split('.');
-  if (role !== 'admin' || !signature) return 'player';
+  const age = Math.floor(Date.now() / 1000) - issuedAt;
+  if (age < 0 || age > SESSION_SECONDS) return null;
 
-  const expected = sign(role);
-  if (signature.length !== expected.length) return 'player';
-  return timingSafeEqual(Buffer.from(signature), Buffer.from(expected)) ? 'admin' : 'player';
+  const expected = sign(`session|${adminId}|${issuedAt}`);
+  if (signature.length !== expected.length) return null;
+  return timingSafeEqual(Buffer.from(signature), Buffer.from(expected)) ? adminId : null;
 }
 
-export function isAdmin(request: NextRequest) {
-  return getRole(request) === 'admin';
+/**
+ * The signed-in admin. The account is looked up on every request, so
+ * removing an admin signs them out everywhere straight away.
+ */
+export async function getSessionAdmin(request: NextRequest): Promise<Admin | null> {
+  const adminId = readSessionAdminId(request);
+  return adminId ? getAdminById(adminId) : null;
 }
 
-export function requireAdmin(request: NextRequest) {
-  if (isAdmin(request)) return null;
+export async function requireAdmin(request: NextRequest) {
+  if (await getSessionAdmin(request)) return null;
   return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
 }
 
-export function isValidAdminPassword(password: unknown) {
-  const configured = process.env.ADMIN_PASSWORD;
-  if (typeof password !== 'string' || !configured) return false;
-  const supplied = Buffer.from(password);
-  const expected = Buffer.from(configured);
-  return supplied.length === expected.length && timingSafeEqual(supplied, expected);
+/** The signed-in admin if they own their club, otherwise the response to send. */
+export async function requireOwner(request: NextRequest) {
+  const admin = await getSessionAdmin(request);
+  if (admin?.role === 'owner') return { owner: admin, denied: null };
+  return { owner: null, denied: NextResponse.json({ error: 'Only club owners can manage admins' }, { status: 403 }) };
 }
 
-export function setAdminSession(response: NextResponse) {
-  response.cookies.set(AUTH_COOKIE, createSessionToken('admin'), {
+export function setAdminSession(response: NextResponse, adminId: string) {
+  response.cookies.set(AUTH_COOKIE, createSessionToken(adminId), {
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
     path: '/',
-    maxAge: 60 * 60 * 24 * 30,
+    maxAge: SESSION_SECONDS,
   });
   return response;
 }

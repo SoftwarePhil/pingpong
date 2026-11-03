@@ -154,6 +154,18 @@ async function migrateMatchIndex() {
   }
 }
 
+/** The MongoDB database, connecting on first use. For data modules outside this file. */
+export async function getMongoDb(): Promise<Db> {
+  if (!db) await initMongo();
+  return db;
+}
+
+/** The Redis client, connecting on first use. For data modules outside this file. */
+export async function getRedisClient(): Promise<RedisClientType> {
+  if (!redisClient) await initRedis();
+  return redisClient;
+}
+
 export async function loadData() {
   try {
     if (!redisClient) await initRedis();

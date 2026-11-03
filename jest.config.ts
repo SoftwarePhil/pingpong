@@ -7,6 +7,7 @@ const config: Config = {
     '^@/(.*)$': '<rootDir>/src/$1',
   },
   testMatch: ['**/__tests__/**/*.test.ts'],
+  setupFilesAfterEnv: ['<rootDir>/src/test/setup.ts'],
   transform: {
     '^.+\\.tsx?$': ['ts-jest', { tsconfig: { module: 'commonjs' } }],
   },
