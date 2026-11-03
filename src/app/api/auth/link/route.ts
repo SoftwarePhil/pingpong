@@ -28,7 +28,7 @@ function appOrigin(request: NextRequest): string {
 export async function POST(request: NextRequest) {
   const { email } = await request.json().catch(() => ({}));
   if (typeof email !== 'string' || !isValidEmail(email)) {
-    return NextResponse.json({ error: 'Enter your email address' }, { status: 400 });
+    return NextResponse.json({ error: "That doesn't look like an email address. Check it for typos, like a comma instead of a period." }, { status: 400 });
   }
   const address = normalizeEmail(email);
   const ip = request.headers.get('x-forwarded-for')?.split(',')[0].trim() || 'unknown';

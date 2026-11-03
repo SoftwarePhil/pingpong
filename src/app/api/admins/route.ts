@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
   if (denied) return denied;
   const { email, name, role = 'admin' } = await request.json().catch(() => ({}));
   if (typeof email !== 'string' || !isValidEmail(email)) {
-    return NextResponse.json({ error: 'Enter a valid email address' }, { status: 400 });
+    return NextResponse.json({ error: "That doesn't look like an email address. Check it for typos, like a comma instead of a period." }, { status: 400 });
   }
   if (typeof name !== 'string' || !name.trim()) {
     return NextResponse.json({ error: 'Enter a name' }, { status: 400 });

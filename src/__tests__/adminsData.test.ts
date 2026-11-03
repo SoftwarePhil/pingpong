@@ -99,3 +99,8 @@ describe('email addresses', () => {
     expect(isValidEmail('p@localhost')).toBe(false);
   });
 });
+
+it('rejects a comma typed for a period', () => {
+  const { isValidEmail } = jest.requireActual('../data/admins');
+  expect(isValidEmail('p@phildimarco,com')).toBe(false);
+});
