@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { addAdmin, AdminExistsError, listAdmins } from '../../../data/admins';
+import { addAdmin, AdminExistsError, isValidEmail, listAdmins } from '../../../data/admins';
 import { requireOwner } from '../../../lib/auth';
 import { AdminRole } from '../../../types/pingpong';
 
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
   const { owner, denied } = await requireOwner(request);
   if (denied) return denied;
   const { email, name, role = 'admin' } = await request.json().catch(() => ({}));
-  if (typeof email !== 'string' || !/^[^\s@]+@[^\s@]+$/.test(email.trim())) {
+  if (typeof email !== 'string' || !isValidEmail(email)) {
     return NextResponse.json({ error: 'Enter a valid email address' }, { status: 400 });
   }
   if (typeof name !== 'string' || !name.trim()) {

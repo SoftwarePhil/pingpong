@@ -76,7 +76,7 @@ export function AuthControls() {
         setState({ kind: 'error', message: err.error ?? 'Could not send the sign-in link. Try again.' });
         return;
       }
-      setState({ kind: 'sent', email: email.trim() });
+      setState({ kind: 'sent', email: email.replace(/[\s\u200b-\u200d\u2060\ufeff]/g, '') });
     } catch {
       setState({ kind: 'error', message: 'Could not send the sign-in link. Check your connection and try again.' });
     }
@@ -116,7 +116,7 @@ export function AuthControls() {
       <button onClick={() => setOpen(value => !value)} className="settings-menu__action">
         Sign in as admin
       </button>
-      {open && <form onSubmit={requestLink} className="settings-menu__login-form">
+      {open && <form onSubmit={requestLink} noValidate className="settings-menu__login-form">
         <label htmlFor="admin-email" className="auth-controls__label">Admin email</label>
         <input
           id="admin-email" autoFocus type="email" autoComplete="email" required

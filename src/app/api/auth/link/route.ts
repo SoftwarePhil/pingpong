@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createLoginLink, getAdminByEmail, normalizeEmail } from '../../../../data/admins';
+import { createLoginLink, getAdminByEmail, isValidEmail, normalizeEmail } from '../../../../data/admins';
 import { allowAttempt } from '../../../../data/rateLimit';
 import { sendLoginLinkEmail } from '../../../../lib/email';
 
@@ -27,7 +27,7 @@ function appOrigin(request: NextRequest): string {
  */
 export async function POST(request: NextRequest) {
   const { email } = await request.json().catch(() => ({}));
-  if (typeof email !== 'string' || !/^[^\s@]+@[^\s@]+$/.test(email.trim())) {
+  if (typeof email !== 'string' || !isValidEmail(email)) {
     return NextResponse.json({ error: 'Enter your email address' }, { status: 400 });
   }
   const address = normalizeEmail(email);

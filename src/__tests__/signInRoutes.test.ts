@@ -94,6 +94,15 @@ describe('POST /api/auth/link', () => {
     expect(mocked.getAdminByEmail).not.toHaveBeenCalled();
   });
 
+  it('accepts an email with a pasted non-breaking or zero-width space', async () => {
+    mocked.getAdminByEmail.mockResolvedValue(TEST_ADMIN);
+
+    const res = await requestLink(post('http://localhost/api/auth/link', { email: 'admin@example.com\u00a0\u200b' }));
+
+    expect(res.status).toBe(200);
+    expect(mocked.getAdminByEmail).toHaveBeenCalledWith('admin@example.com');
+  });
+
   it('rejects a missing or malformed email', async () => {
     expect((await requestLink(post('http://localhost/api/auth/link', {}))).status).toBe(400);
     expect((await requestLink(post('http://localhost/api/auth/link', { email: 'not-an-email' }))).status).toBe(400);

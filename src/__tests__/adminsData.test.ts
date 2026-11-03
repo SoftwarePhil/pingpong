@@ -88,3 +88,14 @@ describe('sign-in links', () => {
     expect(await consumeLoginLink('made-up')).toBeNull();
   });
 });
+
+describe('email addresses', () => {
+  it('ignores invisible characters that pasting or autofill add', async () => {
+    const { normalizeEmail, isValidEmail } = jest.requireActual('../data/admins');
+    expect(normalizeEmail(' P@PhilDiMarco.com ')).toBe('p@phildimarco.com');
+    expect(normalizeEmail('​p@phildimarco.com​')).toBe('p@phildimarco.com');
+    expect(isValidEmail('p@phildimarco.com ')).toBe(true);
+    expect(isValidEmail('not-an-email')).toBe(false);
+    expect(isValidEmail('p@localhost')).toBe(false);
+  });
+});

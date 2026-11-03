@@ -51,8 +51,16 @@ function toAdmin({ _id, ...admin }: AdminDoc): Admin {
   return { id: _id, ...admin };
 }
 
+/**
+ * Lowercases an email and drops any whitespace, including the non-breaking
+ * and zero-width spaces that pasting or autofill can bring along.
+ */
 export function normalizeEmail(email: string): string {
-  return email.trim().toLowerCase();
+  return email.replace(/[\s\u200b-\u200d\u2060\ufeff]/g, '').toLowerCase();
+}
+
+export function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(email));
 }
 
 export async function getAdminById(id: string): Promise<Admin | null> {

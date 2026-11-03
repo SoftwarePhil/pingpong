@@ -82,7 +82,7 @@ export function AdminsSection() {
         </ul>
       )}
 
-      <form onSubmit={add} className="mt-4 grid gap-2 sm:grid-cols-[1fr_1fr_auto_auto] sm:items-end">
+      <form onSubmit={add} noValidate className="mt-4 grid gap-2 sm:grid-cols-[1fr_1fr_auto_auto] sm:items-end">
         <label className="text-sm">
           <span className="auth-controls__label">Name</span>
           <input required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="form-control w-full rounded-lg px-2 py-1.5 text-sm" />
