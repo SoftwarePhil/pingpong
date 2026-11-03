@@ -4,7 +4,7 @@ import { requireAdmin } from '../../../lib/auth';
 
 /** Downloads every player, tournament and game as one JSON file (admins only). */
 export async function GET(request: NextRequest) {
-  const denied = requireAdmin(request);
+  const denied = await requireAdmin(request);
   if (denied) return denied;
   try {
     const data = await exportAllData();

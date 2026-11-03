@@ -9,6 +9,20 @@ export interface Club {
   createdAt: string;
 }
 
+export type AdminRole = 'owner' | 'admin';
+
+/** Someone who can manage a club. Owners can also add and remove admins. */
+export interface Admin {
+  id: string;
+  clubId: string;
+  /** Lowercase; unique across all clubs. Sign-in links are sent here. */
+  email: string;
+  name: string;
+  role: AdminRole;
+  createdAt: string;
+  lastSignInAt?: string;
+}
+
 // clubId is optional on Player, Tournament and Game only until the clubs
 // migration (scripts/migrate-clubs.mjs) has filled it in on existing records.
 

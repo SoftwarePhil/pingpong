@@ -18,7 +18,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const denied = requireAdmin(request);
+  const denied = await requireAdmin(request);
   if (denied) return denied;
   try {
     const { matchId, score1, score2 } = (await request.json()) as { matchId?: unknown; score1?: unknown; score2?: unknown };
