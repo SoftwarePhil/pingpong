@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Tournament } from '../../../types/pingpong';
+import { Tournament } from '../../../../../types/pingpong';
 
 export interface TournamentMenuAction {
   label: string;

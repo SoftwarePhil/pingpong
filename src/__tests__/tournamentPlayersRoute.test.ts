@@ -35,6 +35,7 @@ const mockedResync = resyncRoundRobinMatches as jest.MockedFunction<typeof resyn
 
 function makeTournament(overrides: Partial<Tournament> = {}): Tournament {
   return {
+    clubId: 'club-dallas',
     id: 't1',
     name: 'T1',
     startDate: new Date().toISOString(),
@@ -64,10 +65,10 @@ describe('PATCH /api/tournaments/[id]/players', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockedGetPlayers.mockResolvedValue([
-      { id: 'p1', name: 'P1', tournamentIds: [] },
-      { id: 'p2', name: 'P2', tournamentIds: [] },
-      { id: 'p3', name: 'P3', tournamentIds: [] },
-      { id: 'p4', name: 'P4', tournamentIds: [] },
+      { clubId: 'club-dallas', id: 'p1', name: 'P1', tournamentIds: [] },
+      { clubId: 'club-dallas', id: 'p2', name: 'P2', tournamentIds: [] },
+      { clubId: 'club-dallas', id: 'p3', name: 'P3', tournamentIds: [] },
+      { clubId: 'club-dallas', id: 'p4', name: 'P4', tournamentIds: [] },
     ]);
     mockedResync.mockReturnValue({ matches: [], addedMatches: [], removedMatchIds: [] });
   });

@@ -1,7 +1,7 @@
 'use client';
 
 import { canUseFewerByes, getFewerByesCount, getStandardByeCount } from '@/bracket/core';
-import { PlayInMode } from '../../../types/pingpong';
+import { PlayInMode } from '../../../../../types/pingpong';
 
 interface BracketSetupPanelProps {
   firstRoundComplete: boolean;

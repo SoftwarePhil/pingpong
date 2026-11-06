@@ -1,8 +1,8 @@
 'use client';
 
 import { FormEvent, useState } from 'react';
-import { Game, Player, Tournament } from '../../../types/pingpong';
-import { PlayerSearchSelect } from '../../../components/PlayerSearchSelect';
+import { Game, Player, Tournament } from '../../../../../types/pingpong';
+import { PlayerSearchSelect } from '../../../../../components/PlayerSearchSelect';
 
 export type PairingStrategy = NonNullable<Tournament['rrPairingStrategy']>;
 

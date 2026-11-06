@@ -39,7 +39,7 @@ jest.mock('mongodb', () => ({
 }));
 
 function makeGame(id: string, score1: number, score2: number, matchId = 'm1'): Game {
-  return { id, matchId, player1Id: 'p1', player2Id: 'p2', score1, score2, date: new Date().toISOString() };
+  return { clubId: 'club-dallas', id, matchId, player1Id: 'p1', player2Id: 'p2', score1, score2, date: new Date().toISOString() };
 }
 
 function makeMatch(bestOf: number, games: Game[]): Match {

@@ -1,16 +1,16 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Player, Tournament, Game } from '../../../types/pingpong';
+import { Player, Tournament, Game } from '../../../../../types/pingpong';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { PlayerSearchSelect } from '../../../components/PlayerSearchSelect';
-import { useAuth } from '../../../components/AuthProvider';
-import { PageHeader } from '../../../components/PageHeader';
+import { PlayerSearchSelect } from '../../../../../components/PlayerSearchSelect';
+import { useClub } from '../../../../../components/ClubProvider';
+import { PageHeader } from '../../../../../components/PageHeader';
 
 export default function NewTournamentPage() {
   const router = useRouter();
-  const { isAdmin, isLoading: authLoading } = useAuth();
+  const { isAdmin, isLoading: authLoading, clubApi, clubHref } = useClub();
   const [players, setPlayers] = useState<Player[]>([]);
   const [games, setGames] = useState<Game[]>([]);
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
@@ -30,7 +30,7 @@ export default function NewTournamentPage() {
   // Only viewers are sent away; wait until the session check has finished so a
   // signed-in admin opening this URL directly is not redirected.
   useEffect(() => {
-    if (!authLoading && !isAdmin) router.replace('/tournaments/active');
+    if (!authLoading && !isAdmin) router.replace(clubHref('/tournaments/active'));
   }, [authLoading, isAdmin, router]);
 
   useEffect(() => {
@@ -40,7 +40,7 @@ export default function NewTournamentPage() {
   }, []);
 
   const fetchPlayers = async () => {
-    const res = await fetch('/api/players');
+    const res = await fetch(clubApi('/api/players'));
     const data = await res.json();
     setPlayers(data);
   };
@@ -71,13 +71,13 @@ export default function NewTournamentPage() {
   };
 
   const fetchGames = async () => {
-    const res = await fetch('/api/games');
+    const res = await fetch(clubApi('/api/games'));
     const data = await res.json();
     setGames(data);
   };
 
   const fetchTournaments = async () => {
-    const res = await fetch('/api/tournaments');
+    const res = await fetch(clubApi('/api/tournaments'));
     const data = await res.json();
     setTournaments(data);
   };
@@ -87,7 +87,7 @@ export default function NewTournamentPage() {
   // Redirect immediately once we know there's an active tournament
   useEffect(() => {
     if (activeTournaments.length > 0) {
-      router.replace('/tournaments/active');
+      router.replace(clubHref('/tournaments/active'));
     }
   }, [activeTournaments.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -127,7 +127,7 @@ export default function NewTournamentPage() {
     
     if (res.ok) {
       alert('Tournament created successfully!');
-      router.push('/tournaments/active');
+      router.push(clubHref('/tournaments/active'));
     } else {
       const error = await res.json();
       alert(error.error || 'Failed to create tournament');
@@ -158,7 +158,7 @@ export default function NewTournamentPage() {
                 </p>
                 <div className="mt-4">
                   <Link
-                    href="/tournaments/active"
+                    href={clubHref('/tournaments/active')}
                     className="bg-gold hover:bg-gold text-surface px-4 py-2 rounded-lg font-medium transition-colors border border-gold"
                   >
                     View Active Tournament →
@@ -324,7 +324,7 @@ export default function NewTournamentPage() {
 
             <div className="flex justify-end space-x-4 pt-6 border-t-2 border-line">
               <Link
-                href="/"
+                href={clubHref('/')}
                 className="px-8 py-3 border border-line-strong rounded-lg text-ink-soft hover:bg-surface-sunken transition-colors font-medium text-lg"
               >
                 Cancel
@@ -343,7 +343,7 @@ export default function NewTournamentPage() {
           <div className="mt-8 text-center py-16 bg-surface rounded-xl border border-line">
             <h3 className="text-xl font-semibold text-ink mb-2">No players yet</h3>
             <p className="text-ink-soft mb-6">Add players before creating a tournament.</p>
-            <Link href="/players" className="button button-primary">Go to players</Link>
+            <Link href={clubHref('/players')} className="button button-primary">Go to players</Link>
           </div>
         )}
       </div>

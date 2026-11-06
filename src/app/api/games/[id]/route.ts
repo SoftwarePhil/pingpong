@@ -9,7 +9,7 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const denied = await requireAdmin(request);
+  const { admin, denied } = await requireAdmin(request);
   if (denied) return denied;
   try {
     const { id: gameId } = await params;
@@ -17,7 +17,7 @@ export async function PUT(
     const { player1Id, player2Id, score1, score2 }: { player1Id?: string; player2Id?: string; score1?: number; score2?: number } = body;
 
     // Find the current game (needed to preserve matchId for tournament lookup)
-    const allGames = await getAllGames();
+    const allGames = await getAllGames(admin.clubId);
     const currentGame = allGames.find((g: Game) => g.id === gameId);
     if (!currentGame) {
       return NextResponse.json({ error: 'Game not found' }, { status: 404 });
@@ -80,13 +80,13 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const denied = await requireAdmin(request);
+  const { admin, denied } = await requireAdmin(request);
   if (denied) return denied;
   try {
     const { id: gameId } = await params;
 
     // Find the game to get its matchId for the tournament lookup
-    const allGames = await getAllGames();
+    const allGames = await getAllGames(admin.clubId);
     const gameToDelete = allGames.find((g: Game) => g.id === gameId);
     if (!gameToDelete) {
       return NextResponse.json({ error: 'Game not found' }, { status: 404 });

@@ -50,7 +50,7 @@ describe('cascadeBracketPlayerSwap in bracket round 1', () => {
   });
 
   it('leaves matches with games played untouched during cascade', () => {
-    const playedGame = { id: 'g1', matchId: 'm2', player1Id: 'p3', player2Id: 'p4', score1: 11, score2: 5, date: '' };
+    const playedGame = { id: 'g1', clubId: 'club-dallas', matchId: 'm2', player1Id: 'p3', player2Id: 'p4', score1: 11, score2: 5, date: '' };
     const matches = [
       makeMatch('m1', { player1Id: 'p1', player2Id: 'p2' }),
       makeMatch('m2', { player1Id: 'p3', player2Id: 'p4', games: [playedGame] }),
@@ -86,7 +86,7 @@ describe('cascadeBracketPlayerSwap in bracket round 1', () => {
   });
 
   it('throws when the match already has games', () => {
-    const playedGame = { id: 'g1', matchId: 'm1', player1Id: 'p1', player2Id: 'p2', score1: 11, score2: 5, date: '' };
+    const playedGame = { id: 'g1', clubId: 'club-dallas', matchId: 'm1', player1Id: 'p1', player2Id: 'p2', score1: 11, score2: 5, date: '' };
     const matches = [makeMatch('m1', { games: [playedGame] })];
     expect(() =>
       cascadeBracketPlayerSwap(matches, 'm1', 'p3', 'p4')

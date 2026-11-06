@@ -27,7 +27,12 @@ export function createSessionToken(adminId: string, issuedAt = Math.floor(Date.n
 
 /** The admin id in a validly signed, unexpired session cookie, or null. Doesn't check the admin still exists. */
 export function readSessionAdminId(request: NextRequest): string | null {
-  const parts = request.cookies.get(AUTH_COOKIE)?.value.split('.') ?? [];
+  return adminIdFromToken(request.cookies.get(AUTH_COOKIE)?.value);
+}
+
+/** The admin id in a session token, for server components that read cookies directly. */
+export function adminIdFromToken(token: string | undefined): string | null {
+  const parts = token?.split('.') ?? [];
   if (parts.length !== 3) return null;
   const [adminId, issuedAtText, signature] = parts;
   const issuedAt = Number(issuedAtText);
@@ -50,9 +55,11 @@ export async function getSessionAdmin(request: NextRequest): Promise<Admin | nul
   return adminId ? getAdminById(adminId) : null;
 }
 
+/** The signed-in admin, otherwise the response to send. Admins can only change their own club's records. */
 export async function requireAdmin(request: NextRequest) {
-  if (await getSessionAdmin(request)) return null;
-  return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+  const admin = await getSessionAdmin(request);
+  if (admin) return { admin, denied: null };
+  return { admin: null, denied: NextResponse.json({ error: 'Admin access required' }, { status: 403 }) };
 }
 
 /** The signed-in admin if they own their club, otherwise the response to send. */

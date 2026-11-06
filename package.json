@@ -14,6 +14,7 @@
     "lint": "eslint",
     "test": "jest",
     "migrate:clubs": "node --env-file=.env.local scripts/migrate-clubs.mjs",
+    "seed:demo": "node --env-file=.env.local scripts/seed-demo-club.mjs",
     "admins": "node --env-file=.env.local scripts/admins.mjs",
     "db:start": "docker compose up -d redis mongodb",
     "db:stop": "docker compose down",

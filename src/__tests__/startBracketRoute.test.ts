@@ -29,13 +29,14 @@ function rrMatch(id: string, player1Id: string, player2Id: string): Match {
     round: 'roundRobin',
     bracketRound: 1,
     bestOf: 1,
-    games: [{ id: `${id}-g`, matchId: id, player1Id, player2Id, score1: 11, score2: 5, date: '2026-10-01T00:00:00.000Z' }],
+    games: [{ clubId: 'club-dallas', id: `${id}-g`, matchId: id, player1Id, player2Id, score1: 11, score2: 5, date: '2026-10-01T00:00:00.000Z' }],
     winnerId: player1Id,
   };
 }
 
 function makeTournament(extraMatches: Match[] = []): Tournament {
   return {
+    clubId: 'club-dallas',
     id: 't1',
     name: 'T1',
     startDate: '2026-10-01T00:00:00.000Z',

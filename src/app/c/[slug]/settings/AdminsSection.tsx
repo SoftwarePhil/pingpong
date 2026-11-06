@@ -1,15 +1,17 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useAuth } from '../../components/AuthProvider';
-import { useConfirm } from '../../components/ConfirmDialog';
-import type { Admin, AdminRole } from '../../types/pingpong';
+import { useAuth } from '../../../../components/AuthProvider';
+import { useClub } from '../../../../components/ClubProvider';
+import { useConfirm } from '../../../../components/ConfirmDialog';
+import type { Admin, AdminRole } from '../../../../types/pingpong';
 
 const formatDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
 /** Owner-only: the club's admins, with adding and removing. */
 export function AdminsSection() {
-  const { admin: me, isOwner } = useAuth();
+  const { admin: me } = useAuth();
+  const { isOwner } = useClub();
   const confirm = useConfirm();
   const [admins, setAdmins] = useState<Admin[] | null>(null);
   const [error, setError] = useState('');

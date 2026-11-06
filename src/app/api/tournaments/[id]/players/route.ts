@@ -36,7 +36,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const denied = await requireAdmin(request);
+  const { admin, denied } = await requireAdmin(request);
   if (denied) return denied;
   try {
     const { id } = await params;
@@ -60,7 +60,7 @@ export async function PATCH(
     }
 
     const tournament = await getTournament(id);
-    if (!tournament) {
+    if (tournament?.clubId !== admin.clubId) {
       return NextResponse.json({ error: 'Tournament not found' }, { status: 404 });
     }
 
@@ -78,7 +78,7 @@ export async function PATCH(
     // New player ids must correspond to real player records — otherwise
     // they'd silently create phantom matches with no display name.
     if (add.length > 0) {
-      const knownIds = new Set((await getPlayers()).map(p => p.id));
+      const knownIds = new Set((await getPlayers(admin.clubId)).map(p => p.id));
       const unknown = add.filter(pid => !knownIds.has(pid));
       if (unknown.length > 0) {
         return NextResponse.json(

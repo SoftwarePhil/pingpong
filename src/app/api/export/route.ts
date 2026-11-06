@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { exportAllData } from '../../../data/data';
+import { exportClubData } from '../../../data/data';
 import { requireAdmin } from '../../../lib/auth';
 
-/** Downloads every player, tournament and game as one JSON file (admins only). */
+/** Downloads the admin's club: its players, tournaments and games as one JSON file. */
 export async function GET(request: NextRequest) {
-  const denied = await requireAdmin(request);
+  const { admin, denied } = await requireAdmin(request);
   if (denied) return denied;
   try {
-    const data = await exportAllData();
+    const data = await exportClubData(admin.clubId);
     const date = data.exportedAt.slice(0, 10);
     return new NextResponse(JSON.stringify(data, null, 2), {
       headers: {

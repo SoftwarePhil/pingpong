@@ -4,7 +4,7 @@ import { getPlayerAge, isBirthdayWeek } from '../lib/player';
 import { adminRequest, playerRequest } from './authTestUtils';
 
 jest.mock('../data/data', () => ({
-  getDefaultClub: jest.fn().mockResolvedValue({ id: 'club-dallas', name: 'dallas', slug: 'dallas', createdAt: '2026-01-01T00:00:00.000Z' }),
+  getClubBySlug: jest.fn().mockResolvedValue({ id: 'club-dallas', name: 'dallas', slug: 'dallas', createdAt: '2026-01-01T00:00:00.000Z' }),
   getPlayers: jest.fn(),
   setPlayers: jest.fn(),
 }));
@@ -27,13 +27,14 @@ describe('GET /api/players', () => {
     jest.setSystemTime(new Date('2026-08-04T12:00:00.000Z'));
     const player = {
       id: 'p1',
+      clubId: 'club-dallas',
       name: 'Birthday Player',
       birthday: '1990-08-06',
       tournamentIds: [],
     };
     mockedGetPlayers.mockResolvedValue([player]);
 
-    const response = await GET();
+    const response = await GET(playerRequest('http://localhost/api/players?club=dallas'));
     const body = await response.json();
 
     expect(response.status).toBe(200);
@@ -46,13 +47,14 @@ describe('GET /api/players', () => {
     jest.setSystemTime(new Date('2026-08-04T12:00:00.000Z'));
     const player = {
       id: 'p1',
+      clubId: 'club-dallas',
       name: 'Birthday Player',
       birthday: '1990-08-20',
       tournamentIds: [],
     };
     mockedGetPlayers.mockResolvedValue([player]);
 
-    const response = await GET();
+    const response = await GET(playerRequest('http://localhost/api/players?club=dallas'));
     const body = await response.json();
 
     expect(body).toEqual([player]);
@@ -156,7 +158,7 @@ describe('PATCH /api/players/[id]', () => {
   });
 
   it('updates optional profile fields for an admin', async () => {
-    const player = { id: 'p1', name: 'Old Name', tournamentIds: ['t1'] };
+    const player = { id: 'p1', clubId: 'club-dallas', name: 'Old Name', tournamentIds: ['t1'] };
     mockedGetPlayers.mockResolvedValue([player]);
 
     const response = await callPatch({
@@ -171,6 +173,7 @@ describe('PATCH /api/players/[id]', () => {
     expect(response.status).toBe(200);
     expect(body).toEqual({
       id: 'p1',
+      clubId: 'club-dallas',
       name: 'New Name',
       firstName: 'New',
       lastName: 'Name',
@@ -196,6 +199,7 @@ describe('PATCH /api/players/[id]', () => {
   it('clears optional profile fields when the admin submits empty values', async () => {
     const player = {
       id: 'p1',
+      clubId: 'club-dallas',
       name: 'Player',
       firstName: 'First',
       lastName: 'Last',
@@ -209,7 +213,7 @@ describe('PATCH /api/players/[id]', () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body).toEqual({ id: 'p1', name: 'Player', tournamentIds: [] });
+    expect(body).toEqual({ id: 'p1', clubId: 'club-dallas', name: 'Player', tournamentIds: [] });
   });
 
   it('calculates age from a birthday', () => {

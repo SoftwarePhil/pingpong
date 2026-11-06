@@ -34,13 +34,13 @@ describe('auth sessions', () => {
     const request = sessionRequest('http://localhost', 'removed-admin');
     expect(readSessionAdminId(request)).toBe('removed-admin');
     expect(await getSessionAdmin(request)).toBeNull();
-    expect((await requireAdmin(request))?.status).toBe(403);
+    expect((await requireAdmin(request)).denied?.status).toBe(403);
   });
 
   it('rejects player mutation requests', async () => {
-    const response = await requireAdmin(new NextRequest('http://localhost'));
-    expect(response?.status).toBe(403);
-    expect(await response?.json()).toEqual({ error: 'Admin access required' });
+    const { denied } = await requireAdmin(new NextRequest('http://localhost'));
+    expect(denied?.status).toBe(403);
+    expect(await denied?.json()).toEqual({ error: 'Admin access required' });
   });
 
   it('lets only owners manage admins', async () => {

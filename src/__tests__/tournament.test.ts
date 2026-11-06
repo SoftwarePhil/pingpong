@@ -4,6 +4,7 @@ import { Tournament, Match, MARKER_PLAYER_ID } from '../types/pingpong';
 
 function makeTournament(overrides: Partial<Tournament> = {}): Tournament {
   return {
+    clubId: 'club-dallas',
     id: 't1',
     name: 'Test Tournament',
     startDate: new Date().toISOString(),
@@ -56,7 +57,7 @@ describe('createRoundRobinPairings', () => {
       matches: [{
         id: 'rr-marker', tournamentId: 't1', player1Id: 'p1', player2Id: MARKER_PLAYER_ID,
         round: 'roundRobin', bracketRound: 1, bestOf: 1, winnerId: 'p1',
-        games: [{ id: 'g1', matchId: 'rr-marker', player1Id: 'p1', player2Id: MARKER_PLAYER_ID, score1: 11, score2: 3, date: '' }],
+        games: [{ clubId: 'club-dallas', id: 'g1', matchId: 'rr-marker', player1Id: 'p1', player2Id: MARKER_PLAYER_ID, score1: 11, score2: 3, date: '' }],
       }],
     });
 
@@ -120,13 +121,13 @@ describe('advanceRoundRobinRound', () => {
       rrPairingStrategy: 'top-vs-top',
       matches: [
         makeMatch('m1', { round: 'roundRobin', bracketRound: 1, player1Id: 'p1', player2Id: 'p2', winnerId: 'p1',
-          games: [{ id: 'g1', matchId: 'm1', player1Id: 'p1', player2Id: 'p2', score1: 11, score2: 5, date: '' }] }),
+          games: [{ clubId: 'club-dallas', id: 'g1', matchId: 'm1', player1Id: 'p1', player2Id: 'p2', score1: 11, score2: 5, date: '' }] }),
         makeMatch('m2', { round: 'roundRobin', bracketRound: 1, player1Id: 'p3', player2Id: 'p4', winnerId: 'p3',
-          games: [{ id: 'g2', matchId: 'm2', player1Id: 'p3', player2Id: 'p4', score1: 11, score2: 9, date: '' }] }),
+          games: [{ clubId: 'club-dallas', id: 'g2', matchId: 'm2', player1Id: 'p3', player2Id: 'p4', score1: 11, score2: 9, date: '' }] }),
         makeMatch('m3', { round: 'roundRobin', bracketRound: 2, player1Id: 'p1', player2Id: 'p3', winnerId: 'p1',
-          games: [{ id: 'g3', matchId: 'm3', player1Id: 'p1', player2Id: 'p3', score1: 11, score2: 7, date: '' }] }),
+          games: [{ clubId: 'club-dallas', id: 'g3', matchId: 'm3', player1Id: 'p1', player2Id: 'p3', score1: 11, score2: 7, date: '' }] }),
         makeMatch('m4', { round: 'roundRobin', bracketRound: 2, player1Id: 'p2', player2Id: 'p4', winnerId: 'p2',
-          games: [{ id: 'g4', matchId: 'm4', player1Id: 'p2', player2Id: 'p4', score1: 11, score2: 8, date: '' }] }),
+          games: [{ clubId: 'club-dallas', id: 'g4', matchId: 'm4', player1Id: 'p2', player2Id: 'p4', score1: 11, score2: 8, date: '' }] }),
       ],
     });
     const newMatches = advanceRoundRobinRound(tournament);
@@ -159,13 +160,13 @@ describe('advanceRoundRobinRound', () => {
       rrPairingStrategy: 'swiss',
       matches: [
         makeMatch('m1', { round: 'roundRobin', bracketRound: 1, player1Id: 'p1', player2Id: 'p2', winnerId: 'p1',
-          games: [{ id: 'g1', matchId: 'm1', player1Id: 'p1', player2Id: 'p2', score1: 11, score2: 5, date: '' }] }),
+          games: [{ clubId: 'club-dallas', id: 'g1', matchId: 'm1', player1Id: 'p1', player2Id: 'p2', score1: 11, score2: 5, date: '' }] }),
         makeMatch('m2', { round: 'roundRobin', bracketRound: 1, player1Id: 'p3', player2Id: 'p4', winnerId: 'p3',
-          games: [{ id: 'g2', matchId: 'm2', player1Id: 'p3', player2Id: 'p4', score1: 11, score2: 9, date: '' }] }),
+          games: [{ clubId: 'club-dallas', id: 'g2', matchId: 'm2', player1Id: 'p3', player2Id: 'p4', score1: 11, score2: 9, date: '' }] }),
         makeMatch('m3', { round: 'roundRobin', bracketRound: 2, player1Id: 'p1', player2Id: 'p3', winnerId: 'p1',
-          games: [{ id: 'g3', matchId: 'm3', player1Id: 'p1', player2Id: 'p3', score1: 11, score2: 7, date: '' }] }),
+          games: [{ clubId: 'club-dallas', id: 'g3', matchId: 'm3', player1Id: 'p1', player2Id: 'p3', score1: 11, score2: 7, date: '' }] }),
         makeMatch('m4', { round: 'roundRobin', bracketRound: 2, player1Id: 'p2', player2Id: 'p4', winnerId: 'p2',
-          games: [{ id: 'g4', matchId: 'm4', player1Id: 'p2', player2Id: 'p4', score1: 11, score2: 8, date: '' }] }),
+          games: [{ clubId: 'club-dallas', id: 'g4', matchId: 'm4', player1Id: 'p2', player2Id: 'p4', score1: 11, score2: 8, date: '' }] }),
       ],
     });
     const newMatches = advanceRoundRobinRound(tournament);
@@ -193,7 +194,7 @@ describe('advanceRoundRobinRound', () => {
       rrPairingStrategy: 'swiss',
       matches: [
         makeMatch('m1', { round: 'roundRobin', bracketRound: 1, player1Id: 'p1', player2Id: 'p2', winnerId: 'p1',
-          games: [{ id: 'g1', matchId: 'm1', player1Id: 'p1', player2Id: 'p2', score1: 11, score2: 4, date: '' }] }),
+          games: [{ clubId: 'club-dallas', id: 'g1', matchId: 'm1', player1Id: 'p1', player2Id: 'p2', score1: 11, score2: 4, date: '' }] }),
         makeMatch('bye1', { round: 'roundRobin', bracketRound: 1, player1Id: 'p3', player2Id: 'BYE', winnerId: 'p3' }),
       ],
     });
@@ -317,11 +318,11 @@ describe('createBracketMatches', () => {
       matches: [
         makeMatch('m1', {
           round: 'roundRobin', bracketRound: 1, player1Id: 'p1', player2Id: 'p2', winnerId: 'p1',
-          games: [{ id: 'g1', matchId: 'm1', player1Id: 'p1', player2Id: 'p2', score1: 11, score2: 5, date: '' }],
+          games: [{ clubId: 'club-dallas', id: 'g1', matchId: 'm1', player1Id: 'p1', player2Id: 'p2', score1: 11, score2: 5, date: '' }],
         }),
         makeMatch('m2', {
           round: 'roundRobin', bracketRound: 1, player1Id: 'p3', player2Id: 'p4', winnerId: 'p4',
-          games: [{ id: 'g2', matchId: 'm2', player1Id: 'p3', player2Id: 'p4', score1: 5, score2: 11, date: '' }],
+          games: [{ clubId: 'club-dallas', id: 'g2', matchId: 'm2', player1Id: 'p3', player2Id: 'p4', score1: 5, score2: 11, date: '' }],
         }),
       ],
     });
@@ -342,14 +343,14 @@ describe('createBracketMatches', () => {
           player1Id: 'p1',
           player2Id: 'p2',
           winnerId: 'p1',
-          games: [{ id: 'g1', matchId: 'm1', player1Id: 'p1', player2Id: 'p2', score1: 11, score2: 5, date: '' }],
+          games: [{ clubId: 'club-dallas', id: 'g1', matchId: 'm1', player1Id: 'p1', player2Id: 'p2', score1: 11, score2: 5, date: '' }],
         }),
         makeMatch('m2', {
           round: 'roundRobin',
           player1Id: 'p1',
           player2Id: 'p3',
           winnerId: 'p3',
-          games: [{ id: 'g2', matchId: 'm2', player1Id: 'p1', player2Id: 'p3', score1: 7, score2: 11, date: '' }],
+          games: [{ clubId: 'club-dallas', id: 'g2', matchId: 'm2', player1Id: 'p1', player2Id: 'p3', score1: 7, score2: 11, date: '' }],
         }),
       ],
     });
@@ -383,11 +384,11 @@ describe('createBracketMatches', () => {
       matches: [
         makeMatch('m1', {
           round: 'roundRobin', bracketRound: 1, player1Id: 'p1', player2Id: 'p3', winnerId: 'p1',
-          games: [{ id: 'g1', matchId: 'm1', player1Id: 'p1', player2Id: 'p3', score1: 11, score2: 1, date: '' }],
+          games: [{ clubId: 'club-dallas', id: 'g1', matchId: 'm1', player1Id: 'p1', player2Id: 'p3', score1: 11, score2: 1, date: '' }],
         }),
         makeMatch('m2', {
           round: 'roundRobin', bracketRound: 1, player1Id: 'p2', player2Id: 'p4', winnerId: 'p2',
-          games: [{ id: 'g2', matchId: 'm2', player1Id: 'p2', player2Id: 'p4', score1: 11, score2: 8, date: '' }],
+          games: [{ clubId: 'club-dallas', id: 'g2', matchId: 'm2', player1Id: 'p2', player2Id: 'p4', score1: 11, score2: 8, date: '' }],
         }),
       ],
     });
@@ -605,15 +606,15 @@ describe('advanceBracketRound – positional pairing', () => {
       matches: [
         makeMatch('rr1', {
           round: 'roundRobin', player1Id: 'p1', player2Id: 'p3', winnerId: 'p1',
-          games: [{ id: 'g1', matchId: 'rr1', player1Id: 'p1', player2Id: 'p3', score1: 11, score2: 5, date: '' }],
+          games: [{ clubId: 'club-dallas', id: 'g1', matchId: 'rr1', player1Id: 'p1', player2Id: 'p3', score1: 11, score2: 5, date: '' }],
         }),
         makeMatch('rr2', {
           round: 'roundRobin', player1Id: 'p1', player2Id: 'p4', winnerId: 'p1',
-          games: [{ id: 'g2', matchId: 'rr2', player1Id: 'p1', player2Id: 'p4', score1: 11, score2: 5, date: '' }],
+          games: [{ clubId: 'club-dallas', id: 'g2', matchId: 'rr2', player1Id: 'p1', player2Id: 'p4', score1: 11, score2: 5, date: '' }],
         }),
         makeMatch('rr3', {
           round: 'roundRobin', player1Id: 'p2', player2Id: 'p3', winnerId: 'p2',
-          games: [{ id: 'g3', matchId: 'rr3', player1Id: 'p2', player2Id: 'p3', score1: 11, score2: 5, date: '' }],
+          games: [{ clubId: 'club-dallas', id: 'g3', matchId: 'rr3', player1Id: 'p2', player2Id: 'p3', score1: 11, score2: 5, date: '' }],
         }),
       ],
     });
@@ -798,11 +799,11 @@ describe('activePlayers', () => {
         matches: [
           makeMatch('m1', {
             round: 'roundRobin', bracketRound: 1, player1Id: 'p3', player2Id: 'p1', winnerId: 'p3',
-            games: [{ id: 'g1', matchId: 'm1', player1Id: 'p3', player2Id: 'p1', score1: 11, score2: 5, date: '' }],
+            games: [{ clubId: 'club-dallas', id: 'g1', matchId: 'm1', player1Id: 'p3', player2Id: 'p1', score1: 11, score2: 5, date: '' }],
           }),
           makeMatch('m2', {
             round: 'roundRobin', bracketRound: 1, player1Id: 'p4', player2Id: 'p2', winnerId: 'p4',
-            games: [{ id: 'g2', matchId: 'm2', player1Id: 'p4', player2Id: 'p2', score1: 11, score2: 5, date: '' }],
+            games: [{ clubId: 'club-dallas', id: 'g2', matchId: 'm2', player1Id: 'p4', player2Id: 'p2', score1: 11, score2: 5, date: '' }],
           }),
         ],
       });
