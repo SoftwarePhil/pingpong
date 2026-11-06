@@ -68,7 +68,7 @@ describe('createMatch', () => {
   it('does not count a bye as a win or a match played in the standings', () => {
     const bye = createMatch({ ...base, player1Id: 'p1', player2Id: 'BYE' });
     const real = { ...createMatch({ ...base, player1Id: 'p2', player2Id: 'p3' }), winnerId: 'p2',
-      games: [{ id: 'g1', player1Id: 'p2', player2Id: 'p3', score1: 11, score2: 5, date: '2026-10-25T10:00:00.000Z' }] };
+      games: [{ id: 'g1', clubId: 'club-dallas', player1Id: 'p2', player2Id: 'p3', score1: 11, score2: 5, date: '2026-10-25T10:00:00.000Z' }] };
 
     const standings = getRoundRobinStandings(['p1', 'p2', 'p3'], [bye, real]);
 

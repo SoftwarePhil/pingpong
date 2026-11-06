@@ -1,7 +1,7 @@
 'use client';
 
-import { Match } from '../../../types/pingpong';
-import { getMatchPlayerIds, getMatchSides, getWinningSide } from '../../../lib/matchFormat';
+import { Match } from '../../../../../types/pingpong';
+import { getMatchPlayerIds, getMatchSides, getWinningSide } from '../../../../../lib/matchFormat';
 
 interface PastRoundsSummaryProps {
   roundRobinMatches: Match[];

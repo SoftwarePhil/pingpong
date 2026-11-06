@@ -1,15 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Player, Game, Match, Tournament } from '../../types/pingpong';
+import { Player, Game, Match, Tournament } from '../../../../types/pingpong';
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   BarChart, Bar,
 } from 'recharts';
-import { wilsonLowerBound } from '../../lib/stats';
-import { useAuth } from '../../components/AuthProvider';
-import { getPlayerAge, getPlayerJoinedDate } from '../../lib/player';
-import { PageHeader } from '../../components/PageHeader';
+import { wilsonLowerBound } from '../../../../lib/stats';
+import { useClub } from '../../../../components/ClubProvider';
+import { getPlayerAge, getPlayerJoinedDate } from '../../../../lib/player';
+import { PageHeader } from '../../../../components/PageHeader';
 import {
   getGamePlayerIds,
   getGameSides,
@@ -19,7 +19,7 @@ import {
   getWinningSide,
   isMatchComplete,
   isByeMatch,
-} from '../../lib/matchFormat';
+} from '../../../../lib/matchFormat';
 
 // Chart text and tooltips follow the theme tokens so both modes stay readable.
 const CHART_TICK = { fontSize: 11, fill: 'var(--muted)' };
@@ -113,7 +113,7 @@ function PlayerProfileFields({
 }
 
 export default function PlayersPage() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, clubApi } = useClub();
   const [players, setPlayers] = useState<Player[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
@@ -138,19 +138,19 @@ export default function PlayersPage() {
   }, []);
 
   const fetchPlayers = async () => {
-    const res = await fetch('/api/players');
+    const res = await fetch(clubApi('/api/players'));
     const data = await res.json();
     setPlayers(data);
   };
 
   const fetchMatches = async () => {
-    const res = await fetch('/api/matches');
+    const res = await fetch(clubApi('/api/matches'));
     const data = await res.json();
     setMatches(data);
   };
 
   const fetchTournaments = async () => {
-    const res = await fetch('/api/tournaments');
+    const res = await fetch(clubApi('/api/tournaments'));
     const data = await res.json();
     setTournaments(data);
   };
@@ -219,7 +219,7 @@ export default function PlayersPage() {
     setEditPlayerError(null);
   };
 
-  const isGameInDateRange = (game: Game) => {
+  const isGameInDateRange = (game: Pick<Game, 'date'>) => {
     if (!dateFrom && !dateTo) return true;
     const time = new Date(game.date).getTime();
     if (Number.isNaN(time)) return false;
@@ -230,14 +230,7 @@ export default function PlayersPage() {
 
   const matchIsInDateRange = (match: Match) => {
     if (!dateFrom && !dateTo) return true;
-    if (match.createdAt) return isGameInDateRange({
-      id: `match-${match.id}`,
-      player1Id: match.player1Id,
-      player2Id: match.player2Id,
-      score1: 0,
-      score2: 0,
-      date: match.createdAt,
-    });
+    if (match.createdAt) return isGameInDateRange({ date: match.createdAt });
     if (match.games.length === 0) return false;
     return match.games.some(isGameInDateRange);
   };

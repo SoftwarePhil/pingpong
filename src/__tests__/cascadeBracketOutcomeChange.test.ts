@@ -2,7 +2,7 @@ import { cascadeBracketOutcomeChange, TBD_PLACEHOLDER } from '../lib/tournament'
 import { Match, Game } from '../types/pingpong';
 
 function makeGame(score1: number, score2: number, overrides: Partial<Game> = {}): Game {
-  return { id: `g${Math.random()}`, player1Id: 'p1', player2Id: 'p2', score1, score2, date: new Date().toISOString(), ...overrides };
+  return { clubId: 'club-dallas', id: `g${Math.random()}`, player1Id: 'p1', player2Id: 'p2', score1, score2, date: new Date().toISOString(), ...overrides };
 }
 
 function makeMatch(id: string, overrides: Partial<Match> = {}): Match {

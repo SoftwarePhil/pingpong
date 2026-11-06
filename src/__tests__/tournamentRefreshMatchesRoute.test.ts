@@ -29,6 +29,7 @@ const mockedResync = resyncRoundRobinMatches as jest.MockedFunction<typeof resyn
 
 function makeTournament(overrides: Partial<Tournament> = {}): Tournament {
   return {
+    clubId: 'club-dallas',
     id: 't1',
     name: 'T1',
     startDate: new Date().toISOString(),

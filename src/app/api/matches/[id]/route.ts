@@ -37,7 +37,7 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const denied = await requireAdmin(request);
+  const { admin, denied } = await requireAdmin(request);
   if (denied) return denied;
   try {
     const { id: matchId } = await params;
@@ -48,7 +48,8 @@ export async function PUT(
     const { update } = parsed;
 
     const currentMatch = await getMatch(matchId);
-    if (!currentMatch) {
+    const owningTournament = currentMatch && await getTournament(currentMatch.tournamentId);
+    if (!currentMatch || owningTournament?.clubId !== admin.clubId) {
       return NextResponse.json({ error: 'Match not found' }, { status: 404 });
     }
 
@@ -190,10 +191,16 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const denied = await requireAdmin(request);
+  const { admin, denied } = await requireAdmin(request);
   if (denied) return denied;
   try {
     const { id: matchId } = await params;
+
+    const match = await getMatch(matchId);
+    const tournament = match && await getTournament(match.tournamentId);
+    if (tournament?.clubId !== admin.clubId) {
+      return NextResponse.json({ error: 'Match not found' }, { status: 404 });
+    }
 
     const result = await removeMatchFromTournament(matchId);
     if (!result) {

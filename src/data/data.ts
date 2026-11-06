@@ -93,41 +93,27 @@ function clubsCol(): Collection<ClubDoc> {
 // Clubs — MongoDB
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** The slug of the club everything belongs to while the app runs one club. */
-export const DEFAULT_CLUB_SLUG = 'dallas';
+function clubFromDoc({ _id, ...club }: ClubDoc): Club {
+  return { id: _id, ...club };
+}
 
-let defaultClubPromise: Promise<Club> | null = null;
+export async function getClubBySlug(slug: string): Promise<Club | null> {
+  if (!db) await initMongo();
+  const doc = await clubsCol().findOne({ slug });
+  return doc && clubFromDoc(doc);
+}
 
-/**
- * The club new players, tournaments and games belong to. It is created on
- * first use if the migration hasn't run yet, and cached for the process.
- */
-export function getDefaultClub(): Promise<Club> {
-  defaultClubPromise ??= (async () => {
-    if (!db) await initMongo();
-    // Several server instances can reach this at once before the migration
-    // has run. The unique slug index makes sure only one club is created; an
-    // instance that loses the race reads the winner's club instead.
-    await clubsCol().createIndex({ slug: 1 }, { unique: true });
-    let doc: ClubDoc | null;
-    try {
-      doc = await clubsCol().findOneAndUpdate(
-        { slug: DEFAULT_CLUB_SLUG },
-        { $setOnInsert: { _id: newId(), name: DEFAULT_CLUB_SLUG, slug: DEFAULT_CLUB_SLUG, createdAt: new Date().toISOString() } },
-        { upsert: true, returnDocument: 'after' },
-      );
-    } catch (error) {
-      if ((error as { code?: number }).code !== 11000) throw error; // 11000: duplicate key
-      doc = await clubsCol().findOne({ slug: DEFAULT_CLUB_SLUG });
-    }
-    if (!doc) throw new Error(`Could not load the ${DEFAULT_CLUB_SLUG} club`);
-    const { _id, ...club } = doc;
-    return { id: _id, ...club };
-  })().catch(error => {
-    defaultClubPromise = null; // retry on the next call instead of caching the failure
-    throw error;
-  });
-  return defaultClubPromise;
+export async function getClubById(id: string): Promise<Club | null> {
+  if (!db) await initMongo();
+  const doc = await clubsCol().findOne({ _id: id });
+  return doc && clubFromDoc(doc);
+}
+
+/** Changes a club's public details. The slug stays fixed so its links keep working. */
+export async function updateClub(id: string, fields: { name: string; about: string }): Promise<Club | null> {
+  if (!db) await initMongo();
+  const doc = await clubsCol().findOneAndUpdate({ _id: id }, { $set: fields }, { returnDocument: 'after' });
+  return doc && clubFromDoc(doc);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -137,7 +123,7 @@ export function getDefaultClub(): Promise<Club> {
 // Rebuild the Redis match index from all tournament documents (runs on startup to self-heal)
 async function migrateMatchIndex() {
   try {
-    const tournaments = await getTournaments();
+    const tournaments = await readTournaments();
     if (tournaments.length === 0) return;
     const entries: Record<string, string> = {};
     for (const tournament of tournaments) {
@@ -337,7 +323,7 @@ export async function setRoundRobinFormatAtomically(
 export async function syncTournamentPlayers(tournament: Tournament): Promise<void> {
   try {
     if (!db) await initMongo();
-    const players = await getPlayers();
+    const players = await getPlayers(tournament.clubId);
     const updatedPlayers = players.map(player => {
       if (tournament.players.includes(player.id)) {
         return {
@@ -368,7 +354,7 @@ export async function deleteTournament(id: string): Promise<void> {
         await redisClient.hDel(MATCH_INDEX_KEY, matchIds);
       }
       // Update player tournamentIds in MongoDB
-      const players = await getPlayers();
+      const players = await getPlayers(tournament.clubId);
       const updatedPlayers = players.map(player => {
         if (tournament.players.includes(player.id)) {
           return {
@@ -401,17 +387,22 @@ export async function getActiveTournamentIds(): Promise<string[]> {
 }
 
 // Getters
-export async function getTournaments(): Promise<Tournament[]> {
+export function getTournaments(clubId: string): Promise<Tournament[]> {
+  return readTournaments(clubId);
+}
+
+/** One club's tournaments, or every club's when `clubId` is left out (startup housekeeping only). */
+async function readTournaments(clubId?: string): Promise<Tournament[]> {
   try {
     if (!redisClient) await initRedis();
     if (!db) await initMongo();
     // Active tournaments: IDs from Redis sorted set, documents from Redis
     const activeIds = await getActiveTournamentIds();
     const active = (await Promise.all(activeIds.map(id => getTournament(id))))
-      .filter((t): t is Tournament => t !== null);
+      .filter((t): t is Tournament => t !== null && (clubId === undefined || t.clubId === clubId));
     // Completed tournaments: documents directly from MongoDB
     const completedDocs = await tournamentsCol()
-      .find({ status: 'completed' })
+      .find({ status: 'completed', ...(clubId !== undefined && { clubId }) })
       .sort({ startDate: 1 })
       .toArray();
     const completed = completedDocs.map(({ _id, ...rest }) => ({ id: _id, ...rest } as Tournament));
@@ -478,13 +469,13 @@ export async function registerMatchesIndex(matches: Match[]): Promise<void> {
 // Player functions — MongoDB (durable, long-term)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function getPlayers(): Promise<Player[]> {
+export async function getPlayers(clubId: string): Promise<Player[]> {
   try {
     if (!db) await initMongo();
-    const docs = await playersCol().find({}).toArray();
+    const docs = await playersCol().find({ clubId }).toArray();
     return docs.map(({ _id, ...player }) => ({
       id: _id,
-      ...(player.clubId !== undefined && { clubId: player.clubId }),
+      clubId: player.clubId,
       name: player.name,
       tournamentIds: player.tournamentIds ?? [],
       ...(player.firstName !== undefined && { firstName: player.firstName }),
@@ -502,10 +493,7 @@ export async function getPlayers(): Promise<Player[]> {
 export async function setPlayers(data: Player[]): Promise<void> {
   try {
     if (!db) await initMongo();
-    if (data.length === 0) {
-      await playersCol().deleteMany({});
-      return;
-    }
+    if (data.length === 0) return;
     const ops = data.map(({ id, ...rest }) => ({
       replaceOne: {
         filter: { _id: id },
@@ -524,19 +512,14 @@ export async function setPlayers(data: Player[]): Promise<void> {
 // Match functions — stored inside tournament documents in Redis
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function getAllMatches(): Promise<Match[]> {
+export async function getAllMatches(clubId: string): Promise<Match[]> {
   try {
-    const tournaments = await getTournaments();
+    const tournaments = await getTournaments(clubId);
     return tournaments.flatMap(t => t.matches ?? []);
   } catch (error) {
     console.error('Error getting all matches:', error);
     return [];
   }
-}
-
-export async function getMatchesForTournament(tournamentId: string): Promise<Match[]> {
-  const tournament = await getTournament(tournamentId);
-  return tournament?.matches ?? [];
 }
 
 export async function getMatch(matchId: string): Promise<Match | null> {
@@ -658,10 +641,10 @@ async function applyBracketCascade(tournament: Tournament, match: Match): Promis
 }
 
 // getAllGames reads from the MongoDB games collection (durable history)
-export async function getAllGames(): Promise<Game[]> {
+export async function getAllGames(clubId: string): Promise<Game[]> {
   try {
     if (!db) await initMongo();
-    const docs = await gamesCol().find({}).toArray();
+    const docs = await gamesCol().find({ clubId }).toArray();
     return docs.map(({ _id, ...game }) => ({ id: _id, ...game } as Game));
   } catch (error) {
     console.error('Error getting all games:', error);
@@ -682,17 +665,15 @@ export async function addGameToMatch(
     if (matchIdx === -1) return null;
     const match = tournament.matches[matchIdx];
     const [side1, side2] = getMatchSides(match);
-    const clubId = tournament.clubId ?? (await getDefaultClub()).id;
     const persistedGame: Game = isDoublesMatch(match)
       ? {
           ...game,
-          clubId,
           player1Id: side1[0],
           player2Id: side2[0],
           side1PlayerIds: side1,
           side2PlayerIds: side2,
         }
-      : { ...game, clubId };
+      : game;
     tournament.matches[matchIdx] = recalculateMatchWinner({
       ...match,
       games: [...match.games, persistedGame],
@@ -801,25 +782,26 @@ function withId<T extends { _id: string }>({ _id, ...rest }: T) {
 }
 
 /**
- * Reads every player, tournament and game exactly as stored. Unlike the
+ * Reads a club's players, tournaments and games exactly as stored. Unlike the
  * read helpers above it does not swallow errors: a failed read must fail the
  * export rather than produce a file that silently has missing records.
  */
-export async function exportAllData(): Promise<DataExport> {
+export async function exportClubData(clubId: string): Promise<DataExport> {
   if (!redisClient) await initRedis();
   if (!db) await initMongo();
 
   const [clubDocs, playerDocs, gameDocs, completedDocs, activeIds] = await Promise.all([
-    clubsCol().find({}).sort({ createdAt: 1 }).toArray(),
-    playersCol().find({}).sort({ _id: 1 }).toArray(),
-    gamesCol().find({}).sort({ date: 1 }).toArray(),
-    tournamentsCol().find({}).sort({ startDate: 1 }).toArray(),
+    clubsCol().find({ _id: clubId }).toArray(),
+    playersCol().find({ clubId }).sort({ _id: 1 }).toArray(),
+    gamesCol().find({ clubId }).sort({ date: 1 }).toArray(),
+    tournamentsCol().find({ clubId }).sort({ startDate: 1 }).toArray(),
     redisClient.zRange(ACTIVE_TOURNAMENTS_KEY, 0, -1),
   ]);
   const activeDocs = await Promise.all(activeIds.map(id => redisClient.get(tournamentKey(id))));
   const active = activeDocs
     .filter((doc): doc is string => doc !== null)
-    .map(doc => JSON.parse(doc) as Tournament);
+    .map(doc => JSON.parse(doc) as Tournament)
+    .filter(tournament => tournament.clubId === clubId);
 
   const clubs = clubDocs.map(withId) as Club[];
   const players = playerDocs.map(withId) as Player[];

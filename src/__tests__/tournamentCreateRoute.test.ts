@@ -3,7 +3,7 @@ import { adminRequest } from './authTestUtils';
 import { Tournament } from '../types/pingpong';
 
 jest.mock('../data/data', () => ({
-  getDefaultClub: jest.fn(),
+  getPlayers: jest.fn(),
   getTournaments: jest.fn(),
   setTournament: jest.fn(),
   syncTournamentPlayers: jest.fn(),
@@ -16,14 +16,15 @@ jest.mock('../data/data', () => ({
   TournamentNotFoundError: class extends Error {},
 }));
 
-import { getDefaultClub, getTournaments, setTournament } from '../data/data';
+import { getPlayers, getTournaments, setTournament } from '../data/data';
 
-const mockedGetDefaultClub = getDefaultClub as jest.MockedFunction<typeof getDefaultClub>;
+const mockedGetPlayers = getPlayers as jest.MockedFunction<typeof getPlayers>;
 const mockedGetTournaments = getTournaments as jest.MockedFunction<typeof getTournaments>;
 const mockedSetTournament = setTournament as jest.MockedFunction<typeof setTournament>;
 
 function activeTournament(overrides: Partial<Tournament>): Tournament {
   return {
+    clubId: 'club-dallas',
     id: 'running', name: 'Running', startDate: '2026-10-01T00:00:00.000Z', status: 'roundRobin',
     roundRobinRounds: 1, rrBestOf: 1, bracketRounds: [], players: ['p1', 'p2'], matches: [],
     ...overrides,
@@ -42,7 +43,7 @@ function create() {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockedGetDefaultClub.mockResolvedValue({ id: 'club-dallas', name: 'dallas', slug: 'dallas', createdAt: '2026-01-01T00:00:00.000Z' });
+  mockedGetPlayers.mockResolvedValue(['p1', 'p2', 'p3', 'p4'].map(id => ({ id, clubId: 'club-dallas', name: id, tournamentIds: [] })));
 });
 
 describe('POST /api/tournaments', () => {
@@ -55,23 +56,23 @@ describe('POST /api/tournaments', () => {
     expect(mockedSetTournament.mock.calls[0][0]).toMatchObject({ clubId: 'club-dallas', name: 'Week 30' });
   });
 
-  it.each([
-    ['in the same club', { clubId: 'club-dallas' }],
-    ['from before clubs existed (no clubId)', {}],
-  ])('refuses while another tournament is running %s', async (_label, overrides) => {
-    mockedGetTournaments.mockResolvedValue([activeTournament(overrides)]);
+  it('refuses while another tournament is running in the club', async () => {
+    mockedGetTournaments.mockResolvedValue([activeTournament({})]);
 
     const res = await create();
 
     expect(res.status).toBe(409);
+    expect(mockedGetTournaments).toHaveBeenCalledWith('club-dallas');
     expect(mockedSetTournament).not.toHaveBeenCalled();
   });
 
-  it("doesn't let another club's running tournament block this club", async () => {
-    mockedGetTournaments.mockResolvedValue([activeTournament({ clubId: 'club-austin' })]);
+  it("refuses players from another club", async () => {
+    mockedGetTournaments.mockResolvedValue([]);
+    mockedGetPlayers.mockResolvedValue([{ id: 'p1', clubId: 'club-dallas', name: 'p1', tournamentIds: [] }]);
 
     const res = await create();
 
-    expect(res.status).toBe(201);
+    expect(res.status).toBe(400);
+    expect(mockedSetTournament).not.toHaveBeenCalled();
   });
 });

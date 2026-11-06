@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { MARKER_PLAYER_ID, Match, Player, Tournament } from '../../../types/pingpong';
-import { getPlayerAge } from '../../../lib/player';
-import { isPlayInWinnerPlaceholder } from '../../../lib/tournament';
-import { getMatchPlayerIds } from '../../../lib/matchFormat';
-import { getRoundRobinStandings } from '../../../lib/standings';
+import { MARKER_PLAYER_ID, Match, Player, Tournament } from '../../../../../types/pingpong';
+import { getPlayerAge } from '../../../../../lib/player';
+import { isPlayInWinnerPlaceholder } from '../../../../../lib/tournament';
+import { getMatchPlayerIds } from '../../../../../lib/matchFormat';
+import { getRoundRobinStandings } from '../../../../../lib/standings';
 
 interface LeaderboardProps {
   tournament: Tournament;

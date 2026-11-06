@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Player } from '../../../types/pingpong';
 import { newId } from '../../../lib/random';
-import { getDefaultClub, getPlayers, setPlayers } from '../../../data/data';
+import { getPlayers, setPlayers } from '../../../data/data';
+import { clubFromRequest } from '../../../lib/clubRequest';
 import { requireAdmin } from '../../../lib/auth';
 import { decoratePlayerName, parsePlayerProfileFields, stripBirthdayCake } from '../../../lib/player';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const players = await getPlayers();
+    const club = await clubFromRequest(request);
+    if (!club) return NextResponse.json({ error: 'Club not found' }, { status: 404 });
+    const players = await getPlayers(club.id);
     return NextResponse.json(players.map(player => decoratePlayerName(player)));
   } catch (error) {
     console.error(error);
@@ -16,7 +19,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const denied = await requireAdmin(request);
+  const { admin, denied } = await requireAdmin(request);
   if (denied) return denied;
   try {
     const body = await request.json();
@@ -26,15 +29,14 @@ export async function POST(request: NextRequest) {
     }
     const fields = parsed.fields;
     const name = fields.name!;
-    const players = await getPlayers();
+    const players = await getPlayers(admin.clubId);
     const duplicate = players.find(p => stripBirthdayCake(p.name).toLowerCase() === name.toLowerCase());
     if (duplicate) {
       return NextResponse.json({ error: `A player named "${duplicate.name}" already exists` }, { status: 409 });
     }
-    const club = await getDefaultClub();
     const newPlayer: Player = {
       id: newId(),
-      clubId: club.id,
+      clubId: admin.clubId,
       name,
       tournamentIds: [],
       createdAt: new Date().toISOString(),

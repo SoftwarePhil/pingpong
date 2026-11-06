@@ -53,7 +53,7 @@ export default function SignInPage() {
           {state.kind === 'error' && (
             <div className="space-y-3">
               <p className="text-sm text-loss" role="alert">{state.message}</p>
-              <Link href="/settings" className="button button-secondary">Go to Settings</Link>
+              <Link href="/" className="button button-secondary">Go to the home page</Link>
             </div>
           )}
         </section>

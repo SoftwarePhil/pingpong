@@ -4,11 +4,14 @@ import { getAllGames, addGameToMatch, getMatch, getTournament } from '../../../d
 import { validateScore } from '../../../lib/scoring';
 import { newId } from '../../../lib/random';
 import { requireAdmin } from '../../../lib/auth';
+import { clubFromRequest } from '../../../lib/clubRequest';
 import { getMatchSides, isDoublesMatch } from '../../../lib/matchFormat';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const games = await getAllGames();
+    const club = await clubFromRequest(request);
+    if (!club) return NextResponse.json({ error: 'Club not found' }, { status: 404 });
+    const games = await getAllGames(club.id);
     return NextResponse.json(games);
   } catch (error) {
     console.error(error);
@@ -17,7 +20,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const denied = await requireAdmin(request);
+  const { admin, denied } = await requireAdmin(request);
   if (denied) return denied;
   try {
     const { matchId, score1, score2 } = (await request.json()) as { matchId?: unknown; score1?: unknown; score2?: unknown };
@@ -36,6 +39,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Match not found' }, { status: 404 });
     }
     const tournamentForLock = await getTournament(existingMatch.tournamentId);
+    if (tournamentForLock?.clubId !== admin.clubId) {
+      return NextResponse.json({ error: 'Match not found' }, { status: 404 });
+    }
     const bracketStarted = Boolean(
       tournamentForLock?.bracketStartedAt ||
       (tournamentForLock?.matches ?? []).some(m => m.round === 'bracket') ||
@@ -51,6 +57,7 @@ export async function POST(request: NextRequest) {
     const [side1, side2] = getMatchSides(existingMatch);
     const newGame: Game = {
       id: newId(),
+      clubId: admin.clubId,
       matchId,
       // These required legacy fields remain deterministic compatibility
       // references; side arrays are authoritative for doubles.

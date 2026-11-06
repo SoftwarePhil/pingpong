@@ -5,6 +5,7 @@ import { Tournament } from '../types/pingpong';
 
 function makeTournament(overrides: Partial<Tournament> = {}): Tournament {
   return {
+    clubId: 'club-dallas',
     id: 't1',
     name: 'Doubles',
     startDate: new Date().toISOString(),
@@ -70,7 +71,7 @@ describe('2v2 round-robin support', () => {
 
   it('does not convert a round after a game has been recorded', () => {
     const [match] = createRoundRobinPairings(['p1', 'p2', 'p3', 'p4'], 't1', 1);
-    match.games.push({ id: 'g1', matchId: match.id, player1Id: 'p1', player2Id: 'p2', score1: 11, score2: 5, date: '' });
+    match.games.push({ clubId: 'club-dallas', id: 'g1', matchId: match.id, player1Id: 'p1', player2Id: 'p2', score1: 11, score2: 5, date: '' });
     const tournament = makeTournament({ matches: [match] });
 
     expect(() => setRoundRobinFormat(tournament, 'doubles'))
@@ -101,6 +102,7 @@ describe('2v2 round-robin support', () => {
     );
     const locked = matches[0];
     locked.games = [{
+      clubId: 'club-dallas',
       id: 'g1', matchId: locked.id, player1Id: locked.player1Id, player2Id: locked.player2Id,
       side1PlayerIds: locked.side1PlayerIds, side2PlayerIds: locked.side2PlayerIds,
       score1: 11, score2: 7, date: '',
@@ -125,6 +127,7 @@ describe('2v2 round-robin support', () => {
     match.side2PlayerIds = ['p2', 'p3'];
     match.games = [
       {
+        clubId: 'club-dallas',
         id: 'g1', matchId: match.id, player1Id: 'p1', player2Id: 'p2',
         side1PlayerIds: ['p1', 'p4'], side2PlayerIds: ['p2', 'p3'],
         score1: 11, score2: 7, date: '',
@@ -144,6 +147,7 @@ describe('2v2 round-robin support', () => {
   it('uses individual doubles results when seeding the singles bracket', () => {
     const [match] = createRoundRobinPairings(['p1', 'p2', 'p3', 'p4'], 't1', 1, 1, 'doubles');
     match.games = [{
+      clubId: 'club-dallas',
       id: 'g1', matchId: match.id, player1Id: match.player1Id, player2Id: match.player2Id,
       side1PlayerIds: match.side1PlayerIds, side2PlayerIds: match.side2PlayerIds,
       score1: 11, score2: 5, date: '',

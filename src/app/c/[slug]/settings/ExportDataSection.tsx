@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useAuth } from '../../components/AuthProvider';
+import { useClub } from '../../../../components/ClubProvider';
 
 type ExportState =
   | { kind: 'idle' }
@@ -13,7 +13,7 @@ const plural = (count: number, word: string) => `${count} ${word}${count === 1 ?
 
 /** Admin-only: downloads every player, tournament and game as one JSON file. */
 export function ExportDataSection() {
-  const { isAdmin } = useAuth();
+  const { isAdmin } = useClub();
   const [state, setState] = useState<ExportState>({ kind: 'idle' });
   if (!isAdmin) return null;
 
@@ -52,7 +52,7 @@ export function ExportDataSection() {
       <p className="label-caps text-muted">Data</p>
       <div className="mt-2 flex flex-wrap items-center justify-between gap-4">
         <p className="max-w-prose text-sm text-ink-soft">
-          Download every player, tournament and game as one JSON file. Keep it as a backup or to move the data elsewhere.
+          Download your club’s players, tournaments and games as one JSON file. Keep it as a backup or to move the data elsewhere.
         </p>
         <button
           type="button"

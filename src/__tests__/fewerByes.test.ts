@@ -13,6 +13,7 @@ import { Game, Match, PlayInMode, Tournament } from '../types/pingpong';
 function makeTournament(playerCount: number, playInMode: PlayInMode = 'fewerByes'): Tournament {
   const players = Array.from({ length: playerCount }, (_, i) => `p${i + 1}`);
   return {
+    clubId: 'club-dallas',
     id: 't1', name: 'T1', startDate: '2026-11-01T00:00:00.000Z', status: 'bracket',
     roundRobinRounds: 1, rrBestOf: 1,
     bracketRounds: [{ matchCount: 6, bestOf: 3 }, { matchCount: 2, bestOf: 3 }, { matchCount: 1, bestOf: 5 }],
@@ -26,7 +27,7 @@ function makeTournament(playerCount: number, playInMode: PlayInMode = 'fewerByes
 /** Seeded generation: round-robin results that rank p1 first, p2 second and so on. */
 function seededBracket(playerCount: number): Tournament {
   const tournament = makeTournament(playerCount);
-  const game = (id: string, p1: string, p2: string): Game => ({ id, player1Id: p1, player2Id: p2, score1: 11, score2: 1, date: '2026-11-01' });
+  const game = (id: string, p1: string, p2: string): Game => ({ clubId: 'club-dallas', id, player1Id: p1, player2Id: p2, score1: 11, score2: 1, date: '2026-11-01' });
   const players = tournament.players;
   const roundRobin: Match[] = [];
   players.forEach((p, i) => players.slice(i + 1).forEach(q => roundRobin.push({
@@ -41,7 +42,7 @@ function seededBracket(playerCount: number): Tournament {
 /** Plays a match to a win for `winnerId` and threads the result forward. */
 function win(tournament: Tournament, matchId: string, winnerId: string) {
   const match = tournament.matches!.find(m => m.id === matchId)!;
-  const game: Game = { id: `g-${matchId}-${winnerId}`, matchId, player1Id: match.player1Id, player2Id: match.player2Id, score1: 11, score2: 5, date: '2026-11-02' };
+  const game: Game = { clubId: 'club-dallas', id: `g-${matchId}-${winnerId}`, matchId, player1Id: match.player1Id, player2Id: match.player2Id, score1: 11, score2: 5, date: '2026-11-02' };
   tournament.matches = tournament.matches!.map(m => m.id === matchId ? { ...m, games: [game], winnerId } : m);
   const { matches, invalidatedGameIds } = cascadeBracketOutcomeChange(tournament.matches, matchId);
   tournament.matches = matches;

@@ -1,6 +1,6 @@
-import { PageHeader } from '../../components/PageHeader';
-import { ThemeToggle } from '../../components/ThemeToggle';
-import { AuthControls } from '../../components/AuthProvider';
+import { PageHeader } from '../../../../components/PageHeader';
+import { ThemeToggle } from '../../../../components/ThemeToggle';
+import { AuthControls } from '../../../../components/AuthProvider';
 import { AdminsSection } from './AdminsSection';
 import { ExportDataSection } from './ExportDataSection';
 

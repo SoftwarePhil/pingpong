@@ -7,6 +7,7 @@ import { Match, Tournament } from '../types/pingpong';
 
 function makeTournament(id: string, startDate: string, overrides: Partial<Tournament> = {}): Tournament {
   return {
+    clubId: 'club-dallas',
     id,
     name: id,
     startDate,

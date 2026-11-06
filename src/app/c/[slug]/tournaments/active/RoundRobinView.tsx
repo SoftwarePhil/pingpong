@@ -1,10 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { Player, Tournament, Match } from '../../../types/pingpong';
+import { Player, Tournament, Match } from '../../../../../types/pingpong';
 import MatchCard from './MatchCard';
 import Leaderboard from './Leaderboard';
-import { getRoundRobinFormat, isMatchComplete } from '../../../lib/matchFormat';
+import { getRoundRobinFormat, isMatchComplete } from '../../../../../lib/matchFormat';
 
 interface RoundRobinViewProps {
   tournament: Tournament;

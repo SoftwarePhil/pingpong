@@ -17,12 +17,12 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const denied = await requireAdmin(request);
+  const { admin, denied } = await requireAdmin(request);
   if (denied) return denied;
   try {
     const { id } = await params;
     const tournament = await getTournament(id);
-    if (!tournament) {
+    if (tournament?.clubId !== admin.clubId) {
       return NextResponse.json({ error: 'Tournament not found' }, { status: 404 });
     }
 

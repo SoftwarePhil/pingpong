@@ -55,6 +55,7 @@ function makeMatch(id: string, overrides: Partial<Match> = {}): Match {
 
 function makeTournament(overrides: Partial<Tournament> = {}): Tournament {
   return {
+    clubId: 'club-dallas',
     id: 't1',
     name: 'T1',
     startDate: new Date().toISOString(),
@@ -79,6 +80,7 @@ function callPut(body: unknown, request = adminRequest('http://localhost/api/tou
 describe('setRoundRobinFormat tournament action', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockedGetTournament.mockResolvedValue(makeTournament());
   });
 
   it('requires admin access before reading the tournament', async () => {

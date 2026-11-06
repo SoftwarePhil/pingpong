@@ -4,6 +4,7 @@ import { playerRequest } from './authTestUtils';
 
 jest.mock('../data/data', () => ({
   getTournaments: jest.fn(),
+  getClubBySlug: jest.fn().mockResolvedValue({ id: 'club-dallas', name: 'dallas', slug: 'dallas', createdAt: '2026-01-01T00:00:00.000Z' }),
 }));
 
 import { getTournaments } from '../data/data';
@@ -12,6 +13,7 @@ const mockedGetTournaments = getTournaments as jest.MockedFunction<typeof getTou
 
 function makeTournament(): Tournament {
   return {
+    clubId: 'club-dallas',
     id: 't1',
     name: 'Current tournament',
     startDate: new Date().toISOString(),
@@ -39,7 +41,7 @@ describe('player/admin access boundaries', () => {
   it('allows unauthenticated players to read round-robin matches', async () => {
     mockedGetTournaments.mockResolvedValue([makeTournament()]);
 
-    const response = await getTournamentsRoute();
+    const response = await getTournamentsRoute(playerRequest('http://localhost/api/tournaments?club=dallas'));
     const body = await response.json();
 
     expect(response.status).toBe(200);

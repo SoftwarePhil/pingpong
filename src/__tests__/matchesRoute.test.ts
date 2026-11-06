@@ -37,6 +37,7 @@ function makeMatch(overrides: Partial<Match> = {}): Match {
 
 function makeTournament(matches: Match[]): Tournament {
   return {
+    clubId: 'club-dallas',
     id: 't1',
     name: 'T1',
     startDate: '2026-10-01T00:00:00.000Z',

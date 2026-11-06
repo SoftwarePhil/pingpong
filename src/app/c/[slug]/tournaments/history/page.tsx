@@ -2,18 +2,20 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Tournament, Player, Match, Game, MARKER_PLAYER_ID } from '../../../types/pingpong';
+import { Tournament, Player, Match, Game, MARKER_PLAYER_ID } from '../../../../../types/pingpong';
 import Link from 'next/link';
 import { BracketView } from '@/bracket';
-import { PageHeader } from '../../../components/PageHeader';
+import { PageHeader } from '../../../../../components/PageHeader';
+import { useClub } from '../../../../../components/ClubProvider';
 import TournamentPointsPanel from './TournamentPointsPanel';
-import { getTournamentDateKey } from '../../../lib/tournamentPoints';
-import { getGameSides, getMatchSides, getWinningSide, isMatchComplete } from '../../../lib/matchFormat';
-import { getIndividualStandings } from '../../../lib/standings';
+import { getTournamentDateKey } from '../../../../../lib/tournamentPoints';
+import { getGameSides, getMatchSides, getWinningSide, isMatchComplete } from '../../../../../lib/matchFormat';
+import { getIndividualStandings } from '../../../../../lib/standings';
 
 type DetailTab = 'overview' | 'matches';
 
 function TournamentHistoryContent() {
+  const { clubApi, clubHref } = useClub();
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
   const [games, setGames] = useState<Game[]>([]);
@@ -39,19 +41,19 @@ function TournamentHistoryContent() {
   }, [searchParams, tournaments]);
 
   const fetchTournaments = async () => {
-    const res = await fetch('/api/tournaments');
+    const res = await fetch(clubApi('/api/tournaments'));
     const data = await res.json();
     setTournaments(data);
   };
 
   const fetchPlayers = async () => {
-    const res = await fetch('/api/players');
+    const res = await fetch(clubApi('/api/players'));
     const data = await res.json();
     setPlayers(data);
   };
 
   const fetchGames = async () => {
-    const res = await fetch('/api/games');
+    const res = await fetch(clubApi('/api/games'));
     const data = await res.json();
     setGames(data);
   };
@@ -308,7 +310,7 @@ function TournamentHistoryContent() {
           title="Tournament history"
           description={`${visibleTournaments.length} completed tournament${visibleTournaments.length !== 1 ? 's' : ''}`}
           actions={activeTournament && (
-            <Link href="/tournaments/active" className="button button-primary">Go to the live tournament</Link>
+            <Link href={clubHref('/tournaments/active')} className="button button-primary">Go to the live tournament</Link>
           )}
         />
 
@@ -328,7 +330,7 @@ function TournamentHistoryContent() {
           <div className="text-center py-20 bg-surface rounded-xl shadow border border-line">
             <h3 className="text-xl font-semibold text-ink mb-2">No completed tournaments yet</h3>
             <p className="text-muted mb-6">Complete some tournaments to see them here.</p>
-            <Link href={activeTournament ? '/tournaments/active' : '/tournaments/new'} className="bg-table hover:bg-table-hover text-surface px-6 py-3 rounded-lg font-medium transition-colors">
+            <Link href={clubHref(activeTournament ? '/tournaments/active' : '/tournaments/new')} className="bg-table hover:bg-table-hover text-surface px-6 py-3 rounded-lg font-medium transition-colors">
               {activeTournament ? 'Go to the live tournament' : 'Start a tournament'}
             </Link>
           </div>
