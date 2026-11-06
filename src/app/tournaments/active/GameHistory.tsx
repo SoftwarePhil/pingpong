@@ -2,21 +2,25 @@
 
 import { Match } from '../../../types/pingpong';
 import { getGameSides } from '../../../lib/matchFormat';
+import { isFewerByesBracket } from '@/bracket/core';
 
 interface GameHistoryProps {
   matches: Match[];
   getPlayerName: (id: string) => string;
 }
 
-function roundLabel(match: Match): string {
+function roundLabel(match: Match, fewerByes: boolean): string {
   if (match.round !== 'bracket') return `Round robin · R${match.bracketRound ?? 1}`;
   if (match.isThirdPlace) return 'Third place';
+  // With fewer byes everyone plays the stored play-in round, so it's round 1.
+  if (fewerByes) return `Bracket · R${(match.bracketRound ?? 1) + 1}`;
   if (match.bracketRound === 0) return 'Play-in';
   return `Bracket · R${match.bracketRound ?? 1}`;
 }
 
 /** Every game recorded in this tournament, newest first. */
 export function GameHistory({ matches, getPlayerName }: GameHistoryProps) {
+  const fewerByes = isFewerByesBracket(matches);
   const games = matches
     .flatMap(match => match.games.map(game => ({ game, match })))
     .sort((a, b) => b.game.date.localeCompare(a.game.date));
@@ -42,7 +46,7 @@ export function GameHistory({ matches, getPlayerName }: GameHistoryProps) {
                     <span className="mx-1.5 text-muted">vs</span>
                     <span className={!side1Won ? 'font-semibold text-ink' : 'text-ink-soft'}>{side2.map(getPlayerName).join(' + ')}</span>
                   </p>
-                  <p className="text-xs text-muted">{roundLabel(match)} · {new Date(game.date).toLocaleString()}</p>
+                  <p className="text-xs text-muted">{roundLabel(match, fewerByes)} · {new Date(game.date).toLocaleString()}</p>
                 </div>
                 <span className="font-digits text-lg text-ink">{game.score1}–{game.score2}</span>
               </li>

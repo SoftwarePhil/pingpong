@@ -62,6 +62,32 @@ const previewSlot = (player1Id: string, player2Id: string) => ({ id: `client-${p
 beforeEach(() => jest.clearAllMocks());
 
 describe('PUT /api/tournaments startBracket', () => {
+  it('starts a fewer-byes bracket from the preview and remembers the mode', async () => {
+    const players = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6'];
+    mockedGetTournament.mockResolvedValue({ ...makeTournament(), players, activePlayers: players });
+    const slot = (bracketRound: number, player1Id: string, player2Id: string) => ({ bracketRound, player1Id, player2Id });
+
+    const res = await startBracket({
+      initialBracketMatches: [
+        slot(0, 'p1', 'p6'), slot(0, 'p2', 'p5'), slot(0, 'p3', 'p4'),
+        slot(1, 'PLAY_IN_WINNER_1', 'BYE'), slot(1, 'PLAY_IN_WINNER_3', 'PLAY_IN_WINNER_2'),
+      ],
+      bracketConfig: { playInMode: 'fewerByes' },
+    });
+
+    expect(res.status).toBe(200);
+    const saved = mockedSetTournament.mock.calls[0][0];
+    expect(saved.bracketConfig?.playInMode).toBe('fewerByes');
+    const bye = saved.matches!.find(m => m.player2Id === 'BYE')!;
+    expect(bye.winnerId).toBeUndefined();
+  });
+
+  it('rejects an unknown bye mode', async () => {
+    mockedGetTournament.mockResolvedValue(makeTournament());
+    const res = await startBracket({ bracketConfig: { playInMode: 'lots' } });
+    expect(res.status).toBe(400);
+  });
+
   it('commits the previewed opening round, rebuilt with server ids and settings', async () => {
     mockedGetTournament.mockResolvedValue(makeTournament());
 

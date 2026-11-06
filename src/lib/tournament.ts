@@ -14,6 +14,7 @@ import {
   BYE_PLACEHOLDER,
   TBD_PLACEHOLDER,
   PLAY_IN_WINNER_PLACEHOLDER,
+  canUseFewerByes,
   getPlayInWinnerPlaceholder,
   isPlayInWinnerPlaceholder,
 } from '@/bracket/core';
@@ -60,12 +61,17 @@ export function replacePlayInWinnerSlot(
   if (!target) return matches;
 
   const isPlayer1Slot = target.player1Id === placeholder || participantIds.includes(target.player1Id);
-  const replacement = winnerId ?? TBD_PLACEHOLDER;
+  // Going back to the placeholder keeps the slot findable if the result returns.
+  const replacement = winnerId ?? placeholder;
+  if ((isPlayer1Slot ? target.player1Id : target.player2Id) === replacement) return matches;
+
+  const opponentId = isPlayer1Slot ? target.player2Id : target.player1Id;
   return matches.map(m => m.id === target.id
     ? {
         ...m,
         ...(isPlayer1Slot ? { player1Id: replacement } : { player2Id: replacement }),
-        winnerId: undefined,
+        // A bye goes straight to whoever now holds the slot.
+        winnerId: opponentId === BYE_PLACEHOLDER ? winnerId : undefined,
       }
     : m
   );
@@ -94,9 +100,10 @@ function getBestOfForMatchCount(tournament: Tournament, matchCount: number): num
  *   - Stops as soon as a downstream slot already matches the expected value,
  *     or once there is no further round to reconcile.
  *
- * Play-in matches (bracketRound 0) are intentionally excluded — their
- * winner is threaded into R1 via a dedicated one-time placeholder swap
- * elsewhere, not via this positional cascade.
+ * A play-in (bracketRound 0) isn't paired by position: its winner goes into
+ * the R1 slot found by replacePlayInWinnerSlot, and the cascade continues from
+ * that R1 match. Games already played in that match against the wrong player
+ * are cleared.
  *
  * Returns a new matches array (does not mutate) plus the IDs of any games
  * that were invalidated, so callers can also purge them from long-term
@@ -114,7 +121,15 @@ export function cascadeBracketOutcomeChange(
     const match = result.find(m => m.id === currentId);
     if (!match || match.round !== 'bracket') break;
     const roundNum = match.bracketRound ?? 0;
-    if (roundNum <= 0) break; // Play-in propagation is handled separately
+    if (roundNum <= 0) {
+      const threaded = replacePlayInWinnerSlot(result, match.id, match.winnerId);
+      if (threaded === result) break;
+      const target = threaded.find((m, index) => m !== result[index])!;
+      invalidatedGameIds.push(...target.games.map(game => game.id));
+      result = threaded.map(m => m.id === target.id ? { ...m, games: [] } : m);
+      currentId = target.id;
+      continue;
+    }
 
     const roundMatches = result.filter(m =>
       m.round === 'bracket' &&
@@ -354,9 +369,11 @@ type NewMatchFields = Omit<Match, 'id' | 'createdAt' | 'games'>;
  * result: standings, player stats and tournament points all skip bye matches.
  */
 export function createMatch(fields: NewMatchFields, createdAt = new Date().toISOString()): Match {
-  const byeWinner = fields.player1Id === BYE_PLACEHOLDER ? fields.player2Id
+  const byeHolder = fields.player1Id === BYE_PLACEHOLDER ? fields.player2Id
     : fields.player2Id === BYE_PLACEHOLDER ? fields.player1Id
     : undefined;
+  // A bye held by a play-in's winner is decided when that match is.
+  const byeWinner = byeHolder !== undefined && !isPlayInWinnerPlaceholder(byeHolder) ? byeHolder : undefined;
   return {
     id: newId(),
     createdAt,
@@ -706,6 +723,8 @@ export function buildBracketFromPreview(tournament: Tournament, submitted: unkno
   }
 
   const activePlayers = new Set(tournament.activePlayers ?? tournament.players);
+  // Everyone plays the opening round, so only its winners can hold a bye.
+  const fewerByes = playIns.length * 2 === activePlayers.size;
   const expectedPlaceholders = playIns.map((_, index) => getPlayInWinnerPlaceholder(index, playIns.length));
   const seenPlayers = new Set<string>();
   const seenPlaceholders = new Set<string>();
@@ -726,7 +745,7 @@ export function buildBracketFromPreview(tournament: Tournament, submitted: unkno
   for (const { player1Id, player2Id } of firstRound) {
     const ids = [player1Id, player2Id];
     const byeCount = ids.filter(id => id === BYE_PLACEHOLDER).length;
-    if (byeCount === 2 || (byeCount === 1 && ids.some(isPlayInWinnerPlaceholder))) {
+    if (byeCount === 2 || (byeCount === 1 && ids.some(isPlayInWinnerPlaceholder) && !fewerByes)) {
       throw new InvalidBracketError('A bye must be paired with an active player');
     }
     for (const id of ids) {
@@ -749,6 +768,7 @@ export function buildBracketFromPreview(tournament: Tournament, submitted: unkno
   }
 
   const mainBestOf = getBestOfForMatchCount(tournament, firstRound.length);
+  const playInBestOf = fewerByes ? getBestOfForMatchCount(tournament, playIns.length) : 1;
   const createdAt = new Date().toISOString();
   return slots.map(({ player1Id, player2Id, bracketRound }) => {
     const isBye = player1Id === BYE_PLACEHOLDER || player2Id === BYE_PLACEHOLDER;
@@ -758,7 +778,7 @@ export function buildBracketFromPreview(tournament: Tournament, submitted: unkno
       player2Id,
       round: 'bracket',
       bracketRound,
-      bestOf: bracketRound === 0 || isBye ? 1 : mainBestOf,
+      bestOf: isBye ? 1 : bracketRound === 0 ? playInBestOf : mainBestOf,
     }, createdAt);
   });
 }
@@ -782,10 +802,32 @@ export function createBracketMatches(tournament: Tournament, createMainBracket =
   const playInMode = bracketConfig.playInMode || 'auto';
 
   const isOdd = bracketPlayers.length % 2 === 1;
-  const shouldPlayIn = playInMode === 'force' || (playInMode === 'auto' && isOdd);
+  // A field that can't use fewer byes gets the automatic choice instead.
+  const fewerByes = playInMode === 'fewerByes' && canUseFewerByes(bracketPlayers.length);
+  const shouldPlayIn = playInMode === 'force' ||
+    ((playInMode === 'auto' || playInMode === 'fewerByes') && isOdd);
 
   if (bracketPlayers.length >= 2) {
-    if (shouldPlayIn) {
+    if (fewerByes) {
+      // Everyone plays: 1 v 12, 2 v 11 and so on. Each winner takes the seed of
+      // the match's top seed, so the top seeds' matches lead to the byes.
+      const matchCount = bracketPlayers.length / 2;
+      const bestOf = getBestOfForMatchCount(tournament, matchCount);
+      for (let i = 0; i < matchCount; i++) {
+        newMatches.push(createMatch({
+          tournamentId: tournament.id,
+          player1Id: bracketPlayers[i],
+          player2Id: bracketPlayers[bracketPlayers.length - 1 - i],
+          round: 'bracket',
+          bracketRound: 0,
+          bestOf,
+        }));
+      }
+      if (createMainBracket) {
+        const winners = Array.from({ length: matchCount }, (_, i) => getPlayInWinnerPlaceholder(i, matchCount));
+        newMatches.push(...createSeededBracketMatches(winners, tournament));
+      }
+    } else if (shouldPlayIn) {
       // Create enough preliminary matches to reduce the field to the next
       // lower power of two. For example, 10 players need two play-ins so
       // that six direct entrants plus two winners fill an 8-player bracket.

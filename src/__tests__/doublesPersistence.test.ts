@@ -468,6 +468,30 @@ describe('doubles game persistence', () => {
     expect(game).toMatchObject({ score2: 8, clubId: 'club-austin' });
   });
 
+  it('sends a round 1 winner to their bye, and moves it if the score is corrected', async () => {
+    const makeBracketMatch = (id: string, bracketRound: number, player1Id: string, player2Id: string): Match => ({
+      id, tournamentId: 't1', player1Id, player2Id, round: 'bracket', bracketRound, bestOf: 1, games: [],
+    });
+    const opening = [
+      makeBracketMatch('o1', 0, 'p1', 'p6'), makeBracketMatch('o2', 0, 'p2', 'p5'), makeBracketMatch('o3', 0, 'p3', 'p4'),
+    ];
+    const second = [
+      makeBracketMatch('s1', 1, 'PLAY_IN_WINNER_1', 'BYE'),
+      makeBracketMatch('s2', 1, 'PLAY_IN_WINNER_3', 'PLAY_IN_WINNER_2'),
+    ];
+    const bracket = [...opening, ...second];
+    await setTournament({ ...makeTournament(bracket[0], 'singles'), status: 'bracket', matches: bracket });
+    await registerMatchesIndex(bracket);
+    const stored = () => JSON.parse(mockRedisStrings.get('test:pingpong:tournament:t1')!) as Tournament;
+    const bye = () => stored().matches!.find(m => m.id === 's1')!;
+
+    const created = await (await postGame(postRequest('o1', 11, 5))).json();
+    expect(bye()).toMatchObject({ player1Id: 'p1', winnerId: 'p1' });
+
+    await updateRequest(created.id, { score1: 5, score2: 11 });
+    expect(bye()).toMatchObject({ player1Id: 'p6', winnerId: 'p6' });
+  });
+
   it('removes a deleted tournament\'s games from the game history', async () => {
     const match = await seedDoublesMatch();
     await postGame(postRequest(match.id, 11, 5));

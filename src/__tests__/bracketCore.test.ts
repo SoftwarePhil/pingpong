@@ -109,7 +109,7 @@ describe('computeBracketLayout', () => {
       const playIn = match('d', 'e', 0);
       const layout = computeBracketLayout([playIn, match('a', PLAY_IN_WINNER_PLACEHOLDER, 1), match('b', 'c', 1)])!;
 
-      expect(layout.playInMatches).toEqual([playIn]);
+      expect(layout.playInCards.map(card => card.match)).toEqual([playIn]);
       expect(layout.rounds[0].cards[0].x).toBe(columnUnit);
       const targetY = layout.rounds[0].cards[0].y + cardHeight * 0.75; // bottom slot
       expect(layout.connectors[0]).toEqual({
@@ -134,7 +134,7 @@ describe('computeBracketLayout', () => {
         match('a', `${PLAY_IN_WINNER_PLACEHOLDER}_2`, 1),
         match('b', `${PLAY_IN_WINNER_PLACEHOLDER}_1`, 1),
       ])!;
-      expect(layout.playInMatches).toEqual([feedsFirst, feedsSecond]);
+      expect(layout.playInCards.map(card => card.match)).toEqual([feedsFirst, feedsSecond]);
     });
 
     it('labels a four-match first round fed by play-ins as having no byes', () => {

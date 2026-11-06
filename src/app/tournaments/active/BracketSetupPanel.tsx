@@ -1,5 +1,6 @@
 'use client';
 
+import { canUseFewerByes, getFewerByesCount, getStandardByeCount } from '@/bracket/core';
 import { PlayInMode } from '../../../types/pingpong';
 
 interface BracketSetupPanelProps {
@@ -8,6 +9,8 @@ interface BracketSetupPanelProps {
   thirdPlaceEnabled: boolean;
   onChangeThirdPlace: (enabled: boolean) => void;
   onApplyPlayInMode: (mode: PlayInMode) => void;
+  /** Players going into the bracket. */
+  playerCount: number;
   onResetPreview: () => void;
   onStartBracket: () => void;
 }
@@ -16,7 +19,12 @@ const PLAY_IN_OPTIONS: { mode: PlayInMode; label: string }[] = [
   { mode: 'auto', label: 'Auto' },
   { mode: 'force', label: 'Add play-in' },
   { mode: 'none', label: 'Use byes instead' },
+  { mode: 'fewerByes', label: 'Use fewer byes' },
 ];
+
+function plural(count: number, word: string) {
+  return `${count} ${word}${count === 1 ? '' : 's'}`;
+}
 
 /** Admin controls for shaping the bracket preview before it starts. */
 export function BracketSetupPanel({
@@ -25,9 +33,11 @@ export function BracketSetupPanel({
   thirdPlaceEnabled,
   onChangeThirdPlace,
   onApplyPlayInMode,
+  playerCount,
   onResetPreview,
   onStartBracket,
 }: BracketSetupPanelProps) {
+  const fewerByesAvailable = canUseFewerByes(playerCount);
   return (
     <section className="surface-card p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -58,13 +68,14 @@ export function BracketSetupPanel({
 
       <div className="mt-5 flex flex-wrap items-center gap-x-8 gap-y-4 border-t border-line pt-5">
         <div className="flex items-center gap-3">
-          <span className="text-sm font-semibold text-ink">Play-in round</span>
-          <div className="flex gap-1.5" role="group" aria-label="Play-in round">
+          <span className="text-sm font-semibold text-ink">Byes and play-in</span>
+          <div className="flex gap-1.5" role="group" aria-label="Byes and play-in">
             {PLAY_IN_OPTIONS.map(option => (
               <button
                 key={option.mode}
                 type="button"
                 onClick={() => onApplyPlayInMode(option.mode)}
+                disabled={option.mode === 'fewerByes' && !fewerByesAvailable}
                 className="button button-secondary button-sm"
               >
                 {option.label}
@@ -85,6 +96,11 @@ export function BracketSetupPanel({
           Reset preview
         </button>
       </div>
+      <p className="mt-3 text-xs text-muted">
+        {fewerByesAvailable
+          ? `Use fewer byes: everyone plays round 1, then ${plural(getFewerByesCount(playerCount), 'bye')} in round 2 instead of ${plural(getStandardByeCount(playerCount), 'bye')} in round 1. The top seeds must win round 1 to earn them.`
+          : `Fewer byes isn't available for ${plural(playerCount, 'player')}. It needs an even field that can't already pair off evenly in every round.`}
+      </p>
     </section>
   );
 }

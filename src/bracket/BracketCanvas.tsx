@@ -4,7 +4,7 @@ import { BracketMatch, BracketPlayer, DisplayMatch } from './core/types';
 import { BRACKET_GEOMETRY, BracketLayout, getBracketCardZIndex } from './core/layout';
 import { BracketCard } from './BracketCard';
 
-const { cardWidth, cardHeight, rowGap, columnGap } = BRACKET_GEOMETRY;
+const { cardWidth, columnGap } = BRACKET_GEOMETRY;
 
 interface BracketCanvasProps<M extends BracketMatch> {
   layout: BracketLayout<M>;
@@ -17,8 +17,8 @@ interface BracketCanvasProps<M extends BracketMatch> {
 
 /** Draws round labels, connector lines, every match card and the third-place card. */
 export function BracketCanvas<M extends BracketMatch>({ layout, activeMatchId, getPlayerName, getPlayer, getSelectHandler }: BracketCanvasProps<M>) {
-  const { width, height, playInMatches, rounds, connectors, thirdPlace } = layout;
-  const hasPlayIn = playInMatches.length > 0;
+  const { width, height, playInCards, playInLabel, playInWinnerLabel, byeMarkers, rounds, connectors, thirdPlace } = layout;
+  const hasPlayIn = playInCards.length > 0;
 
   const card = (match: DisplayMatch<M>, isFinal = false) => (
     <BracketCard
@@ -27,6 +27,7 @@ export function BracketCanvas<M extends BracketMatch>({ layout, activeMatchId, g
       getPlayer={getPlayer}
       isActive={activeMatchId === match.id}
       isFinal={isFinal}
+      playInWinnerLabel={playInWinnerLabel}
       onSelect={getSelectHandler(match)}
     />
   );
@@ -36,7 +37,7 @@ export function BracketCanvas<M extends BracketMatch>({ layout, activeMatchId, g
       <div className="flex">
         {hasPlayIn && (
           <div style={{ width: cardWidth + columnGap, flexShrink: 0 }}>
-            <p className="text-center text-xs font-bold text-muted uppercase tracking-widest">Play-in (prelim)</p>
+            <p className="text-center text-xs font-bold text-muted uppercase tracking-widest">{playInLabel}</p>
           </div>
         )}
         {rounds.map(round => (
@@ -69,29 +70,30 @@ export function BracketCanvas<M extends BracketMatch>({ layout, activeMatchId, g
             ))}
           </svg>
 
-          {/* Play-ins sit in their own flow column so they never overlap the
-              absolutely positioned main bracket when the counts differ. */}
-          {hasPlayIn && (
+          {playInCards.map(({ match, y }) => (
             <div
+              key={match.id}
               style={{
                 position: 'absolute',
                 left: 0,
-                top: 0,
+                top: y,
                 width: cardWidth,
-                height,
-                zIndex: getBracketCardZIndex('playIn'),
-                display: 'flex',
-                flexDirection: 'column',
-                gap: rowGap,
+                zIndex: getBracketCardZIndex('playIn', activeMatchId === match.id),
               }}
             >
-              {playInMatches.map(match => (
-                <div key={match.id} style={{ width: cardWidth, flex: `0 0 ${cardHeight}px` }}>
-                  {card(match)}
-                </div>
-              ))}
+              {card(match)}
             </div>
-          )}
+          ))}
+
+          {byeMarkers.map(({ key, x, y }) => (
+            <span
+              key={key}
+              style={{ position: 'absolute', left: x, top: y, transform: 'translate(-50%, -50%)' }}
+              className="label-caps rounded-full border border-line bg-surface px-2 py-0.5 text-muted"
+            >
+              Bye
+            </span>
+          ))}
 
           {rounds.flatMap(round => round.cards.map(({ match, x, y }) => (
             <div

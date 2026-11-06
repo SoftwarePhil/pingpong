@@ -20,6 +20,8 @@ interface BracketCardProps<M extends BracketMatch> {
   getPlayer: (id: string) => BracketPlayer | undefined;
   isActive: boolean;
   isFinal?: boolean;
+  /** What an empty slot fed by a play-in says. */
+  playInWinnerLabel?: string;
   /** Called when the card is clicked; omit to make the card inert. */
   onSelect?: () => void;
 }
@@ -29,14 +31,15 @@ function initials(player: BracketPlayer | undefined, fallbackName: string): stri
   return (fromProfile || (player?.name ?? fallbackName).charAt(0)).toUpperCase();
 }
 
-function PlayerLabel({ playerId, muted, getPlayerName, getPlayer }: {
+function PlayerLabel({ playerId, muted, playInWinnerLabel, getPlayerName, getPlayer }: {
   playerId: string;
   muted: boolean;
+  playInWinnerLabel: string;
   getPlayerName: (id: string) => string;
   getPlayer: (id: string) => BracketPlayer | undefined;
 }) {
   if (playerId === BYE_PLACEHOLDER) return <>BYE</>;
-  if (isPlayInWinnerPlaceholder(playerId)) return <em className="text-muted not-italic text-xs">Play-in winner</em>;
+  if (isPlayInWinnerPlaceholder(playerId)) return <em className="text-muted not-italic text-xs">{playInWinnerLabel}</em>;
   if (playerId === TBD_PLACEHOLDER) return <em className="text-muted not-italic text-xs">TBD</em>;
 
   const player = getPlayer(playerId);
@@ -61,7 +64,7 @@ function PlayerLabel({ playerId, muted, getPlayerName, getPlayer }: {
 }
 
 /** Compact two-row match card: one row per side, with game wins on the right. */
-export function BracketCard<M extends BracketMatch>({ match, getPlayerName, getPlayer, isActive, isFinal = false, onSelect }: BracketCardProps<M>) {
+export function BracketCard<M extends BracketMatch>({ match, getPlayerName, getPlayer, isActive, isFinal = false, playInWinnerLabel = 'Play-in winner', onSelect }: BracketCardProps<M>) {
   const placeholder = isPlaceholderMatch(match);
   const complete = isMatchComplete(match);
   const winningSide = getWinningSide(match);
@@ -89,7 +92,7 @@ export function BracketCard<M extends BracketMatch>({ match, getPlayerName, getP
     return (
       <div className={`flex-1 flex items-center pl-3 pr-4 ${side === 1 ? 'border-b border-line' : ''} ${won ? 'bg-win-soft' : ''}`}>
         <div className={`text-sm font-semibold flex-1 min-w-0 ${textClass}`}>
-          <PlayerLabel playerId={playerId} muted={complete && !won} getPlayerName={getPlayerName} getPlayer={getPlayer} />
+          <PlayerLabel playerId={playerId} muted={complete && !won} playInWinnerLabel={playInWinnerLabel} getPlayerName={getPlayerName} getPlayer={getPlayer} />
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
           {side === 2 && isActive && !complete && <span className="w-1.5 h-1.5 rounded-full bg-ball animate-pulse" />}

@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Game } from '../../../types/pingpong';
-import { getAllGames, addGameToMatch, setTournament, getMatch, getTournament } from '../../../data/data';
+import { getAllGames, addGameToMatch, getMatch, getTournament } from '../../../data/data';
 import { validateScore } from '../../../lib/scoring';
 import { newId } from '../../../lib/random';
-import { replacePlayInWinnerSlot } from '../../../lib/tournament';
 import { requireAdmin } from '../../../lib/auth';
 import { getMatchSides, isDoublesMatch } from '../../../lib/matchFormat';
 
@@ -70,22 +69,6 @@ export async function POST(request: NextRequest) {
     const result = await addGameToMatch(newGame);
     if (!result) {
       return NextResponse.json({ error: 'Match not found' }, { status: 404 });
-    }
-
-    // Handle play-in match completion (bracketRound === 0 is the play-in round).
-    // Replace only the R1 slot fed by this specific preliminary match. This
-    // also supports brackets with multiple indexed play-in placeholders.
-    const { match, tournament } = result;
-    if (match.winnerId && match.bracketRound === 0) {
-      const updatedMatches = replacePlayInWinnerSlot(
-        tournament.matches ?? [],
-        match.id,
-        match.winnerId,
-      );
-      if (updatedMatches !== tournament.matches) {
-        tournament.matches = updatedMatches;
-        await setTournament(tournament);
-      }
     }
 
     return NextResponse.json(newGame, { status: 201 });

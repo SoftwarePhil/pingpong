@@ -6,7 +6,7 @@ import { requireAdmin } from '../../../lib/auth';
 import { newId, shuffle } from '../../../lib/random';
 import { isMatchComplete } from '../../../lib/matchFormat';
 
-const PLAY_IN_MODES: PlayInMode[] = ['auto', 'force', 'none'];
+const PLAY_IN_MODES: PlayInMode[] = ['auto', 'force', 'none', 'fewerByes'];
 
 /** Accepts the bracket settings the preview can choose, with the right types. */
 function parseBracketConfig(value: unknown): { config: BracketConfig } | { error: string } {
