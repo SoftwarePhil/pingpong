@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import RoundRobinView from './RoundRobinView';
 import { BracketView } from '@/bracket';
+import { isFewerByesBracket } from '@/bracket/core';
 import { validateScore } from '../../../lib/scoring';
 import Leaderboard from './Leaderboard';
 import { createBracketMatches, cascadeBracketPlayerSwap, getCompletedSemifinalMatches, hasBracketStarted, isPlayInWinnerPlaceholder } from '../../../lib/tournament';
@@ -290,7 +291,7 @@ export default function ActiveTournamentsPage() {
       // Also send a derived config so the stored tournament remembers the high-level choice (play-in or not)
       const hasPlayIn = previewMatches.some((m: Match) => (m.bracketRound ?? 0) === 0);
       body.bracketConfig = {
-        playInMode: hasPlayIn ? 'force' : 'none',
+        playInMode: isFewerByesBracket(previewMatches) ? 'fewerByes' : hasPlayIn ? 'force' : 'none',
         thirdPlaceMatch,
       };
     } else if (thirdPlacePreviewById[tournament.id] !== undefined) {
@@ -735,6 +736,7 @@ export default function ActiveTournamentsPage() {
                       thirdPlaceEnabled={thirdPlaceEnabled}
                       onChangeThirdPlace={enabled => setThirdPlacePreviewById(prev => ({ ...prev, [t.id]: enabled }))}
                       onApplyPlayInMode={mode => applyPlayInModeToPreview(t, mode)}
+                      playerCount={(t.activePlayers ?? t.players).length}
                       onResetPreview={() => resetBracketPreview(t.id)}
                       onStartBracket={() => startBracket(t)}
                     />

@@ -91,13 +91,33 @@ describe('cascadeBracketOutcomeChange', () => {
     expect(result).toEqual(matches);
   });
 
-  it('ignores play-in matches (bracketRound 0)', () => {
+  it('carries a play-in winner into the slot it feeds', () => {
     const matches = [
       makeMatch('playin', { bracketRound: 0, player1Id: 'p1', player2Id: 'p2', winnerId: 'p2' }),
       makeMatch('r1a', { bracketRound: 1, player1Id: 'PLAY_IN_WINNER', player2Id: 'p3' }),
     ];
     const { matches: result } = cascadeBracketOutcomeChange(matches, 'playin');
-    expect(result).toEqual(matches);
+    expect(result[1].player1Id).toBe('p2');
+  });
+
+  it('clears games played against the old winner when a play-in result changes (B2)', () => {
+    const game = makeGame(11, 5);
+    const matches = [
+      makeMatch('playin', { bracketRound: 0, player1Id: 'p1', player2Id: 'p2', winnerId: 'p2' }),
+      makeMatch('r1a', { bracketRound: 1, player1Id: 'p1', player2Id: 'p3', winnerId: 'p1', games: [game] }),
+    ];
+    const { matches: result, invalidatedGameIds } = cascadeBracketOutcomeChange(matches, 'playin');
+    expect(result[1]).toMatchObject({ player1Id: 'p2', games: [], winnerId: undefined });
+    expect(invalidatedGameIds).toEqual([game.id]);
+  });
+
+  it('leaves round 1 alone when the play-in winner has not changed', () => {
+    const game = makeGame(11, 5);
+    const matches = [
+      makeMatch('playin', { bracketRound: 0, player1Id: 'p1', player2Id: 'p2', winnerId: 'p2' }),
+      makeMatch('r1a', { bracketRound: 1, player1Id: 'p2', player2Id: 'p3', winnerId: 'p2', games: [game] }),
+    ];
+    expect(cascadeBracketOutcomeChange(matches, 'playin').matches).toEqual(matches);
   });
 
   it('updates the third-place slot when a semifinal winner changes', () => {

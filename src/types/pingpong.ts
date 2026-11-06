@@ -99,7 +99,11 @@ export interface Match {
 /** Synthetic opponent used only for round-robin marker games. */
 export const MARKER_PLAYER_ID = 'MARKER';
 
-export type PlayInMode = 'auto' | 'force' | 'none';
+/**
+ * How a bracket handles a field that isn't a power of two. 'fewerByes' has
+ * everyone play the opening round, then gives byes in the round after it.
+ */
+export type PlayInMode = 'auto' | 'force' | 'none' | 'fewerByes';
 
 export interface BracketConfig {
   playInMode?: PlayInMode;

@@ -2,6 +2,8 @@ import { BracketMatch, DisplayMatch } from './types';
 import {
   BYE_PLACEHOLDER,
   getPlayInWinnerPlaceholder,
+  isByeMatch,
+  isFewerByesBracket,
   isMatchComplete,
   makePlaceholderMatch,
 } from './model';
@@ -48,7 +50,13 @@ export interface BracketLayout<M extends BracketMatch> {
   width: number;
   height: number;
   /** Play-in matches in display order, top to bottom, aligned with the slots they feed. */
-  playInMatches: M[];
+  playInCards: { match: M; y: number }[];
+  /** Header of the play-in column. */
+  playInLabel: string;
+  /** What an empty slot fed by a play-in says. */
+  playInWinnerLabel: string;
+  /** Where to mark a player skipping a round, on the line that passes the empty column. */
+  byeMarkers: { key: string; x: number; y: number }[];
   rounds: BracketRoundColumn<M>[];
   connectors: BracketConnector[];
   /** The third-place card, placed under the final, or null when it is not shown. */
@@ -130,7 +138,6 @@ export function computeBracketLayout<M extends BracketMatch>(
 ): BracketLayout<M> | null {
   const playIns = bracketMatches.filter(m => (m.bracketRound ?? 0) === 0);
   const mainMatches = bracketMatches.filter(m => (m.bracketRound ?? 0) > 0 && !m.isThirdPlace);
-  const thirdPlaceMatch = bracketMatches.find(m => m.isThirdPlace);
   const hasPlayIn = playIns.length > 0;
 
   if (mainMatches.length === 0 && !hasPlayIn) return null;
@@ -160,6 +167,7 @@ export function computeBracketLayout<M extends BracketMatch>(
   });
   const firstRoundCards = roundMatches[0];
   const finalRoundIndex = roundCount - 1;
+  const fewerByes = isFewerByesBracket(bracketMatches);
 
   // ── Play-in column ──────────────────────────────────────────────────────
   // Each play-in feeds one specific R1 slot; encode it as matchIndex * 2 + slot.
@@ -175,6 +183,13 @@ export function computeBracketLayout<M extends BracketMatch>(
     return targetIndex * 2 + (isPlayInTopSlot(firstRoundCards[targetIndex], playIn, playInPlaceholders[index]) ? 0 : 1);
   });
   const playInOrder = orderPlayInIndexesByTarget(playIns.length, playInTargets);
+
+  if (fewerByes) {
+    return layoutFewerByes({
+      playIns, playInOrder, playInTargets, roundMatches, firstRound, finalRoundIndex,
+      ...finishLayout(bracketMatches, mainMatches, firstRound, finalRoundIndex, showThirdPlace),
+    });
+  }
 
   // ── Connectors ──────────────────────────────────────────────────────────
   const connectors: BracketConnector[] = [];
@@ -238,7 +253,33 @@ export function computeBracketLayout<M extends BracketMatch>(
     };
   });
 
-  // ── Third place and champion ────────────────────────────────────────────
+  const finish = finishLayout(bracketMatches, mainMatches, firstRound, finalRoundIndex, showThirdPlace);
+
+  return {
+    width: (hasPlayIn ? columnUnit : 0) + roundCount * columnUnit - columnGap + 2,
+    // Play-ins use their own column, which can be taller than the main bracket.
+    height: Math.max(r1Count, playIns.length) * rowUnit,
+    playInCards: playInOrder.map((index, row) => ({ match: playIns[index], y: row * rowUnit })),
+    playInLabel: 'Play-in (prelim)',
+    playInWinnerLabel: 'Play-in winner',
+    byeMarkers: [],
+    rounds,
+    connectors,
+    ...finish,
+  };
+}
+
+/** The third-place slot and champion, which every bracket shape works out the same way. */
+function finishLayout<M extends BracketMatch>(
+  bracketMatches: M[],
+  mainMatches: M[],
+  firstRound: number,
+  finalRoundIndex: number,
+  showThirdPlace: boolean,
+): Pick<BracketLayout<M>, 'thirdPlace' | 'championMatch'> {
+  const thirdPlaceMatch = bracketMatches.find(m => m.isThirdPlace);
+  const hasPlayIn = bracketMatches.some(m => (m.bracketRound ?? 0) === 0 && !m.isThirdPlace);
+  const actualFirstRoundMatches = mainMatches.filter(m => (m.bracketRound ?? 1) === firstRound);
   const bracketPlayerIds = new Set(
     mainMatches.flatMap(m => [m.player1Id, m.player2Id]).filter(id => id !== BYE_PLACEHOLDER)
   );
@@ -253,12 +294,6 @@ export function computeBracketLayout<M extends BracketMatch>(
   const finalRoundActual = mainMatches.filter(m => m.bracketRound === finalRoundNumber);
 
   return {
-    width: (hasPlayIn ? columnUnit : 0) + roundCount * columnUnit - columnGap + 2,
-    // Play-ins use their own column, which can be taller than the main bracket.
-    height: Math.max(r1Count, playIns.length) * rowUnit,
-    playInMatches: playInOrder.map(index => playIns[index]),
-    rounds,
-    connectors,
     thirdPlace: showThirdPlaceSlot
       ? {
           match: thirdPlaceMatch ?? makePlaceholderMatch(finalRoundNumber, 0, 'third-place'),
@@ -268,5 +303,106 @@ export function computeBracketLayout<M extends BracketMatch>(
     championMatch: finalRoundActual.length === 1 && isMatchComplete(finalRoundActual[0])
       ? finalRoundActual[0]
       : null,
+  };
+}
+
+interface FewerByesInput<M extends BracketMatch> extends Pick<BracketLayout<M>, 'thirdPlace' | 'championMatch'> {
+  playIns: M[];
+  playInOrder: number[];
+  playInTargets: number[];
+  roundMatches: DisplayMatch<M>[][];
+  firstRound: number;
+  finalRoundIndex: number;
+}
+
+/**
+ * Draws a "fewer byes" bracket as a tree grown from the opening round: each
+ * match sits midway between the two it follows. Bye matches aren't drawn. The
+ * winner's line runs straight past the empty column into the next round.
+ */
+function layoutFewerByes<M extends BracketMatch>({
+  playIns, playInOrder, playInTargets, roundMatches, firstRound, finalRoundIndex, thirdPlace, championMatch,
+}: FewerByesInput<M>): BracketLayout<M> {
+  const openingCenter = (row: number) => row * rowUnit + cardHeight / 2;
+  const columnX = (roundIndex: number) => (roundIndex + 1) * columnUnit;
+
+  const openingRows = roundMatches[0].map((_, matchIndex) =>
+    playInOrder.flatMap((index, row) => Math.floor(playInTargets[index] / 2) === matchIndex ? [row] : [])
+  );
+  // Vertical center of every match, round by round.
+  const centers: number[][] = [openingRows.map(rows =>
+    rows.length > 0 ? rows.reduce((sum, row) => sum + openingCenter(row), 0) / rows.length : 0
+  )];
+  for (let roundIndex = 1; roundIndex <= finalRoundIndex; roundIndex++) {
+    centers.push(roundMatches[roundIndex].map((_, matchIndex) => {
+      const earlier = centers[roundIndex - 1];
+      return (earlier[matchIndex * 2] + earlier[matchIndex * 2 + 1]) / 2;
+    }));
+  }
+
+  const isBye = (matchIndex: number) => isByeMatch(roundMatches[0][matchIndex]);
+  const connectors: BracketConnector[] = [];
+  const byeMarkers: BracketLayout<M>['byeMarkers'] = [];
+
+  // Opening-round winners into the second round.
+  openingRows.forEach((rows, matchIndex) => {
+    if (isBye(matchIndex) || rows.length === 0) return;
+    const midX = cardWidth + columnGap / 2;
+    const center = centers[0][matchIndex];
+    connectors.push({
+      key: `opening-${matchIndex}`,
+      d: [
+        ...rows.map(row => `M ${cardWidth} ${openingCenter(row)} H ${midX}`),
+        `M ${midX} ${openingCenter(rows[0])} V ${openingCenter(rows[rows.length - 1])}`,
+        `M ${midX} ${center} H ${columnX(0)}`,
+      ].join(' '),
+    });
+  });
+
+  for (let roundIndex = 0; roundIndex < finalRoundIndex; roundIndex++) {
+    const midX = columnX(roundIndex) + cardWidth + columnGap / 2;
+    const pairCount = Math.floor(roundMatches[roundIndex].length / 2);
+    for (let pair = 0; pair < pairCount; pair++) {
+      const ends = [pair * 2, pair * 2 + 1].map(matchIndex => {
+        const skipsRound = roundIndex === 0 && isBye(matchIndex);
+        const y = centers[roundIndex][matchIndex];
+        if (skipsRound) byeMarkers.push({ key: `bye-${matchIndex}`, x: columnX(0) + cardWidth / 2, y });
+        return { x: skipsRound ? cardWidth : columnX(roundIndex) + cardWidth, y };
+      });
+      connectors.push({
+        key: `r${roundIndex}-${pair}`,
+        d: [
+          ...ends.map(end => `M ${end.x} ${end.y} H ${midX}`),
+          `M ${midX} ${ends[0].y} V ${ends[1].y}`,
+          `M ${midX} ${centers[roundIndex + 1][pair]} H ${columnX(roundIndex + 1)}`,
+        ].join(' '),
+      });
+    }
+  }
+
+  const rounds = roundMatches.map((matches, roundIndex): BracketRoundColumn<M> => ({
+    roundNumber: firstRound + roundIndex,
+    // The opening round is round 1, so stored round numbers read one higher.
+    label: roundIndex === 0 && matches.length > 1 ? 'Round 2' : getRoundLabel(firstRound + roundIndex + 1, matches.length),
+    isChampionship: matches.length === 1,
+    isFinalRound: roundIndex === finalRoundIndex,
+    cards: matches.flatMap((match, matchIndex) =>
+      roundIndex === 0 && isBye(matchIndex)
+        ? []
+        : [{ match, x: columnX(roundIndex), y: centers[roundIndex][matchIndex] - cardHeight / 2 }]
+    ),
+  }));
+
+  return {
+    width: columnUnit + roundMatches.length * columnUnit - columnGap + 2,
+    height: playIns.length * rowUnit,
+    playInCards: playInOrder.map((index, row) => ({ match: playIns[index], y: row * rowUnit })),
+    playInLabel: 'Round 1',
+    playInWinnerLabel: 'Round 1 winner',
+    byeMarkers,
+    rounds,
+    connectors,
+    thirdPlace,
+    championMatch,
   };
 }
