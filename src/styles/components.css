@@ -607,3 +607,81 @@
     width: 100%;
   }
 }
+
+/* Splash page at the site root. The hero stays dark in both themes, like the scoreboard. */
+.splash { background: var(--canvas); min-height: 100vh; }
+
+.splash__hero {
+  position: relative;
+  overflow: hidden;
+  min-height: min(78vh, 680px);
+  background: var(--board);
+  color: var(--board-ink);
+}
+
+.splash__art {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 62%;
+  height: 100%;
+}
+
+.splash__intro {
+  position: relative;
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: clamp(3rem, 10vh, 6rem) 1.5rem;
+}
+
+.splash__eyebrow { color: var(--ball); }
+
+.splash__title {
+  max-width: 11ch;
+  margin-top: 0.75rem;
+  font-size: clamp(2.75rem, 7vw, 5rem);
+  line-height: 1.02;
+}
+
+.splash__lead {
+  max-width: 28rem;
+  margin: 1.25rem 0 2rem;
+  font-size: 1.125rem;
+  color: var(--board-muted);
+}
+
+.splash__features,
+.splash__club {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 3.5rem 1.5rem;
+}
+
+.splash__features {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2rem;
+}
+
+.splash__club {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5rem;
+  border-top: 1px solid var(--line);
+}
+
+.splash__sign-in { width: min(100%, 20rem); }
+
+@media (max-width: 860px) {
+  .splash__features { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 640px) {
+  .splash__hero { min-height: 0; padding-bottom: 15rem; }
+  .splash__art { width: 100%; height: 15rem; }
+  .splash__intro { padding: 2.5rem 1rem 1.5rem; }
+  .splash__features { grid-template-columns: 1fr; padding: 2.5rem 1rem; }
+  .splash__club { padding: 2.5rem 1rem; }
+}

@@ -91,6 +91,7 @@ describe('Hybrid data layer — environment isolation', () => {
 
     const { setTournament } = await import('../data/data');
     await setTournament({
+      clubId: 'club-dallas',
       id: 't1',
       name: 'Finished Cup',
       startDate: new Date().toISOString(),
@@ -122,6 +123,7 @@ describe('Hybrid data layer — environment isolation', () => {
 
     const { setTournament } = await import('../data/data');
     await setTournament({
+      clubId: 'club-dallas',
       id: 't2',
       name: 'Spring Open',
       startDate: new Date().toISOString(),
@@ -160,7 +162,7 @@ describe('Hybrid data layer — environment isolation', () => {
     (process.env as Record<string, string>).NODE_ENV = 'test';
 
     const { getPlayers } = await import('../data/data');
-    await getPlayers();
+    await getPlayers('club-1');
 
     const dbArg: string = mockMongoClient.db.mock.calls[0][0];
     expect(dbArg).toBe('pingpong_test');
@@ -170,7 +172,7 @@ describe('Hybrid data layer — environment isolation', () => {
     (process.env as Record<string, string>).NODE_ENV = 'test';
 
     const { getAllGames } = await import('../data/data');
-    await getAllGames();
+    await getAllGames('club-1');
 
     const dbArg: string = mockMongoClient.db.mock.calls[0][0];
     expect(dbArg).toBe('pingpong_test');

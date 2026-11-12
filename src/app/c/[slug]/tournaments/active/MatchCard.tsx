@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { Match, Game, MARKER_PLAYER_ID } from '../../../types/pingpong';
-import { getMatchSides, getWinningSide, isByeMatch, isDoublesMatch, isMatchComplete } from '../../../lib/matchFormat';
-import { validateScore } from '../../../lib/scoring';
+import { Match, Game, MARKER_PLAYER_ID } from '../../../../../types/pingpong';
+import { getMatchSides, getWinningSide, isByeMatch, isDoublesMatch, isMatchComplete } from '../../../../../lib/matchFormat';
+import { validateScore } from '../../../../../lib/scoring';
 
 interface MatchCardProps {
   match: Match;

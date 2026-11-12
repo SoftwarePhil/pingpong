@@ -1,18 +1,18 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Tournament, Player, Match, Game, BracketConfig, MARKER_PLAYER_ID, PlayInMode } from '../../../types/pingpong';
+import { Tournament, Player, Match, Game, BracketConfig, MARKER_PLAYER_ID, PlayInMode } from '../../../../../types/pingpong';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import RoundRobinView from './RoundRobinView';
 import { BracketView } from '@/bracket';
 import { isFewerByesBracket } from '@/bracket/core';
-import { validateScore } from '../../../lib/scoring';
+import { validateScore } from '../../../../../lib/scoring';
 import Leaderboard from './Leaderboard';
-import { createBracketMatches, cascadeBracketPlayerSwap, getCompletedSemifinalMatches, hasBracketStarted, isPlayInWinnerPlaceholder } from '../../../lib/tournament';
-import { useAuth } from '../../../components/AuthProvider';
-import { useConfirm } from '../../../components/ConfirmDialog';
-import { getRoundRobinFormat, isMatchComplete, isValidDoublesRoster } from '../../../lib/matchFormat';
+import { createBracketMatches, cascadeBracketPlayerSwap, getCompletedSemifinalMatches, hasBracketStarted, isPlayInWinnerPlaceholder } from '../../../../../lib/tournament';
+import { useClub } from '../../../../../components/ClubProvider';
+import { useConfirm } from '../../../../../components/ConfirmDialog';
+import { getRoundRobinFormat, isMatchComplete, isValidDoublesRoster } from '../../../../../lib/matchFormat';
 import { TournamentHeader, TournamentMenuAction } from './TournamentHeader';
 import { EditTournamentPanel, PairingStrategy } from './EditTournamentPanel';
 import { BracketSetupPanel } from './BracketSetupPanel';
@@ -21,7 +21,7 @@ import { PastRoundsSummary } from './PastRoundsSummary';
 
 export default function ActiveTournamentsPage() {
   const router = useRouter();
-  const { isAdmin } = useAuth();
+  const { isAdmin, clubApi, clubHref } = useClub();
   const confirm = useConfirm();
   const [tournaments, setTournaments]           = useState<Tournament[]>([]);
   const [players, setPlayers]                   = useState<Player[]>([]);
@@ -44,14 +44,14 @@ export default function ActiveTournamentsPage() {
 
 
   const fetchTournaments = async () => {
-    const res  = await fetch('/api/tournaments');
+    const res  = await fetch(clubApi('/api/tournaments'));
     const data: Tournament[] = await res.json();
     setTournaments(data);
     return data;
   };
 
-  const fetchPlayers = async () => { const res = await fetch('/api/players'); setPlayers(await res.json()); };
-  const fetchGames   = async () => { const res = await fetch('/api/games');   setGames(await res.json()); };
+  const fetchPlayers = async () => { const res = await fetch(clubApi('/api/players')); setPlayers(await res.json()); };
+  const fetchGames   = async () => { const res = await fetch(clubApi('/api/games'));   setGames(await res.json()); };
 
   useEffect(() => {
     fetchTournaments();
@@ -152,7 +152,7 @@ export default function ActiveTournamentsPage() {
       const afterAdvance = await fetchTournaments();
       const updated = afterAdvance.find(t => t.id === tournamentId);
       if (updated?.status === 'completed') {
-        router.push(`/tournaments/history?id=${tournamentId}`);
+        router.push(clubHref(`/tournaments/history?id=${tournamentId}`));
       }
     }
   };
@@ -803,7 +803,7 @@ export default function ActiveTournamentsPage() {
               </p>
             </div>
             {isAdmin && (
-              <Link href="/tournaments/new" className="button button-accent px-5 py-3 text-base">
+              <Link href={clubHref('/tournaments/new')} className="button button-accent px-5 py-3 text-base">
                 Start a tournament →
               </Link>
             )}

@@ -10,7 +10,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const denied = await requireAdmin(request);
+  const { admin, denied } = await requireAdmin(request);
   if (denied) return denied;
 
   try {
@@ -20,7 +20,7 @@ export async function PATCH(
       return NextResponse.json({ error: parsed.error }, { status: 400 });
     }
 
-    const players = await getPlayers();
+    const players = await getPlayers(admin.clubId);
     const player = players.find(candidate => candidate.id === id);
     if (!player) {
       return NextResponse.json({ error: 'Player not found' }, { status: 404 });

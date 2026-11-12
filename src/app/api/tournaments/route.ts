@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Tournament, Match, BracketConfig, PlayInMode, RoundRobinFormat } from '../../../types/pingpong';
-import { getTournaments, setTournament, getTournament, deleteTournament, registerMatchesIndex, unregisterMatchesIndex, syncTournamentPlayers, setRoundRobinFormatAtomically, TournamentConflictError, TournamentNotFoundError, getDefaultClub } from '../../../data/data';
+import { getTournaments, setTournament, getTournament, deleteTournament, registerMatchesIndex, unregisterMatchesIndex, syncTournamentPlayers, setRoundRobinFormatAtomically, TournamentConflictError, TournamentNotFoundError, getPlayers } from '../../../data/data';
 import { createRoundRobinPairings, advanceBracketRound, createBracketMatches, advanceRoundRobinRound, resyncRoundRobinMatches, createThirdPlaceMatch, buildBracketFromPreview, rankPlayersForBracket, InvalidBracketError } from '../../../lib/tournament';
 import { requireAdmin } from '../../../lib/auth';
+import { clubFromRequest } from '../../../lib/clubRequest';
 import { newId, shuffle } from '../../../lib/random';
 import { isMatchComplete } from '../../../lib/matchFormat';
 
@@ -29,9 +30,11 @@ function parseBracketConfig(value: unknown): { config: BracketConfig } | { error
   };
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const tournaments = await getTournaments();
+    const club = await clubFromRequest(request);
+    if (!club) return NextResponse.json({ error: 'Club not found' }, { status: 404 });
+    const tournaments = await getTournaments(club.id);
     return NextResponse.json(tournaments);
   } catch (error) {
     console.error(error);
@@ -40,7 +43,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const denied = await requireAdmin(request);
+  const { admin, denied } = await requireAdmin(request);
   if (denied) return denied;
   try {
     const body = await request.json();
@@ -50,20 +53,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid data' }, { status: 400 });
     }
 
+    const clubPlayerIds = new Set((await getPlayers(admin.clubId)).map(p => p.id));
+    if (uniquePlayers.some(id => !clubPlayerIds.has(id))) {
+      return NextResponse.json({ error: 'Every player must belong to your club' }, { status: 400 });
+    }
+
     // Prevent creating a tournament if one is already active
-    const existingTournaments = await getTournaments();
-    // One active tournament per club. Tournaments from before the clubs
-    // migration have no clubId and belong to the default club.
-    const club = await getDefaultClub();
-    const activeTournament = existingTournaments.find(t =>
-      t.status !== 'completed' && (t.clubId ?? club.id) === club.id
-    );
+    // One active tournament per club.
+    const existingTournaments = await getTournaments(admin.clubId);
+    const activeTournament = existingTournaments.find(t => t.status !== 'completed');
     if (activeTournament) {
       return NextResponse.json({ error: `There is already an active tournament: "${activeTournament.name}". Complete or end it before creating a new one.` }, { status: 409 });
     }
     const newTournament: Tournament = {
       id: newId(),
-      clubId: club.id,
+      clubId: admin.clubId,
       name,
       startDate: new Date().toISOString(),
       status: 'roundRobin',
@@ -96,7 +100,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
-  const denied = await requireAdmin(request);
+  const { admin, denied } = await requireAdmin(request);
   if (denied) return denied;
   try {
     const body = await request.json();
@@ -106,6 +110,12 @@ export async function PUT(request: NextRequest) {
       action?: 'advanceRound' | 'addRoundRobinRound' | 'startBracket' | 'addThirdPlaceMatch' | 'setRoundRobinFormat';
       rrPairingStrategy?: 'random' | 'top-vs-top' | 'swiss';
     } = body;
+
+    const tournament = await getTournament(id);
+    if (tournament?.clubId !== admin.clubId) {
+      return NextResponse.json({ error: 'Tournament not found' }, { status: 404 });
+    }
+
     // Note: adding/removing players is handled by its own atomic endpoint —
     // PATCH /api/tournaments/[id]/players — not by this PUT handler. See
     // that route for the diff-based { add, remove } roster operation, which
@@ -137,12 +147,6 @@ export async function PUT(request: NextRequest) {
         }
         throw error;
       }
-    }
-
-    const tournament = await getTournament(id);
-
-    if (!tournament) {
-      return NextResponse.json({ error: 'Tournament not found' }, { status: 404 });
     }
 
     const bracketMatches = (tournament.matches ?? []).filter(m => m.round === 'bracket');
@@ -377,7 +381,7 @@ if (action === 'advanceRound') {
 }
 
 export async function DELETE(request: NextRequest) {
-  const denied = await requireAdmin(request);
+  const { admin, denied } = await requireAdmin(request);
   if (denied) return denied;
   try {
     const { searchParams } = new URL(request.url);
@@ -387,7 +391,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     const tournament = await getTournament(id);
-    if (!tournament) {
+    if (tournament?.clubId !== admin.clubId) {
       return NextResponse.json({ error: 'Tournament not found' }, { status: 404 });
     }
 

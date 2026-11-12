@@ -1,14 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { Player, Tournament } from '../../../types/pingpong';
+import { Player, Tournament } from '../../../../../types/pingpong';
 import {
   calculateTournamentPoints,
   DEFAULT_TOURNAMENT_POINT_VALUES,
   getTournamentDateKey,
   TournamentPointsResult,
   validateTournamentPointValues,
-} from '../../../lib/tournamentPoints';
+} from '../../../../../lib/tournamentPoints';
 
 interface TournamentPointsPanelProps {
   tournaments: Tournament[];

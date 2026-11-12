@@ -86,25 +86,25 @@ The application uses **two stores in parallel**, each optimised for its access p
 
 - **Tournaments** live entirely in Redis. Every bracket mutation — recording a game, advancing a round — is a single atomic `SET` on the tournament JSON document.
 - **Players** are stored in MongoDB. Their `tournamentIds` list is updated whenever they join a new tournament, but doesn't need Redis speed.
-- **Games** are written to both: embedded inside the tournament document in Redis (for live match state) and as individual documents in MongoDB's `games` collection (for permanent history). `getAllGames()` and the stats API read from MongoDB.
+- **Games** are written to both: embedded inside the tournament document in Redis (for live match state) and as individual documents in MongoDB's `games` collection (for permanent history). `getAllGames(clubId)` reads from MongoDB.
 - **Match index** lives in Redis as a hash (`matchId → tournamentId`), rebuilt automatically on startup, giving O(1) match lookups without scanning all tournaments.
 
 See [docs/hybrid-storage-architecture.md](docs/hybrid-storage-architecture.md) for full schema details.
 
-## Clubs migration
+## Clubs
 
-Every player, tournament and game belongs to a club. Records created before clubs existed are moved into the first club, `dallas`, by a one-off script. It is a dry run unless you pass `--apply`, and running it again is safe.
+Every player, tournament and game belongs to a club, and each club's site lives at `/c/<slug>`, for example `/c/dallas/players`. Anyone can read a club's pages. Signed-in admins can only change their own club, including its name and about text on the club page. Admins viewing another club see it read-only.
 
-1. Deploy the code first. It treats records without a `clubId` as part of `dallas`, so the site works before and after the migration.
-2. Export a backup: **Settings → Export all data**.
-3. Dry run, then apply, naming the environment explicitly:
+The site root sends admins to their club, and anyone else back to the last club they opened, which is remembered in a cookie. Everyone else sees the splash page. Nobody is sent to the demo club (slug `demo`) unless they follow its link, and opening it isn't remembered. Create it after deploying this code, never before: older versions don't filter by club, so they would show the demo's players and tournaments on the live site. Until it exists, the splash page's demo link is a 404. The script is a dry run unless you pass `--apply`, and it does nothing if the club already exists:
 
 ```bash
-npm run migrate:clubs -- --env production
-npm run migrate:clubs -- --env production --apply
+npm run seed:demo -- --env production
+npm run seed:demo -- --env production --apply
 ```
 
-The script creates the club, deletes games left behind by deleted tournaments or matches, sets `clubId` everywhere, and adds the indexes.
+To give the demo club an admin, run `npm run admins -- add --env production --club demo --email you@example.com --name "You"`.
+
+Records from before clubs existed were moved into `dallas` by `scripts/migrate-clubs.mjs`. Reads now require a `clubId`, so that migration must have run first.
 
 ## Switching production to sign-in links
 

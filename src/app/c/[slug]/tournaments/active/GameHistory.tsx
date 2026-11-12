@@ -1,7 +1,7 @@
 'use client';
 
-import { Match } from '../../../types/pingpong';
-import { getGameSides } from '../../../lib/matchFormat';
+import { Match } from '../../../../../types/pingpong';
+import { getGameSides } from '../../../../../lib/matchFormat';
 import { isFewerByesBracket } from '@/bracket/core';
 
 interface GameHistoryProps {

@@ -10,6 +10,7 @@ import { PlayInMode, Tournament } from '../types/pingpong';
 function makeTournament(playerCount: number, playInMode: PlayInMode = 'auto'): Tournament {
   const players = Array.from({ length: playerCount }, (_, i) => `p${i + 1}`);
   return {
+    clubId: 'club-dallas',
     id: 't1',
     name: 'T1',
     startDate: '2026-10-01T00:00:00.000Z',
