@@ -6,6 +6,7 @@ import { newId } from '../../../lib/random';
 import { requireAdmin } from '../../../lib/auth';
 import { clubFromRequest } from '../../../lib/clubRequest';
 import { getMatchSides, isDoublesMatch } from '../../../lib/matchFormat';
+import { tournamentErrorResponse } from '../../../lib/tournamentErrors';
 
 export async function GET(request: NextRequest) {
   try {
@@ -38,20 +39,9 @@ export async function POST(request: NextRequest) {
     if (!existingMatch) {
       return NextResponse.json({ error: 'Match not found' }, { status: 404 });
     }
-    const tournamentForLock = await getTournament(existingMatch.tournamentId);
-    if (tournamentForLock?.clubId !== admin.clubId) {
+    const owningTournament = await getTournament(existingMatch.tournamentId);
+    if (owningTournament?.clubId !== admin.clubId) {
       return NextResponse.json({ error: 'Match not found' }, { status: 404 });
-    }
-    const bracketStarted = Boolean(
-      tournamentForLock?.bracketStartedAt ||
-      (tournamentForLock?.matches ?? []).some(m => m.round === 'bracket') ||
-      tournamentForLock?.status === 'bracket'
-    );
-    if (existingMatch.round === 'roundRobin' && bracketStarted) {
-      return NextResponse.json(
-        { error: 'Cannot record round robin games after bracket has started' },
-        { status: 400 }
-      );
     }
 
     const [side1, side2] = getMatchSides(existingMatch);
@@ -80,6 +70,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(newGame, { status: 201 });
   } catch (error) {
+    const handled = tournamentErrorResponse(error);
+    if (handled) return handled;
     console.error(error);
     return NextResponse.json({ error: 'Failed to add game' }, { status: 500 });
   }

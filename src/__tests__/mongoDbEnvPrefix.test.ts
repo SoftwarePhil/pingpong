@@ -13,6 +13,16 @@ const mockRedisClient = {
   hSet: jest.fn().mockResolvedValue(1),
   hDel: jest.fn().mockResolvedValue(1),
   del: jest.fn().mockResolvedValue(1),
+  // createTournament writes through a transaction; record its commands on the
+  // client mocks above so the tests can check the keys.
+  multi: jest.fn(() => mockTransaction),
+};
+
+const mockTransaction: Record<string, jest.Mock> = {
+  set: jest.fn((...args: unknown[]) => { mockRedisClient.set(...args); return mockTransaction; }),
+  zAdd: jest.fn((...args: unknown[]) => { mockRedisClient.zAdd(...args); return mockTransaction; }),
+  hSet: jest.fn((...args: unknown[]) => { mockRedisClient.hSet(...args); return mockTransaction; }),
+  exec: jest.fn().mockResolvedValue([]),
 };
 
 const mockMongoCollection = {
@@ -86,11 +96,11 @@ describe('Hybrid data layer — environment isolation', () => {
     expect(mockMongoCollection.findOne).toHaveBeenCalledWith({ _id: 't-completed' });
   });
 
-  it('writes a completed tournament to MongoDB and removes it from Redis', async () => {
+  it('creates a completed tournament in MongoDB only', async () => {
     (process.env as Record<string, string>).NODE_ENV = 'test';
 
-    const { setTournament } = await import('../data/data');
-    await setTournament({
+    const { createTournament } = await import('../data/data');
+    await createTournament({
       clubId: 'club-dallas',
       id: 't1',
       name: 'Finished Cup',
@@ -102,12 +112,6 @@ describe('Hybrid data layer — environment isolation', () => {
       players: [],
     });
 
-    // Should be removed from Redis sorted set and key
-    expect(mockRedisClient.zRem).toHaveBeenCalledWith(
-      'test:pingpong:active_tournaments',
-      't1'
-    );
-    expect(mockRedisClient.del).toHaveBeenCalledWith('test:pingpong:tournament:t1');
     // Should be persisted to MongoDB
     expect(mockMongoCollection.replaceOne).toHaveBeenCalledWith(
       { _id: 't1' },
@@ -118,11 +122,11 @@ describe('Hybrid data layer — environment isolation', () => {
     expect(mockRedisClient.set).not.toHaveBeenCalled();
   });
 
-  it('writes an active tournament to Redis only (not MongoDB tournaments collection)', async () => {
+  it('creates an active tournament in Redis only (not MongoDB tournaments collection)', async () => {
     (process.env as Record<string, string>).NODE_ENV = 'test';
 
-    const { setTournament } = await import('../data/data');
-    await setTournament({
+    const { createTournament } = await import('../data/data');
+    await createTournament({
       clubId: 'club-dallas',
       id: 't2',
       name: 'Spring Open',

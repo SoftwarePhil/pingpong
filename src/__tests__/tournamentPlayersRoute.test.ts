@@ -4,9 +4,7 @@ import { adminRequest } from './authTestUtils';
 
 jest.mock('../data/data', () => ({
   getTournament: jest.fn(),
-  setTournament: jest.fn(),
-  registerMatchesIndex: jest.fn(),
-  unregisterMatchesIndex: jest.fn(),
+  mutateTournament: jest.fn(),
   syncTournamentPlayers: jest.fn(),
   getPlayers: jest.fn(),
 }));
@@ -17,18 +15,16 @@ jest.mock('../lib/tournament', () => ({
 
 import {
   getTournament,
-  setTournament,
-  registerMatchesIndex,
-  unregisterMatchesIndex,
+  mutateTournament,
   syncTournamentPlayers,
   getPlayers,
 } from '../data/data';
 import { resyncRoundRobinMatches } from '../lib/tournament';
+import { fakeMutateTournament } from './mutateTournamentMock';
 
 const mockedGetTournament = getTournament as jest.MockedFunction<typeof getTournament>;
-const mockedSetTournament = setTournament as jest.MockedFunction<typeof setTournament>;
-const mockedRegisterMatchesIndex = registerMatchesIndex as jest.MockedFunction<typeof registerMatchesIndex>;
-const mockedUnregisterMatchesIndex = unregisterMatchesIndex as jest.MockedFunction<typeof unregisterMatchesIndex>;
+const mockedMutateTournament = mutateTournament as jest.MockedFunction<typeof mutateTournament>;
+let saved: Tournament[] = [];
 const mockedSyncTournamentPlayers = syncTournamentPlayers as jest.MockedFunction<typeof syncTournamentPlayers>;
 const mockedGetPlayers = getPlayers as jest.MockedFunction<typeof getPlayers>;
 const mockedResync = resyncRoundRobinMatches as jest.MockedFunction<typeof resyncRoundRobinMatches>;
@@ -64,6 +60,9 @@ function callPatch(body: unknown, id = 't1') {
 describe('PATCH /api/tournaments/[id]/players', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    const fake = fakeMutateTournament(id => mockedGetTournament(id));
+    saved = fake.saved;
+    mockedMutateTournament.mockImplementation(fake.mutate as typeof mutateTournament);
     mockedGetPlayers.mockResolvedValue([
       { clubId: 'club-dallas', id: 'p1', name: 'P1', tournamentIds: [] },
       { clubId: 'club-dallas', id: 'p2', name: 'P2', tournamentIds: [] },
@@ -117,7 +116,7 @@ describe('PATCH /api/tournaments/[id]/players', () => {
     const body = await response.json();
     expect(response.status).toBe(400);
     expect(body.error).toMatch(/unknown player/i);
-    expect(mockedSetTournament).not.toHaveBeenCalled();
+    expect(saved).toHaveLength(0);
   });
 
   it('adds a new player to both the roster and active players, then resyncs matches', async () => {
@@ -136,12 +135,10 @@ describe('PATCH /api/tournaments/[id]/players', () => {
     expect(body.players).toEqual(['p1', 'p2', 'p3', 'p4']);
     expect(body.activePlayers).toEqual(['p1', 'p2', 'p3', 'p4']);
     expect(mockedResync).toHaveBeenCalledTimes(1);
-    expect(mockedRegisterMatchesIndex).toHaveBeenCalledWith([
-      expect.objectContaining({ id: 'new1' }),
-    ]);
-    expect(mockedUnregisterMatchesIndex).toHaveBeenCalledWith([]);
+    expect(saved).toHaveLength(1);
+    expect(saved[0].matches).toEqual([expect.objectContaining({ id: 'new1' })]);
     expect(mockedSyncTournamentPlayers).toHaveBeenCalledTimes(1);
-    expect(mockedSetTournament).toHaveBeenCalledTimes(1);
+    expect(mockedSyncTournamentPlayers).toHaveBeenCalledWith(saved[0]);
   });
 
   it('deactivates a removed player without deleting them from the permanent roster', async () => {
@@ -185,7 +182,7 @@ describe('PATCH /api/tournaments/[id]/players', () => {
     expect(response.status).toBe(400);
     expect(body.error).toMatch(/groups of four/i);
     expect(mockedResync).not.toHaveBeenCalled();
-    expect(mockedSetTournament).not.toHaveBeenCalled();
+    expect(saved).toHaveLength(0);
   });
 
   it('supports add and remove together in a single atomic request', async () => {

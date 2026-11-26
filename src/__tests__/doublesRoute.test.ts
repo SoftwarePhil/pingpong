@@ -4,15 +4,12 @@ import { Match, Tournament } from '../types/pingpong';
 
 jest.mock('../data/data', () => ({
   getTournaments: jest.fn(),
-  setTournament: jest.fn(),
+  createTournament: jest.fn(),
+  mutateTournament: jest.fn(),
   getTournament: jest.fn(),
   deleteTournament: jest.fn(),
-  registerMatchesIndex: jest.fn(),
-  unregisterMatchesIndex: jest.fn(),
   syncTournamentPlayers: jest.fn(),
   setRoundRobinFormatAtomically: jest.fn(),
-  TournamentConflictError: class TournamentConflictError extends Error {},
-  TournamentNotFoundError: class TournamentNotFoundError extends Error {},
 }));
 
 jest.mock('../lib/tournament', () => ({
@@ -26,17 +23,13 @@ jest.mock('../lib/tournament', () => ({
 
 import {
   getTournament,
-  setTournament,
-  registerMatchesIndex,
-  unregisterMatchesIndex,
+  mutateTournament,
   setRoundRobinFormatAtomically,
-  TournamentConflictError,
 } from '../data/data';
+import { TournamentChangeRejected, TournamentConflictError } from '../lib/tournamentErrors';
 
 const mockedGetTournament = getTournament as jest.MockedFunction<typeof getTournament>;
-const mockedSetTournament = setTournament as jest.MockedFunction<typeof setTournament>;
-const mockedRegisterMatchesIndex = registerMatchesIndex as jest.MockedFunction<typeof registerMatchesIndex>;
-const mockedUnregisterMatchesIndex = unregisterMatchesIndex as jest.MockedFunction<typeof unregisterMatchesIndex>;
+const mockedMutateTournament = mutateTournament as jest.MockedFunction<typeof mutateTournament>;
 const mockedSetFormat = setRoundRobinFormatAtomically as jest.MockedFunction<typeof setRoundRobinFormatAtomically>;
 
 function makeMatch(id: string, overrides: Partial<Match> = {}): Match {
@@ -112,14 +105,13 @@ describe('setRoundRobinFormat tournament action', () => {
 
     expect(response.status).toBe(200);
     expect(mockedSetFormat).toHaveBeenCalledWith('t1', 1, 'doubles');
-    expect(mockedUnregisterMatchesIndex).not.toHaveBeenCalled();
-    expect(mockedRegisterMatchesIndex).not.toHaveBeenCalled();
-    expect(mockedSetTournament).not.toHaveBeenCalled();
+    // The format change is its own guarded write; the route doesn't save again.
+    expect(mockedMutateTournament).not.toHaveBeenCalled();
     expect(body.roundRobinFormats).toEqual({ 1: 'doubles' });
   });
 
   it('returns a validation error without persisting when conversion is rejected', async () => {
-    mockedSetFormat.mockRejectedValue(new Error('Cannot change the round format after a game has been played'));
+    mockedSetFormat.mockRejectedValue(new TournamentChangeRejected('Cannot change the round format after a game has been played'));
 
     const response = await callPut({
       id: 't1',
@@ -131,8 +123,7 @@ describe('setRoundRobinFormat tournament action', () => {
 
     expect(response.status).toBe(400);
     expect(body.error).toMatch(/after a game has been played/i);
-    expect(mockedSetTournament).not.toHaveBeenCalled();
-    expect(mockedRegisterMatchesIndex).not.toHaveBeenCalled();
+    expect(mockedMutateTournament).not.toHaveBeenCalled();
   });
 
   it('returns a conflict when the optimistic transaction is aborted', async () => {
@@ -147,6 +138,6 @@ describe('setRoundRobinFormat tournament action', () => {
 
     const body = await response.json();
     expect(response.status).toBe(409);
-    expect(body.error).toMatch(/changed while updating/i);
+    expect(body.error).toMatch(/someone else changed this tournament/i);
   });
 });

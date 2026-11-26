@@ -84,7 +84,7 @@ The application uses **two stores in parallel**, each optimised for its access p
 
 ### How it works
 
-- **Tournaments** live entirely in Redis. Every bracket mutation — recording a game, advancing a round — is a single atomic `SET` on the tournament JSON document.
+- **Tournaments** live in Redis while active. Every change, such as recording a game or advancing a round, goes through `mutateTournament` in `src/data/data.ts`. It rewrites the tournament JSON document in a Redis `WATCH`/`MULTI` transaction, and the match index along with it. If another request saved the tournament first, it rereads and retries, so two admins editing at once can't overwrite each other. Each saved change bumps the tournament's `version`. Completed tournaments move to MongoDB, which is written before the Redis copy is dropped.
 - **Players** are stored in MongoDB. Their `tournamentIds` list is updated whenever they join a new tournament, but doesn't need Redis speed.
 - **Games** are written to both: embedded inside the tournament document in Redis (for live match state) and as individual documents in MongoDB's `games` collection (for permanent history). `getAllGames(clubId)` reads from MongoDB.
 - **Match index** lives in Redis as a hash (`matchId → tournamentId`), rebuilt automatically on startup, giving O(1) match lookups without scanning all tournaments.

@@ -3,7 +3,9 @@ import { MongoClient, Db, Collection } from 'mongodb';
 import { Club, Player, Tournament, Match, Game, RoundRobinFormat } from '../types/pingpong';
 import { cascadeBracketOutcomeChange, setRoundRobinFormat } from '../lib/tournament';
 import { getMatchSides, isDoublesMatch } from '../lib/matchFormat';
-import { newId } from '../lib/random';
+import { reject, TournamentChangeRejected, TournamentConflictError, TournamentNotFoundError } from '../lib/tournamentErrors';
+
+export { TournamentChangeRejected, TournamentConflictError, TournamentNotFoundError };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Environment isolation
@@ -186,74 +188,255 @@ export async function getTournament(id: string): Promise<Tournament | null> {
   }
 }
 
-export async function setTournament(tournament: Tournament): Promise<void> {
+/** Saves a brand-new tournament and registers its matches, in one Redis transaction. */
+export async function createTournament(tournament: Tournament): Promise<Tournament> {
+  if (!redisClient) await initRedis();
+  const created: Tournament = { ...tournament, version: tournament.version ?? 1 };
+  const entries = matchIndexEntries(created.matches ?? []);
+  if (created.status === 'completed') {
+    // Only seeding and tests create a tournament that is already finished.
+    if (!db) await initMongo();
+    const { id, ...doc } = created;
+    await tournamentsCol().replaceOne({ _id: id }, doc, { upsert: true });
+    if (Object.keys(entries).length > 0) await redisClient.hSet(MATCH_INDEX_KEY, entries);
+    return created;
+  }
+  const transaction = redisClient.multi()
+    .set(tournamentKey(created.id), JSON.stringify(created))
+    .zAdd(ACTIVE_TOURNAMENTS_KEY, { score: new Date(created.startDate).getTime(), value: created.id });
+  if (Object.keys(entries).length > 0) transaction.hSet(MATCH_INDEX_KEY, entries);
+  await transaction.exec();
+  return created;
+}
+
+function matchIndexEntries(matches: Match[]): Record<string, string> {
+  return Object.fromEntries(matches.map(match => [match.id, match.tournamentId]));
+}
+
+/** Match ids that a change added and removed, so the match index can follow it. */
+function diffMatches(before: Tournament, after: Tournament): { added: Match[]; removedIds: string[] } {
+  const beforeIds = new Set((before.matches ?? []).map(match => match.id));
+  const afterIds = new Set((after.matches ?? []).map(match => match.id));
+  return {
+    added: (after.matches ?? []).filter(match => !beforeIds.has(match.id)),
+    removedIds: [...beforeIds].filter(id => !afterIds.has(id)),
+  };
+}
+
+const MAX_MUTATION_ATTEMPTS = 8;
+
+/**
+ * Changes waiting on each tournament in this process. Changes to one
+ * tournament run one at a time here, so requests on the same server never
+ * race each other; WATCH only has to catch other servers.
+ */
+const tournamentQueues = new Map<string, Promise<unknown>>();
+
+function inTournamentQueue<R>(tournamentId: string, run: () => Promise<R>): Promise<R> {
+  const previous = tournamentQueues.get(tournamentId) ?? Promise.resolve();
+  const result = previous.then(run, run);
+  const tail = result.then(() => undefined, () => undefined);
+  tournamentQueues.set(tournamentId, tail);
+  void tail.then(() => {
+    if (tournamentQueues.get(tournamentId) === tail) tournamentQueues.delete(tournamentId);
+  });
+  return result;
+}
+
+/** A short, growing, jittered pause so two retrying requests stop colliding. */
+function retryPause(attempt: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, attempt * 10 + Math.random() * 20));
+}
+
+export type TournamentChange<T> = (tournament: Tournament) => T | Promise<T>;
+
+/**
+ * The one way to change a saved tournament. Reads it, runs `change` on a fresh
+ * copy, and saves the result only if nobody else saved the tournament in the
+ * meantime; otherwise it reads again and reruns `change`, up to 8 times, then
+ * throws TournamentConflictError. Changes to one tournament from this process
+ * queue behind each other, so only another server can cause a retry.
+ *
+ * `change` edits the tournament in place and may return a value for the caller.
+ * It must have no side effects (it can run more than once): do anything else,
+ * such as game history writes, after this returns. Throw from it (see
+ * `reject`) to refuse the change; nothing is saved.
+ *
+ * Every commit bumps `version`, and the match index is updated from the
+ * matches the change added or removed. Active tournaments are guarded with
+ * Redis WATCH on a dedicated connection (WATCH is per connection); completed
+ * ones, which live in MongoDB, with a version check on the write.
+ */
+export async function mutateTournament<T = void>(
+  tournamentId: string,
+  change: TournamentChange<T>,
+): Promise<{ tournament: Tournament; result: T }> {
+  return inTournamentQueue(tournamentId, () => runMutation(tournamentId, change));
+}
+
+async function runMutation<T>(
+  tournamentId: string,
+  change: TournamentChange<T>,
+): Promise<{ tournament: Tournament; result: T }> {
+  const transactionClient = await takeTransactionClient();
+  let reusable = true;
   try {
-    if (!redisClient) await initRedis();
-    if (tournament.status === 'completed') {
-      // Completed tournaments live in MongoDB — remove from Redis
-      await redisClient.zRem(ACTIVE_TOURNAMENTS_KEY, tournament.id);
-      await redisClient.del(tournamentKey(tournament.id));
-      // Persist to MongoDB tournaments collection
-      if (!db) await initMongo();
-      const { id, ...doc } = tournament;
-      await tournamentsCol().replaceOne({ _id: id }, doc, { upsert: true });
-    } else {
-      // Active tournaments live in Redis
-      await redisClient.set(tournamentKey(tournament.id), JSON.stringify(tournament));
-      await redisClient.zAdd(ACTIVE_TOURNAMENTS_KEY, {
-        score: new Date(tournament.startDate).getTime(),
-        value: tournament.id,
-      });
+    for (let attempt = 1; attempt <= MAX_MUTATION_ATTEMPTS; attempt++) {
+      const committed = await attemptMutation(transactionClient, tournamentId, change);
+      if (committed) return committed;
+      if (attempt < MAX_MUTATION_ATTEMPTS) await retryPause(attempt);
     }
+    throw new TournamentConflictError(tournamentId);
   } catch (error) {
-    console.error('Error setting tournament:', error);
+    // Only keep a connection we know has no WATCH left on it.
+    reusable = await transactionClient.unwatch().then(() => true, () => false);
     throw error;
-  }
-}
-
-export class TournamentNotFoundError extends Error {
-  constructor(tournamentId: string) {
-    super(`Tournament ${tournamentId} not found`);
-    this.name = 'TournamentNotFoundError';
-  }
-}
-
-export class TournamentConflictError extends Error {
-  constructor(tournamentId: string) {
-    super(`Tournament ${tournamentId} was changed by another request`);
-    this.name = 'TournamentConflictError';
+  } finally {
+    returnTransactionClient(transactionClient, reusable);
   }
 }
 
 /**
- * Changes the current round-robin format and updates its tournament document
- * and match index in one optimistic Redis transaction. The transaction uses a
- * dedicated connection because WATCH state is connection-scoped and the main
- * client is shared by unrelated requests.
+ * Idle connections for WATCH transactions. WATCH belongs to a connection, so
+ * each change needs one of its own, but opening one costs a few round trips
+ * (about 120 ms to a remote Redis). A transaction always ends with no WATCH
+ * left, so the connection can be reused for the next change.
+ */
+const idleTransactionClients: RedisClientType[] = [];
+const MAX_IDLE_TRANSACTION_CLIENTS = 4;
+
+async function takeTransactionClient(): Promise<RedisClientType> {
+  if (!redisClient) await initRedis();
+  while (idleTransactionClients.length > 0) {
+    const client = idleTransactionClients.pop()!;
+    if (client.isOpen) return client;
+  }
+  const client = redisClient.duplicate();
+  client.on('error', (err) => console.error('Redis transaction client error:', err));
+  await client.connect();
+  return client;
+}
+
+function returnTransactionClient(client: RedisClientType, reusable: boolean) {
+  if (reusable && client.isOpen && idleTransactionClients.length < MAX_IDLE_TRANSACTION_CLIENTS) {
+    idleTransactionClients.push(client);
+    return;
+  }
+  void client.quit().catch(() => undefined);
+}
+
+/** One try at a change. Null means someone else got there first: try again. */
+async function attemptMutation<T>(
+  client: RedisClientType,
+  tournamentId: string,
+  change: TournamentChange<T>,
+): Promise<{ tournament: Tournament; result: T } | null> {
+  const key = tournamentKey(tournamentId);
+  // Watch the index too: a change that adds or removes matches rewrites it.
+  await client.watch([key, MATCH_INDEX_KEY]);
+  let stored: string | null;
+  let before: Tournament;
+  let tournament: Tournament;
+  let result: T;
+  try {
+    stored = await client.get(key);
+    if (!stored) {
+      await client.unwatch();
+      return mutateCompletedTournament(tournamentId, change);
+    }
+    before = JSON.parse(stored) as Tournament;
+    tournament = JSON.parse(stored) as Tournament;
+    result = await change(tournament);
+  } catch (error) {
+    await client.unwatch().catch(() => undefined);
+    throw error;
+  }
+
+  tournament.version = (before.version ?? 0) + 1;
+  const { added, removedIds } = diffMatches(before, tournament);
+  const completing = tournament.status === 'completed';
+  if (completing) {
+    // Finished tournaments move to MongoDB. Write there first, and only drop
+    // the Redis copy once that worked, so a failed write loses nothing.
+    if (!db) await initMongo();
+    const { id, ...doc } = tournament;
+    try {
+      await tournamentsCol().replaceOne({ _id: id }, doc, { upsert: true });
+    } catch (error) {
+      await client.unwatch().catch(() => undefined);
+      throw error;
+    }
+  }
+
+  const transaction = client.multi();
+  if (completing) {
+    transaction.del(key).zRem(ACTIVE_TOURNAMENTS_KEY, tournamentId);
+  } else {
+    transaction
+      .set(key, JSON.stringify(tournament))
+      .zAdd(ACTIVE_TOURNAMENTS_KEY, { score: new Date(tournament.startDate).getTime(), value: tournamentId });
+  }
+  if (removedIds.length > 0) transaction.hDel(MATCH_INDEX_KEY, removedIds);
+  if (added.length > 0) transaction.hSet(MATCH_INDEX_KEY, matchIndexEntries(added));
+
+  try {
+    const replies = await transaction.exec();
+    const commandError = replies.find(reply => reply instanceof Error);
+    if (commandError instanceof Error) throw commandError;
+  } catch (error) {
+    if (error instanceof WatchError) {
+      // Lost the race. Take back the MongoDB copy written above, unless a
+      // newer one has replaced it, and let the caller try again.
+      if (completing) {
+        await tournamentsCol().deleteOne({ _id: tournamentId, version: tournament.version }).catch(() => undefined);
+      }
+      return null;
+    }
+    throw error;
+  }
+  return { tournament, result };
+}
+
+/** A change to a finished tournament, which lives in MongoDB rather than Redis. */
+async function mutateCompletedTournament<T>(
+  tournamentId: string,
+  change: TournamentChange<T>,
+): Promise<{ tournament: Tournament; result: T } | null> {
+  if (!db) await initMongo();
+  const doc = await tournamentsCol().findOne({ _id: tournamentId });
+  if (!doc) throw new TournamentNotFoundError(tournamentId);
+  const { _id, ...fields } = doc;
+  const before = { id: _id, ...fields } as Tournament;
+  const tournament = structuredClone(before);
+  const result = await change(tournament);
+  if (tournament.status !== 'completed') {
+    throw new TournamentChangeRejected('A completed tournament cannot be reopened');
+  }
+  tournament.version = (before.version ?? 0) + 1;
+  const { id, ...replacement } = tournament;
+  // Only replace the copy we read. A tournament saved before versions existed
+  // has no version field.
+  const sameVersion = before.version === undefined
+    ? { _id: id, version: { $exists: false } }
+    : { _id: id, version: before.version };
+  const written = await tournamentsCol().replaceOne(sameVersion, replacement);
+  if (written.matchedCount === 0) return null;
+  const { added, removedIds } = diffMatches(before, tournament);
+  if (removedIds.length > 0) await redisClient.hDel(MATCH_INDEX_KEY, removedIds);
+  if (added.length > 0) await redisClient.hSet(MATCH_INDEX_KEY, matchIndexEntries(added));
+  return { tournament, result };
+}
+
+/**
+ * Changes the current round-robin round between singles and doubles,
+ * replacing that round's unplayed matches.
  */
 export async function setRoundRobinFormatAtomically(
   tournamentId: string,
   requestedRound: number,
   format: RoundRobinFormat,
 ): Promise<Tournament> {
-  if (!redisClient) await initRedis();
-
-  const transactionClient = redisClient.duplicate();
-  await transactionClient.connect();
-  const key = tournamentKey(tournamentId);
-  let watching = false;
-
-  try {
-    // Watch the document and index together. The index is normally changed
-    // alongside the document, but watching both also protects against a
-    // concurrent index repair or registration operation.
-    await transactionClient.watch([key, MATCH_INDEX_KEY]);
-    watching = true;
-
-    const data = await transactionClient.get(key);
-    if (!data) throw new TournamentNotFoundError(tournamentId);
-
-    const tournament = JSON.parse(data) as Tournament;
+  const { tournament } = await mutateTournament(tournamentId, tournament => {
     const bracketStarted = Boolean(
       tournament.bracketStartedAt ||
       (tournament.matches ?? []).some(match => match.round === 'bracket') ||
@@ -261,7 +444,7 @@ export async function setRoundRobinFormatAtomically(
       tournament.status === 'completed'
     );
     if (bracketStarted || tournament.status !== 'roundRobin') {
-      throw new Error('Round format can only be changed during the round robin stage');
+      reject('Round format can only be changed during the round robin stage');
     }
 
     const rrMatches = (tournament.matches ?? []).filter(match => match.round === 'roundRobin');
@@ -269,53 +452,18 @@ export async function setRoundRobinFormatAtomically(
       ? Math.max(...rrMatches.map(match => match.bracketRound ?? 1))
       : 1;
     if (!Number.isInteger(requestedRound) || requestedRound !== currentRound) {
-      throw new Error('Only the current round format can be changed');
-    }
-
-    const { addedMatches, removedMatchIds } = setRoundRobinFormat(tournament, format);
-    const indexEntries: Record<string, string> = {};
-    addedMatches.forEach(match => { indexEntries[match.id] = tournament.id; });
-
-    const transaction = transactionClient.multi();
-    transaction
-      .set(key, JSON.stringify(tournament))
-      .zAdd(ACTIVE_TOURNAMENTS_KEY, {
-        score: new Date(tournament.startDate).getTime(),
-        value: tournament.id,
-      });
-    if (removedMatchIds.length > 0) {
-      transaction.hDel(MATCH_INDEX_KEY, removedMatchIds);
-    }
-    if (Object.keys(indexEntries).length > 0) {
-      transaction.hSet(MATCH_INDEX_KEY, indexEntries);
+      reject('Only the current round format can be changed');
     }
 
     try {
-      const results = await transaction.exec();
-      const commandError = results.find(result => result instanceof Error);
-      if (commandError instanceof Error) {
-        throw commandError;
-      }
+      setRoundRobinFormat(tournament, format);
     } catch (error) {
-      if (error instanceof WatchError) {
-        throw new TournamentConflictError(tournamentId);
-      }
+      // Its errors explain why the format can't change, for the admin to read.
+      if (error instanceof Error) reject(error.message);
       throw error;
     }
-
-    watching = false;
-    return tournament;
-  } catch (error) {
-    if (error instanceof WatchError) {
-      throw new TournamentConflictError(tournamentId);
-    }
-    throw error;
-  } finally {
-    if (watching) {
-      await transactionClient.unwatch().catch(() => undefined);
-    }
-    await transactionClient.quit().catch(() => undefined);
-  }
+  });
+  return tournament;
 }
 
 // Update player → tournament ID references in MongoDB.
@@ -405,7 +553,12 @@ async function readTournaments(clubId?: string): Promise<Tournament[]> {
       .find({ status: 'completed', ...(clubId !== undefined && { clubId }) })
       .sort({ startDate: 1 })
       .toArray();
-    const completed = completedDocs.map(({ _id, ...rest }) => ({ id: _id, ...rest } as Tournament));
+    // A tournament being completed is briefly in both stores (mutateTournament
+    // writes MongoDB before it drops the Redis copy), so list it once.
+    const activeIdSet = new Set(active.map(t => t.id));
+    const completed = completedDocs
+      .map(({ _id, ...rest }) => ({ id: _id, ...rest } as Tournament))
+      .filter(t => !activeIdSet.has(t.id));
     return [...active, ...completed];
   } catch (error) {
     console.error('Error getting tournaments:', error);
@@ -424,44 +577,6 @@ export async function getTournamentIdForMatch(matchId: string): Promise<string |
   } catch (error) {
     console.error('Error getting tournament ID for match:', error);
     return null;
-  }
-}
-
-export async function unregisterMatchIndex(matchId: string): Promise<void> {
-  try {
-    if (!redisClient) await initRedis();
-    await redisClient.hDel(MATCH_INDEX_KEY, matchId);
-  } catch (error) {
-    console.error('Error unregistering match index:', error);
-    throw error;
-  }
-}
-
-// Bulk-unregister multiple match IDs from the index
-export async function unregisterMatchesIndex(matchIds: string[]): Promise<void> {
-  if (matchIds.length === 0) return;
-  try {
-    if (!redisClient) await initRedis();
-    await redisClient.hDel(MATCH_INDEX_KEY, matchIds);
-  } catch (error) {
-    console.error('Error bulk-unregistering match index:', error);
-    throw error;
-  }
-}
-
-// Bulk-register multiple matches in the index (used when creating many matches at once)
-export async function registerMatchesIndex(matches: Match[]): Promise<void> {
-  if (matches.length === 0) return;
-  try {
-    if (!redisClient) await initRedis();
-    const entries: Record<string, string> = {};
-    for (const m of matches) {
-      entries[m.id] = m.tournamentId;
-    }
-    await redisClient.hSet(MATCH_INDEX_KEY, entries);
-  } catch (error) {
-    console.error('Error bulk-registering match index:', error);
-    throw error;
   }
 }
 
@@ -534,42 +649,19 @@ export async function getMatch(matchId: string): Promise<Match | null> {
   }
 }
 
-export async function updateMatchInTournament(updatedMatch: Match): Promise<Tournament | null> {
-  try {
-    const tournamentId = await getTournamentIdForMatch(updatedMatch.id);
-    if (!tournamentId) return null;
-    const tournament = await getTournament(tournamentId);
-    if (!tournament?.matches) return null;
-    const idx = tournament.matches.findIndex(m => m.id === updatedMatch.id);
-    if (idx === -1) return null;
-    tournament.matches[idx] = updatedMatch;
-    await setTournament(tournament);
-    return tournament;
-  } catch (error) {
-    console.error('Error updating match in tournament:', error);
-    throw error;
-  }
-}
-
 export async function removeMatchFromTournament(
   matchId: string
 ): Promise<{ match: Match; tournament: Tournament } | null> {
-  try {
-    const tournamentId = await getTournamentIdForMatch(matchId);
-    if (!tournamentId) return null;
-    const tournament = await getTournament(tournamentId);
-    if (!tournament?.matches) return null;
-    const idx = tournament.matches.findIndex(m => m.id === matchId);
-    if (idx === -1) return null;
-    const [match] = tournament.matches.splice(idx, 1);
-    await setTournament(tournament);
-    await unregisterMatchIndex(matchId);
-    await removeGamesFromHistory(match.games.map(g => g.id));
-    return { match, tournament };
-  } catch (error) {
-    console.error('Error removing match from tournament:', error);
-    throw error;
-  }
+  const tournamentId = await getTournamentIdForMatch(matchId);
+  if (!tournamentId) return null;
+  const { tournament, result: match } = await mutateTournament(tournamentId, tournament => {
+    const matches = [...(tournament.matches ?? [])];
+    const [match] = matches.splice(matchIndexIn(tournament, matchId), 1);
+    tournament.matches = matches;
+    return match;
+  });
+  await removeGamesFromHistory(match.games.map(g => g.id));
+  return { match, tournament };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -623,23 +715,6 @@ export async function removeGamesFromHistory(gameIds: string[]): Promise<void> {
   }
 }
 
-/**
- * If `match` is a bracket match, propagates its (re)computed winner forward
- * to any already-created next-round match, clearing stale downstream games
- * as needed. Mutates `tournament.matches` in place and returns the possibly
- * updated `match` (re-fetched from the cascaded array). No-op for round-robin
- * matches or bracket matches with no next round yet.
- */
-async function applyBracketCascade(tournament: Tournament, match: Match): Promise<Match> {
-  if (match.round !== 'bracket' || !tournament.matches) return match;
-  const { matches, invalidatedGameIds } = cascadeBracketOutcomeChange(tournament.matches, match.id);
-  tournament.matches = matches;
-  if (invalidatedGameIds.length > 0) {
-    await removeGamesFromHistory(invalidatedGameIds);
-  }
-  return matches.find(m => m.id === match.id) ?? match;
-}
-
 // getAllGames reads from the MongoDB games collection (durable history)
 export async function getAllGames(clubId: string): Promise<Game[]> {
   try {
@@ -652,111 +727,117 @@ export async function getAllGames(clubId: string): Promise<Game[]> {
   }
 }
 
+/**
+ * The match `matchId` inside the tournament being changed. Refuses the change
+ * with a 404 if another request removed it in the meantime.
+ */
+function matchIndexIn(tournament: Tournament, matchId: string): number {
+  const index = (tournament.matches ?? []).findIndex(m => m.id === matchId);
+  if (index === -1) reject('Match not found', 404);
+  return index;
+}
+
+function bracketHasStarted(tournament: Tournament): boolean {
+  return Boolean(
+    tournament.bracketStartedAt ||
+    (tournament.matches ?? []).some(m => m.round === 'bracket') ||
+    tournament.status === 'bracket'
+  );
+}
+
+/** Round-robin games are frozen once the bracket starts. */
+function assertRoundRobinOpen(tournament: Tournament, match: Match, verb: 'record' | 'edit' | 'delete') {
+  if (match.round === 'roundRobin' && bracketHasStarted(tournament)) {
+    reject(`Cannot ${verb} round robin games after bracket has started`);
+  }
+}
+
+/**
+ * Sets `match` into the tournament and, for a bracket match, carries a changed
+ * winner forward into the next round (see cascadeBracketOutcomeChange).
+ * Returns the match as saved and the downstream games that were cleared.
+ */
+export function placeMatch(tournament: Tournament, match: Match): { match: Match; invalidatedGameIds: string[] } {
+  const matches = [...(tournament.matches ?? [])];
+  matches[matchIndexIn(tournament, match.id)] = match;
+  tournament.matches = matches;
+  if (match.round !== 'bracket') return { match, invalidatedGameIds: [] };
+  const cascaded = cascadeBracketOutcomeChange(matches, match.id);
+  tournament.matches = cascaded.matches;
+  return {
+    match: cascaded.matches.find(m => m.id === match.id) ?? match,
+    invalidatedGameIds: cascaded.invalidatedGameIds,
+  };
+}
+
+/** A game as stored for `match`: doubles games carry both sides' players. */
+function gameForMatch(game: Game, match: Match): Game {
+  if (!isDoublesMatch(match)) return game;
+  const [side1, side2] = getMatchSides(match);
+  return { ...game, player1Id: side1[0], player2Id: side2[0], side1PlayerIds: side1, side2PlayerIds: side2 };
+}
+
 export async function addGameToMatch(
   game: Game
 ): Promise<{ match: Match; tournament: Tournament } | null> {
-  try {
-    if (!game.matchId) return null;
-    const tournamentId = await getTournamentIdForMatch(game.matchId);
-    if (!tournamentId) return null;
-    const tournament = await getTournament(tournamentId);
-    if (!tournament?.matches) return null;
-    const matchIdx = tournament.matches.findIndex(m => m.id === game.matchId);
-    if (matchIdx === -1) return null;
-    const match = tournament.matches[matchIdx];
-    const [side1, side2] = getMatchSides(match);
-    const persistedGame: Game = isDoublesMatch(match)
-      ? {
-          ...game,
-          player1Id: side1[0],
-          player2Id: side2[0],
-          side1PlayerIds: side1,
-          side2PlayerIds: side2,
-        }
-      : game;
-    tournament.matches[matchIdx] = recalculateMatchWinner({
-      ...match,
-      games: [...match.games, persistedGame],
-    });
-    const finalMatch = await applyBracketCascade(tournament, tournament.matches[matchIdx]);
-    await setTournament(tournament);
-    // Persist game to MongoDB history
-    await persistGameHistory(persistedGame);
-    return { match: finalMatch, tournament };
-  } catch (error) {
-    console.error('Error adding game to match:', error);
-    throw error;
-  }
+  if (!game.matchId) return null;
+  const matchId = game.matchId;
+  const tournamentId = await getTournamentIdForMatch(matchId);
+  if (!tournamentId) return null;
+  const { tournament, result } = await mutateTournament(tournamentId, tournament => {
+    const match = tournament.matches![matchIndexIn(tournament, matchId)];
+    assertRoundRobinOpen(tournament, match, 'record');
+    const persistedGame = gameForMatch(game, match);
+    const placed = placeMatch(tournament, recalculateMatchWinner({ ...match, games: [...match.games, persistedGame] }));
+    return { ...placed, persistedGame };
+  });
+  await removeGamesFromHistory(result.invalidatedGameIds);
+  await persistGameHistory(result.persistedGame);
+  return { match: result.match, tournament };
 }
 
 export async function updateGameInMatch(
   updatedGame: Game
 ): Promise<{ match: Match; tournament: Tournament } | null> {
-  try {
-    if (!updatedGame.matchId) return null;
-    const tournamentId = await getTournamentIdForMatch(updatedGame.matchId);
-    if (!tournamentId) return null;
-    const tournament = await getTournament(tournamentId);
-    if (!tournament?.matches) return null;
-    const matchIdx = tournament.matches.findIndex(m => m.id === updatedGame.matchId);
-    if (matchIdx === -1) return null;
-    const match = tournament.matches[matchIdx];
-    const [side1, side2] = getMatchSides(match);
-    const persistedGame = isDoublesMatch(match)
-      ? {
-          ...updatedGame,
-          player1Id: side1[0],
-          player2Id: side2[0],
-          side1PlayerIds: side1,
-          side2PlayerIds: side2,
-        }
-      : updatedGame;
-    const games = match.games.map(g =>
-      g.id === updatedGame.id ? persistedGame : g
-    );
-    if (!games.some(g => g.id === updatedGame.id)) return null;
-    tournament.matches[matchIdx] = recalculateMatchWinner({
-      ...match,
-      games,
-    });
-    const finalMatch = await applyBracketCascade(tournament, tournament.matches[matchIdx]);
-    await setTournament(tournament);
-    // Keep MongoDB history in sync
-    await persistGameHistory(persistedGame);
-    return { match: finalMatch, tournament };
-  } catch (error) {
-    console.error('Error updating game in match:', error);
-    throw error;
-  }
+  if (!updatedGame.matchId) return null;
+  const matchId = updatedGame.matchId;
+  const tournamentId = await getTournamentIdForMatch(matchId);
+  if (!tournamentId) return null;
+  const { tournament, result } = await mutateTournament(tournamentId, tournament => {
+    const match = tournament.matches![matchIndexIn(tournament, matchId)];
+    assertRoundRobinOpen(tournament, match, 'edit');
+    if (!match.games.some(g => g.id === updatedGame.id)) reject('Game not found', 404);
+    const persistedGame = gameForMatch(updatedGame, match);
+    const games = match.games.map(g => g.id === updatedGame.id ? persistedGame : g);
+    const placed = placeMatch(tournament, recalculateMatchWinner({ ...match, games }));
+    return { ...placed, persistedGame };
+  });
+  await removeGamesFromHistory(result.invalidatedGameIds);
+  // Keep MongoDB history in sync
+  await persistGameHistory(result.persistedGame);
+  return { match: result.match, tournament };
 }
 
 export async function removeGameFromMatch(
   gameId: string,
   matchId: string
 ): Promise<{ game: Game; match: Match } | null> {
-  try {
-    const tournamentId = await getTournamentIdForMatch(matchId);
-    if (!tournamentId) return null;
-    const tournament = await getTournament(tournamentId);
-    if (!tournament?.matches) return null;
-    const matchIdx = tournament.matches.findIndex(m => m.id === matchId);
-    if (matchIdx === -1) return null;
-    const oldGames = tournament.matches[matchIdx].games;
-    const game = oldGames.find(g => g.id === gameId);
-    if (!game) return null;
-    tournament.matches[matchIdx] = recalculateMatchWinner({
-      ...tournament.matches[matchIdx],
-      games: oldGames.filter(g => g.id !== gameId),
-    });
-    const finalMatch = await applyBracketCascade(tournament, tournament.matches[matchIdx]);
-    await setTournament(tournament);
-    // Remove from MongoDB history
-    await removeGameHistory(gameId);
-    return { game, match: finalMatch };
-  } catch (error) {
-    console.error('Error removing game from match:', error);
-    throw error;
-  }
+  const tournamentId = await getTournamentIdForMatch(matchId);
+  if (!tournamentId) return null;
+  const { result } = await mutateTournament(tournamentId, tournament => {
+    const match = tournament.matches![matchIndexIn(tournament, matchId)];
+    assertRoundRobinOpen(tournament, match, 'delete');
+    const game = match.games.find(g => g.id === gameId) ?? reject('Game not found', 404);
+    const placed = placeMatch(tournament, recalculateMatchWinner({
+      ...match,
+      games: match.games.filter(g => g.id !== gameId),
+    }));
+    return { ...placed, game };
+  });
+  await removeGamesFromHistory(result.invalidatedGameIds);
+  // Remove from MongoDB history
+  await removeGameHistory(gameId);
+  return { game: result.game, match: result.match };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

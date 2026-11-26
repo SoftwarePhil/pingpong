@@ -70,6 +70,12 @@ export interface Tournament {
   playerRanking?: string[];
   matches?: Match[]; // Embedded matches for hybrid schema
   bracketConfig?: BracketConfig; // Custom bracket setup chosen in preview
+  /**
+   * Bumped by every committed change (see mutateTournament), so a client can
+   * tell a newer copy from an older one. Missing on tournaments saved before
+   * versions existed, which count as version 0.
+   */
+  version?: number;
 }
 
 export interface Match {

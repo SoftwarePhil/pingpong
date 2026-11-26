@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Game } from '../../../../types/pingpong';
-import { getAllGames, updateGameInMatch, removeGameFromMatch, getMatch, getTournament } from '../../../../data/data';
+import { getAllGames, updateGameInMatch, removeGameFromMatch, getMatch } from '../../../../data/data';
 import { validateScore } from '../../../../lib/scoring';
 import { requireAdmin } from '../../../../lib/auth';
 import { isDoublesMatch } from '../../../../lib/matchFormat';
+import { tournamentErrorResponse } from '../../../../lib/tournamentErrors';
 
 export async function PUT(
   request: NextRequest,
@@ -50,19 +51,6 @@ export async function PUT(
       if (isDoublesMatch(match) && (player1Id !== undefined || player2Id !== undefined)) {
         return NextResponse.json({ error: 'Doubles game participants cannot be changed' }, { status: 400 });
       }
-      const tournament = await getTournament(match.tournamentId);
-      const bracketStarted = Boolean(
-        tournament?.bracketStartedAt ||
-        (tournament?.matches ?? []).some(m => m.round === 'bracket') ||
-        tournament?.status === 'bracket'
-      );
-      if (match.round === 'roundRobin' && bracketStarted) {
-        return NextResponse.json(
-          { error: 'Cannot edit round robin games after bracket has started' },
-          { status: 400 }
-        );
-      }
-
       const result = await updateGameInMatch(updatedGame);
       if (!result) {
         return NextResponse.json({ error: 'Match not found for this game' }, { status: 404 });
@@ -71,6 +59,8 @@ export async function PUT(
 
     return NextResponse.json(updatedGame);
   } catch (error) {
+    const handled = tournamentErrorResponse(error);
+    if (handled) return handled;
     console.error('Error updating game:', error);
     return NextResponse.json({ error: 'Failed to update game' }, { status: 500 });
   }
@@ -100,19 +90,6 @@ export async function DELETE(
     if (!match) {
       return NextResponse.json({ error: 'Match not found for this game' }, { status: 404 });
     }
-    const tournament = await getTournament(match.tournamentId);
-    const bracketStarted = Boolean(
-      tournament?.bracketStartedAt ||
-      (tournament?.matches ?? []).some(m => m.round === 'bracket') ||
-      tournament?.status === 'bracket'
-    );
-    if (match.round === 'roundRobin' && bracketStarted) {
-      return NextResponse.json(
-        { error: 'Cannot delete round robin games after bracket has started' },
-        { status: 400 }
-      );
-    }
-
     const result = await removeGameFromMatch(gameId, gameToDelete.matchId);
     if (!result) {
       return NextResponse.json({ error: 'Failed to remove game from match' }, { status: 500 });
@@ -123,6 +100,8 @@ export async function DELETE(
       deletedGame: result.game,
     });
   } catch (error) {
+    const handled = tournamentErrorResponse(error);
+    if (handled) return handled;
     console.error('Error deleting game:', error);
     return NextResponse.json({ error: 'Failed to delete game' }, { status: 500 });
   }

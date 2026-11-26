@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Tournament, Match, BracketConfig, PlayInMode, RoundRobinFormat } from '../../../types/pingpong';
-import { getTournaments, setTournament, getTournament, deleteTournament, registerMatchesIndex, unregisterMatchesIndex, syncTournamentPlayers, setRoundRobinFormatAtomically, TournamentConflictError, TournamentNotFoundError, getPlayers } from '../../../data/data';
+import { getTournaments, createTournament, mutateTournament, getTournament, deleteTournament, syncTournamentPlayers, setRoundRobinFormatAtomically, getPlayers } from '../../../data/data';
 import { createRoundRobinPairings, advanceBracketRound, createBracketMatches, advanceRoundRobinRound, resyncRoundRobinMatches, createThirdPlaceMatch, buildBracketFromPreview, rankPlayersForBracket, InvalidBracketError } from '../../../lib/tournament';
 import { requireAdmin } from '../../../lib/auth';
 import { clubFromRequest } from '../../../lib/clubRequest';
 import { newId, shuffle } from '../../../lib/random';
 import { isMatchComplete } from '../../../lib/matchFormat';
+import { reject, tournamentErrorResponse } from '../../../lib/tournamentErrors';
 
 const PLAY_IN_MODES: PlayInMode[] = ['auto', 'force', 'none', 'fewerByes'];
 
@@ -87,12 +88,11 @@ export async function POST(request: NextRequest) {
     // Embed matches in tournament document
     newTournament.matches = embeddedMatches;
 
-    // Save tournament, sync player records, and register matches in the index
-    await setTournament(newTournament);
-    await syncTournamentPlayers(newTournament);
-    await registerMatchesIndex(embeddedMatches);
+    // Save the tournament with its match index entries, then sync player records
+    const created = await createTournament(newTournament);
+    await syncTournamentPlayers(created);
 
-    return NextResponse.json(newTournament, { status: 201 });
+    return NextResponse.json(created, { status: 201 });
   } catch (error) {
     console.error(error);
     return NextResponse.json({ error: 'Failed to create tournament' }, { status: 500 });
@@ -111,8 +111,8 @@ export async function PUT(request: NextRequest) {
       rrPairingStrategy?: 'random' | 'top-vs-top' | 'swiss';
     } = body;
 
-    const tournament = await getTournament(id);
-    if (tournament?.clubId !== admin.clubId) {
+    const existing = await getTournament(id);
+    if (existing?.clubId !== admin.clubId) {
       return NextResponse.json({ error: 'Tournament not found' }, { status: 404 });
     }
 
@@ -132,249 +132,199 @@ export async function PUT(request: NextRequest) {
         return NextResponse.json({ error: 'Invalid round robin format' }, { status: 400 });
       }
 
-      try {
-        const updatedTournament = await setRoundRobinFormatAtomically(id, requestedRound, format);
-        return NextResponse.json(updatedTournament);
-      } catch (error) {
-        if (error instanceof TournamentNotFoundError) {
-          return NextResponse.json({ error: 'Tournament not found' }, { status: 404 });
-        }
-        if (error instanceof TournamentConflictError) {
-          return NextResponse.json({ error: 'Tournament changed while updating the round. Please try again.' }, { status: 409 });
-        }
-        if (error instanceof Error) {
-          return NextResponse.json({ error: error.message }, { status: 400 });
-        }
-        throw error;
-      }
+      const updatedTournament = await setRoundRobinFormatAtomically(id, requestedRound, format);
+      return NextResponse.json(updatedTournament);
     }
 
-    const bracketMatches = (tournament.matches ?? []).filter(m => m.round === 'bracket');
-    const bracketStarted = Boolean(tournament.bracketStartedAt || bracketMatches.length > 0 || tournament.status === 'bracket');
-
-    // Changing the round-robin pairing strategy on an already-active tournament.
-    // Only meaningful before the bracket has started; immediately re-pairs the
-    // current round's unplayed matches so the new strategy takes effect right away
-    // (future rounds pick it up automatically via advanceRoundRobinRound).
-    if (rrPairingStrategy) {
-      if (rrPairingStrategy !== 'random' && rrPairingStrategy !== 'top-vs-top' && rrPairingStrategy !== 'swiss') {
-        return NextResponse.json({ error: 'Invalid rrPairingStrategy' }, { status: 400 });
-      }
-      if (bracketStarted || tournament.status === 'completed') {
-        return NextResponse.json({ error: 'Cannot change pairing strategy after bracket has started' }, { status: 400 });
-      }
-
-      tournament.rrPairingStrategy = rrPairingStrategy;
-
-      if (tournament.status === 'roundRobin') {
-        const { matches, addedMatches, removedMatchIds } = resyncRoundRobinMatches(tournament);
-        tournament.matches = matches;
-        await unregisterMatchesIndex(removedMatchIds);
-        await registerMatchesIndex(addedMatches);
-      }
-
-      await setTournament(tournament);
-      return NextResponse.json(tournament);
+    if (rrPairingStrategy && rrPairingStrategy !== 'random' && rrPairingStrategy !== 'top-vs-top' && rrPairingStrategy !== 'swiss') {
+      return NextResponse.json({ error: 'Invalid rrPairingStrategy' }, { status: 400 });
+    }
+    if (status === 'bracket') {
+      return NextResponse.json({ error: 'Use action=startBracket to start bracket stage' }, { status: 400 });
+    }
+    const parsedConfig = action === 'startBracket'
+      ? parseBracketConfig((body as { bracketConfig?: unknown }).bracketConfig)
+      : { config: {} };
+    if ('error' in parsedConfig) {
+      return NextResponse.json({ error: parsedConfig.error }, { status: 400 });
     }
 
-    if (action === 'addThirdPlaceMatch') {
-      if (!bracketStarted || tournament.status === 'completed') {
-        return NextResponse.json({ error: 'The third-place game can only be added during the bracket stage' }, { status: 400 });
-      }
-      if ((tournament.matches ?? []).some(m => m.round === 'bracket' && m.isThirdPlace)) {
-        return NextResponse.json({ error: 'A third-place game already exists' }, { status: 400 });
-      }
+    // Everything below reads and changes the tournament in one guarded change,
+    // so two admins acting at once can't overwrite each other.
+    const { tournament: updated } = await mutateTournament(id, tournament => {
+      const bracketMatches = (tournament.matches ?? []).filter(m => m.round === 'bracket');
+      const bracketStarted = Boolean(tournament.bracketStartedAt || bracketMatches.length > 0 || tournament.status === 'bracket');
 
-      const thirdPlaceMatch = createThirdPlaceMatch(tournament);
-      if (!thirdPlaceMatch) {
-        return NextResponse.json({ error: 'Both semifinal matches must be complete before adding the third-place game' }, { status: 400 });
-      }
-
-      tournament.bracketConfig = { ...(tournament.bracketConfig ?? {}), thirdPlaceMatch: true };
-      if (!tournament.matches) tournament.matches = [];
-      tournament.matches.push(thirdPlaceMatch);
-      await registerMatchesIndex([thirdPlaceMatch]);
-      await setTournament(tournament);
-      return NextResponse.json(tournament);
-    }
-
-if (action === 'advanceRound') {
-      if (!bracketStarted && tournament.status !== 'completed') {
-        // Check if all matches in the CURRENT round are completed. Scoped to
-        // just the current (highest) round — not all rounds — so that an
-        // edited/incomplete match left behind in an earlier round (e.g. via
-        // the round-picker in the UI) never blocks advancing an
-        // already-finished current round.
-        const rrMatchesForCheck = (tournament.matches ?? []).filter(m => m.round === 'roundRobin');
-        const currentRRRound = rrMatchesForCheck.length > 0
-          ? Math.max(...rrMatchesForCheck.map(m => m.bracketRound ?? 1))
-          : 1;
-        const incompleteCurrentRoundMatches = rrMatchesForCheck.filter(m =>
-          (m.bracketRound ?? 1) === currentRRRound && !isMatchComplete(m)
-        );
-
-        if (incompleteCurrentRoundMatches.length > 0) {
-          return NextResponse.json({ error: 'Current round is not complete' }, { status: 400 });
+      // Changing the round-robin pairing strategy on an already-active tournament.
+      // Only meaningful before the bracket has started; immediately re-pairs the
+      // current round's unplayed matches so the new strategy takes effect right away
+      // (future rounds pick it up automatically via advanceRoundRobinRound).
+      if (rrPairingStrategy) {
+        if (bracketStarted || tournament.status === 'completed') {
+          reject('Cannot change pairing strategy after bracket has started');
         }
+        tournament.rrPairingStrategy = rrPairingStrategy;
+        if (tournament.status === 'roundRobin') {
+          tournament.matches = resyncRoundRobinMatches(tournament).matches;
+        }
+        return;
+      }
 
-        // Advance to next round
-        const newMatches = advanceRoundRobinRound(tournament);
+      if (action === 'addThirdPlaceMatch') {
+        if (!bracketStarted || tournament.status === 'completed') {
+          reject('The third-place game can only be added during the bracket stage');
+        }
+        if ((tournament.matches ?? []).some(m => m.round === 'bracket' && m.isThirdPlace)) {
+          reject('A third-place game already exists');
+        }
+        const thirdPlaceMatch = createThirdPlaceMatch(tournament)
+          ?? reject('Both semifinal matches must be complete before adding the third-place game');
+        tournament.bracketConfig = { ...(tournament.bracketConfig ?? {}), thirdPlaceMatch: true };
+        tournament.matches = [...(tournament.matches ?? []), thirdPlaceMatch];
+        return;
+      }
 
-        if (newMatches.length === 0) {
-          return NextResponse.json(
-            { error: 'No more round robin rounds. Add another round or start bracket.' },
-            { status: 400 }
+      if (action === 'advanceRound') {
+        if (!bracketStarted && tournament.status !== 'completed') {
+          // Check if all matches in the CURRENT round are completed. Scoped to
+          // just the current (highest) round — not all rounds — so that an
+          // edited/incomplete match left behind in an earlier round (e.g. via
+          // the round-picker in the UI) never blocks advancing an
+          // already-finished current round.
+          const rrMatchesForCheck = (tournament.matches ?? []).filter(m => m.round === 'roundRobin');
+          const currentRRRound = rrMatchesForCheck.length > 0
+            ? Math.max(...rrMatchesForCheck.map(m => m.bracketRound ?? 1))
+            : 1;
+          const incompleteCurrentRoundMatches = rrMatchesForCheck.filter(m =>
+            (m.bracketRound ?? 1) === currentRRRound && !isMatchComplete(m)
           );
-        }
-
-        if (!tournament.matches) tournament.matches = [];
-        tournament.matches.push(...newMatches);
-        await registerMatchesIndex(newMatches);
-
-        await setTournament(tournament);
-      } else if (bracketStarted && tournament.status !== 'completed') {
-        // Advance bracket round
-        const standardBracketMatches = (tournament.matches ?? []).filter(m =>
-          m.round === 'bracket' &&
-          !m.isThirdPlace &&
-          (m.bracketRound ?? 0) > 0
-        );
-        const currentBracketRound = standardBracketMatches.length > 0
-          ? Math.max(...standardBracketMatches.map(m => m.bracketRound ?? 1))
-          : 0;
-        const currentBracketMatches = standardBracketMatches.filter(m =>
-          (m.bracketRound ?? 1) === currentBracketRound
-        );
-         if (!currentBracketMatches.length || !currentBracketMatches.every(isMatchComplete)) {
-          return NextResponse.json({ error: 'Current bracket round is not complete' }, { status: 400 });
-        }
-
-        const newBracketMatches = advanceBracketRound(tournament);
-        const thirdPlacePending =
-          (tournament.matches ?? []).some(m =>
-            m.isThirdPlace &&
-            (m.bracketRound ?? 0) === currentBracketRound &&
-            !isMatchComplete(m)
-          );
-        if (newBracketMatches.length === 0 && (tournament.status as string) !== 'completed' && !thirdPlacePending) {
-          return NextResponse.json({ error: 'Cannot advance bracket round' }, { status: 400 });
-        }
-
-        if (newBracketMatches.length > 0) {
-          if (!tournament.matches) tournament.matches = [];
-          tournament.matches.push(...newBracketMatches);
-          await registerMatchesIndex(newBracketMatches);
-        }
-
-        await setTournament(tournament);
-      }
-    }
-
-    if (action === 'startBracket') {
-      if (tournament.status === 'completed') {
-        return NextResponse.json({ error: 'Tournament is already completed' }, { status: 400 });
-      }
-
-      const rrMatches = (tournament.matches ?? []).filter(m => m.round === 'roundRobin');
-      if (rrMatches.length === 0) {
-        return NextResponse.json({ error: 'No round robin matches found' }, { status: 400 });
-      }
-      const firstRound = rrMatches.filter(m => (m.bracketRound ?? 1) === 1);
-       const incompleteFirstRound = firstRound.filter(m => !isMatchComplete(m));
-      if (incompleteFirstRound.length > 0) {
-        return NextResponse.json({ error: 'Finish round robin round 1 before starting bracket' }, { status: 400 });
-      }
-
-      const existingBracketMatches = (tournament.matches ?? []).filter(m => m.round === 'bracket');
-      const hasPlayedBracket = existingBracketMatches.some(m =>
-        m.games.length > 0 || (isMatchComplete(m) && m.player1Id !== 'BYE' && m.player2Id !== 'BYE')
-      );
-      if (hasPlayedBracket) {
-        return NextResponse.json({ error: 'Cannot rebuild bracket after bracket games have been played' }, { status: 400 });
-      }
-
-      const parsedConfig = parseBracketConfig((body as { bracketConfig?: unknown }).bracketConfig);
-      if ('error' in parsedConfig) {
-        return NextResponse.json({ error: parsedConfig.error }, { status: 400 });
-      }
-
-      // Build the new bracket against a copy without any earlier unplayed
-      // bracket, so nothing is changed until the new bracket is known to be valid.
-      const withoutBracket: Tournament = {
-        ...tournament,
-        bracketConfig: { ...(tournament.bracketConfig ?? {}), ...parsedConfig.config },
-        matches: (tournament.matches ?? []).filter(m => m.round !== 'bracket'),
-      };
-
-      // The client may commit the exact opening matches it showed in the live
-      // preview (after any player or bye changes); otherwise generate them.
-      const submittedMatches = (body as { initialBracketMatches?: unknown }).initialBracketMatches;
-      let newBracketMatches: Match[];
-      let playerRanking: string[];
-      if (submittedMatches !== undefined) {
-        try {
-          newBracketMatches = buildBracketFromPreview(withoutBracket, submittedMatches);
-        } catch (error) {
-          if (error instanceof InvalidBracketError) {
-            return NextResponse.json({ error: error.message }, { status: 400 });
+          if (incompleteCurrentRoundMatches.length > 0) {
+            reject('Current round is not complete');
           }
-          throw error;
+
+          // Advance to next round
+          const newMatches = advanceRoundRobinRound(tournament);
+          if (newMatches.length === 0) {
+            reject('No more round robin rounds. Add another round or start bracket.');
+          }
+          tournament.matches = [...(tournament.matches ?? []), ...newMatches];
+        } else if (bracketStarted && tournament.status !== 'completed') {
+          // Advance bracket round
+          const standardBracketMatches = (tournament.matches ?? []).filter(m =>
+            m.round === 'bracket' &&
+            !m.isThirdPlace &&
+            (m.bracketRound ?? 0) > 0
+          );
+          const currentBracketRound = standardBracketMatches.length > 0
+            ? Math.max(...standardBracketMatches.map(m => m.bracketRound ?? 1))
+            : 0;
+          const currentBracketMatches = standardBracketMatches.filter(m =>
+            (m.bracketRound ?? 1) === currentBracketRound
+          );
+          if (!currentBracketMatches.length || !currentBracketMatches.every(isMatchComplete)) {
+            reject('Current bracket round is not complete');
+          }
+
+          const newBracketMatches = advanceBracketRound(tournament);
+          const thirdPlacePending =
+            (tournament.matches ?? []).some(m =>
+              m.isThirdPlace &&
+              (m.bracketRound ?? 0) === currentBracketRound &&
+              !isMatchComplete(m)
+            );
+          if (newBracketMatches.length === 0 && (tournament.status as string) !== 'completed' && !thirdPlacePending) {
+            reject('Cannot advance bracket round');
+          }
+          if (newBracketMatches.length > 0) {
+            tournament.matches = [...(tournament.matches ?? []), ...newBracketMatches];
+          }
         }
-        playerRanking = rankPlayersForBracket(withoutBracket);
-      } else {
-        newBracketMatches = createBracketMatches(withoutBracket, true);
-        playerRanking = withoutBracket.playerRanking ?? [];
       }
 
-      if (newBracketMatches.length === 0) {
-        return NextResponse.json({ error: 'Failed to create bracket matches' }, { status: 400 });
-      }
+      if (action === 'startBracket') {
+        if (tournament.status === 'completed') {
+          reject('Tournament is already completed');
+        }
 
-      tournament.status = 'bracket';
-      tournament.bracketStartedAt = tournament.bracketStartedAt ?? new Date().toISOString();
-      tournament.bracketConfig = withoutBracket.bracketConfig;
-      tournament.playerRanking = playerRanking;
-      tournament.matches = [...(withoutBracket.matches ?? []), ...newBracketMatches];
-      await unregisterMatchesIndex(existingBracketMatches.map(m => m.id));
-      await registerMatchesIndex(newBracketMatches);
-      await setTournament(tournament);
-      return NextResponse.json(tournament);
-    }
+        const rrMatches = (tournament.matches ?? []).filter(m => m.round === 'roundRobin');
+        if (rrMatches.length === 0) {
+          reject('No round robin matches found');
+        }
+        const firstRound = rrMatches.filter(m => (m.bracketRound ?? 1) === 1);
+        if (firstRound.some(m => !isMatchComplete(m))) {
+          reject('Finish round robin round 1 before starting bracket');
+        }
 
-    if (action === 'addRoundRobinRound') {
-      if (bracketStarted || tournament.status === 'completed') {
-        return NextResponse.json({ error: 'Cannot add rounds after bracket has started' }, { status: 400 });
-      }
-
-      // Increment the planned round count first so that advanceRoundRobinRound's guard
-      // (nextRound > tournament.roundRobinRounds) allows the new round to be created.
-      tournament.roundRobinRounds += 1;
-      const newMatches = advanceRoundRobinRound(tournament);
-
-      if (newMatches.length === 0) {
-        return NextResponse.json({ error: 'Failed to create new round' }, { status: 400 });
-      }
-
-      if (!tournament.matches) tournament.matches = [];
-      tournament.matches.push(...newMatches);
-      await registerMatchesIndex(newMatches);
-      await setTournament(tournament);
-      return NextResponse.json(tournament);
-    }
-
-    if (status) {
-      if (status === 'bracket') {
-        return NextResponse.json(
-          { error: 'Use action=startBracket to start bracket stage' },
-          { status: 400 }
+        const hasPlayedBracket = bracketMatches.some(m =>
+          m.games.length > 0 || (isMatchComplete(m) && m.player1Id !== 'BYE' && m.player2Id !== 'BYE')
         );
-      }
-      tournament.status = status;
-    }
+        if (hasPlayedBracket) {
+          reject('Cannot rebuild bracket after bracket games have been played');
+        }
 
-    await setTournament(tournament);
-    return NextResponse.json(tournament);
+        // Build the new bracket against a copy without any earlier unplayed
+        // bracket, so nothing is changed until the new bracket is known to be valid.
+        const withoutBracket: Tournament = {
+          ...tournament,
+          bracketConfig: { ...(tournament.bracketConfig ?? {}), ...parsedConfig.config },
+          matches: (tournament.matches ?? []).filter(m => m.round !== 'bracket'),
+        };
+
+        // The client may commit the exact opening matches it showed in the live
+        // preview (after any player or bye changes); otherwise generate them.
+        const submittedMatches = (body as { initialBracketMatches?: unknown }).initialBracketMatches;
+        let newBracketMatches: Match[];
+        let playerRanking: string[];
+        if (submittedMatches !== undefined) {
+          try {
+            newBracketMatches = buildBracketFromPreview(withoutBracket, submittedMatches);
+          } catch (error) {
+            if (error instanceof InvalidBracketError) reject(error.message);
+            throw error;
+          }
+          playerRanking = rankPlayersForBracket(withoutBracket);
+        } else {
+          newBracketMatches = createBracketMatches(withoutBracket, true);
+          playerRanking = withoutBracket.playerRanking ?? [];
+        }
+
+        if (newBracketMatches.length === 0) {
+          reject('Failed to create bracket matches');
+        }
+
+        tournament.status = 'bracket';
+        tournament.bracketStartedAt = tournament.bracketStartedAt ?? new Date().toISOString();
+        tournament.bracketConfig = withoutBracket.bracketConfig;
+        tournament.playerRanking = playerRanking;
+        tournament.matches = [...(withoutBracket.matches ?? []), ...newBracketMatches];
+        return;
+      }
+
+      if (action === 'addRoundRobinRound') {
+        if (bracketStarted || tournament.status === 'completed') {
+          reject('Cannot add rounds after bracket has started');
+        }
+
+        // Increment the planned round count first so that advanceRoundRobinRound's guard
+        // (nextRound > tournament.roundRobinRounds) allows the new round to be created.
+        tournament.roundRobinRounds += 1;
+        const newMatches = advanceRoundRobinRound(tournament);
+        if (newMatches.length === 0) {
+          reject('Failed to create new round');
+        }
+        tournament.matches = [...(tournament.matches ?? []), ...newMatches];
+        return;
+      }
+
+      if (status) {
+        tournament.status = status;
+      }
+    });
+
+    return NextResponse.json(updated);
   } catch (error) {
+    const handled = tournamentErrorResponse(error);
+    if (handled) return handled;
     console.error(error);
     return NextResponse.json({ error: 'Failed to update tournament' }, { status: 500 });
   }
