@@ -19,7 +19,7 @@ jest.mock('../data/data', () => ({
   getTournament: jest.fn(),
   getTournaments: jest.fn(),
   deleteTournament: jest.fn(),
-  setTournament: jest.fn(),
+  mutateTournament: jest.fn(),
   setRoundRobinFormatAtomically: jest.fn(),
   getMatch: jest.fn(),
   removeMatchFromTournament: jest.fn(),
@@ -94,7 +94,7 @@ describe("an admin can't change another club", () => {
     const res = await call();
 
     expect(res.status).toBe(404);
-    expect(mocked.setTournament).not.toHaveBeenCalled();
+    expect(mocked.mutateTournament).not.toHaveBeenCalled();
     expect(mocked.setRoundRobinFormatAtomically).not.toHaveBeenCalled();
     expect(mocked.deleteTournament).not.toHaveBeenCalled();
     expect(mocked.removeMatchFromTournament).not.toHaveBeenCalled();

@@ -6,20 +6,25 @@ jest.mock('../data/data', () => ({
   getMatch: jest.fn(),
   getTournamentIdForMatch: jest.fn(),
   getTournament: jest.fn(),
-  setTournament: jest.fn(),
-  updateMatchInTournament: jest.fn(),
+  mutateTournament: jest.fn(),
+  // The real placeMatch also carries bracket winners forward; these tests are about round-robin matches.
+  placeMatch: jest.fn((tournament: Tournament, match: Match) => {
+    tournament.matches = tournament.matches!.map(m => m.id === match.id ? match : m);
+    return { match, invalidatedGameIds: [] };
+  }),
   removeMatchFromTournament: jest.fn(),
   removeGamesFromHistory: jest.fn(),
   recalculateMatchWinner: jest.fn((match: Match) => match),
 }));
 
-import { getMatch, getTournament, getTournamentIdForMatch, setTournament, updateMatchInTournament } from '../data/data';
+import { getMatch, getTournament, getTournamentIdForMatch, mutateTournament } from '../data/data';
+import { fakeMutateTournament } from './mutateTournamentMock';
 
 const mockedGetMatch = getMatch as jest.MockedFunction<typeof getMatch>;
 const mockedGetTournament = getTournament as jest.MockedFunction<typeof getTournament>;
 const mockedGetTournamentIdForMatch = getTournamentIdForMatch as jest.MockedFunction<typeof getTournamentIdForMatch>;
-const mockedSetTournament = setTournament as jest.MockedFunction<typeof setTournament>;
-const mockedUpdateMatchInTournament = updateMatchInTournament as jest.MockedFunction<typeof updateMatchInTournament>;
+const mockedMutateTournament = mutateTournament as jest.MockedFunction<typeof mutateTournament>;
+let saved: Tournament[] = [];
 
 function makeMatch(overrides: Partial<Match> = {}): Match {
   return {
@@ -66,17 +71,18 @@ async function expectRejected(body: unknown, message: string) {
   const res = await put(body);
   expect(res.status).toBe(400);
   expect((await res.json()).error).toContain(message);
-  expect(mockedSetTournament).not.toHaveBeenCalled();
-  expect(mockedUpdateMatchInTournament).not.toHaveBeenCalled();
+  expect(saved).toHaveLength(0);
 }
 
 beforeEach(() => {
   jest.clearAllMocks();
+  const fake = fakeMutateTournament(id => mockedGetTournament(id));
+  saved = fake.saved;
+  mockedMutateTournament.mockImplementation(fake.mutate as typeof mutateTournament);
   const matches = [makeMatch(), makeMatch({ id: 'm2', player1Id: 'p3', player2Id: 'p4' })];
   mockedGetMatch.mockResolvedValue(matches[0]);
   mockedGetTournamentIdForMatch.mockResolvedValue('t1');
   mockedGetTournament.mockResolvedValue(makeTournament(matches));
-  mockedUpdateMatchInTournament.mockResolvedValue(makeTournament(matches));
 });
 
 describe('PUT /api/matches/:id', () => {
@@ -113,15 +119,15 @@ describe('PUT /api/matches/:id', () => {
   it('changes best-of', async () => {
     const res = await put({ bestOf: 3 });
     expect(res.status).toBe(200);
-    expect(mockedUpdateMatchInTournament).toHaveBeenCalledWith(expect.objectContaining({ id: 'm1', bestOf: 3 }));
+    expect(saved[0].matches!.find(m => m.id === 'm1')).toMatchObject({ bestOf: 3 });
   });
 
   it('swaps in an active player and moves the displaced one', async () => {
     const res = await put({ player1Id: 'p3', player2Id: 'p2' });
     expect(res.status).toBe(200);
-    const saved = mockedSetTournament.mock.calls[0][0].matches!;
-    expect(saved.find(m => m.id === 'm1')).toMatchObject({ player1Id: 'p3', player2Id: 'p2' });
-    expect(saved.find(m => m.id === 'm2')).toMatchObject({ player1Id: 'p1', player2Id: 'p4' });
+    const savedMatches = saved[0].matches!;
+    expect(savedMatches.find(m => m.id === 'm1')).toMatchObject({ player1Id: 'p3', player2Id: 'p2' });
+    expect(savedMatches.find(m => m.id === 'm2')).toMatchObject({ player1Id: 'p1', player2Id: 'p4' });
   });
 
   it('still lets a marker join an unplayed round-robin bye', async () => {

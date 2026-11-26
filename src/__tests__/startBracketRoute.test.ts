@@ -4,21 +4,20 @@ import { Match, Tournament } from '../types/pingpong';
 
 jest.mock('../data/data', () => ({
   getTournaments: jest.fn(),
-  setTournament: jest.fn(),
+  createTournament: jest.fn(),
+  mutateTournament: jest.fn(),
   getTournament: jest.fn(),
   deleteTournament: jest.fn(),
-  registerMatchesIndex: jest.fn(),
-  unregisterMatchesIndex: jest.fn(),
   syncTournamentPlayers: jest.fn(),
   setRoundRobinFormatAtomically: jest.fn(),
-  TournamentConflictError: class extends Error {},
-  TournamentNotFoundError: class extends Error {},
 }));
 
-import { getTournament, registerMatchesIndex, setTournament, unregisterMatchesIndex } from '../data/data';
+import { getTournament, mutateTournament } from '../data/data';
+import { fakeMutateTournament } from './mutateTournamentMock';
 
 const mockedGetTournament = getTournament as jest.MockedFunction<typeof getTournament>;
-const mockedSetTournament = setTournament as jest.MockedFunction<typeof setTournament>;
+const mockedMutateTournament = mutateTournament as jest.MockedFunction<typeof mutateTournament>;
+let savedTournaments: Tournament[] = [];
 
 function rrMatch(id: string, player1Id: string, player2Id: string): Match {
   return {
@@ -60,7 +59,12 @@ function startBracket(body: Record<string, unknown>) {
 
 const previewSlot = (player1Id: string, player2Id: string) => ({ id: `client-${player1Id}`, bracketRound: 1, player1Id, player2Id, round: 'bracket', games: [], bestOf: 1 });
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  const fake = fakeMutateTournament(id => mockedGetTournament(id));
+  savedTournaments = fake.saved;
+  mockedMutateTournament.mockImplementation(fake.mutate as typeof mutateTournament);
+});
 
 describe('PUT /api/tournaments startBracket', () => {
   it('starts a fewer-byes bracket from the preview and remembers the mode', async () => {
@@ -77,7 +81,7 @@ describe('PUT /api/tournaments startBracket', () => {
     });
 
     expect(res.status).toBe(200);
-    const saved = mockedSetTournament.mock.calls[0][0];
+    const saved = savedTournaments[0];
     expect(saved.bracketConfig?.playInMode).toBe('fewerByes');
     const bye = saved.matches!.find(m => m.player2Id === 'BYE')!;
     expect(bye.winnerId).toBeUndefined();
@@ -98,13 +102,12 @@ describe('PUT /api/tournaments startBracket', () => {
     });
 
     expect(res.status).toBe(200);
-    const saved = mockedSetTournament.mock.calls[0][0];
+    const saved = savedTournaments[0];
     const bracket = saved.matches!.filter(m => m.round === 'bracket');
     expect(bracket.map(m => [m.player1Id, m.player2Id, m.bestOf])).toEqual([['p1', 'p4', 3], ['p3', 'p2', 3]]);
     expect(bracket.every(m => !m.id.startsWith('client-'))).toBe(true);
     expect(saved).toMatchObject({ status: 'bracket', bracketConfig: { playInMode: 'none', thirdPlaceMatch: true } });
     expect(saved.playerRanking).toHaveLength(4);
-    expect(registerMatchesIndex).toHaveBeenCalledWith(bracket);
   });
 
   it('rejects an invalid preview without touching the existing bracket or index', async () => {
@@ -115,9 +118,7 @@ describe('PUT /api/tournaments startBracket', () => {
 
     expect(res.status).toBe(400);
     expect((await res.json()).error).toBe('Not an active player in this tournament: intruder');
-    expect(unregisterMatchesIndex).not.toHaveBeenCalled();
-    expect(registerMatchesIndex).not.toHaveBeenCalled();
-    expect(mockedSetTournament).not.toHaveBeenCalled();
+    expect(savedTournaments).toHaveLength(0);
   });
 
   it('replaces an earlier unplayed bracket once the new one is valid', async () => {
@@ -127,8 +128,7 @@ describe('PUT /api/tournaments startBracket', () => {
     const res = await startBracket({ initialBracketMatches: [previewSlot('p1', 'p4'), previewSlot('p3', 'p2')] });
 
     expect(res.status).toBe(200);
-    expect(unregisterMatchesIndex).toHaveBeenCalledWith(['b1']);
-    const saved = mockedSetTournament.mock.calls[0][0];
+    const saved = savedTournaments[0];
     expect(saved.matches!.some(m => m.id === 'b1')).toBe(false);
   });
 
@@ -143,7 +143,7 @@ describe('PUT /api/tournaments startBracket', () => {
 
     expect(res.status).toBe(400);
     expect((await res.json()).error).toBe(message);
-    expect(mockedSetTournament).not.toHaveBeenCalled();
+    expect(savedTournaments).toHaveLength(0);
   });
 
   it('still generates the bracket when no preview is sent', async () => {
@@ -152,7 +152,7 @@ describe('PUT /api/tournaments startBracket', () => {
     const res = await startBracket({});
 
     expect(res.status).toBe(200);
-    const saved = mockedSetTournament.mock.calls[0][0];
+    const saved = savedTournaments[0];
     expect(saved.matches!.filter(m => m.round === 'bracket')).toHaveLength(2);
     expect(saved.playerRanking).toHaveLength(4);
   });

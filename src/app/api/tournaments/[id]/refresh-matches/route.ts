@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTournament, setTournament, registerMatchesIndex, unregisterMatchesIndex } from '../../../../../data/data';
+import { getTournament, mutateTournament } from '../../../../../data/data';
 import { resyncRoundRobinMatches } from '../../../../../lib/tournament';
 import { requireAdmin } from '../../../../../lib/auth';
+import { reject, tournamentErrorResponse } from '../../../../../lib/tournamentErrors';
 
 /**
  * Atomic, on-demand "Refresh Matches" operation — regenerates round-robin
@@ -26,25 +27,22 @@ export async function POST(
       return NextResponse.json({ error: 'Tournament not found' }, { status: 404 });
     }
 
-    const bracketMatches = (tournament.matches ?? []).filter(m => m.round === 'bracket');
-    const bracketStarted = Boolean(
-      tournament.bracketStartedAt || bracketMatches.length > 0 || tournament.status === 'bracket'
-    );
-    if (bracketStarted || tournament.status === 'completed') {
-      return NextResponse.json(
-        { error: 'Matches can only be refreshed during the round robin stage' },
-        { status: 400 }
+    const { tournament: refreshed } = await mutateTournament(id, tournament => {
+      const bracketStarted = Boolean(
+        tournament.bracketStartedAt ||
+        (tournament.matches ?? []).some(m => m.round === 'bracket') ||
+        tournament.status === 'bracket'
       );
-    }
+      if (bracketStarted || tournament.status === 'completed') {
+        reject('Matches can only be refreshed during the round robin stage');
+      }
+      tournament.matches = resyncRoundRobinMatches(tournament).matches;
+    });
 
-    const { matches, addedMatches, removedMatchIds } = resyncRoundRobinMatches(tournament);
-    tournament.matches = matches;
-    await unregisterMatchesIndex(removedMatchIds);
-    await registerMatchesIndex(addedMatches);
-    await setTournament(tournament);
-
-    return NextResponse.json(tournament);
+    return NextResponse.json(refreshed);
   } catch (error) {
+    const handled = tournamentErrorResponse(error);
+    if (handled) return handled;
     console.error('Error refreshing tournament matches:', error);
     return NextResponse.json({ error: 'Failed to refresh matches' }, { status: 500 });
   }

@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   getTournament,
-  setTournament,
-  registerMatchesIndex,
-  unregisterMatchesIndex,
+  mutateTournament,
   syncTournamentPlayers,
   getPlayers,
 } from '../../../../../data/data';
 import { resyncRoundRobinMatches } from '../../../../../lib/tournament';
 import { requireAdmin } from '../../../../../lib/auth';
 import { getRoundRobinFormat, isValidDoublesRoster } from '../../../../../lib/matchFormat';
+import { reject, tournamentErrorResponse } from '../../../../../lib/tournamentErrors';
 
 /** Validates and de-duplicates a request-body field into a clean string[] (ignores non-string entries). */
 function toUniqueStringArray(value: unknown): string[] {
@@ -64,17 +63,6 @@ export async function PATCH(
       return NextResponse.json({ error: 'Tournament not found' }, { status: 404 });
     }
 
-    const bracketMatches = (tournament.matches ?? []).filter(m => m.round === 'bracket');
-    const bracketStarted = Boolean(
-      tournament.bracketStartedAt || bracketMatches.length > 0 || tournament.status === 'bracket'
-    );
-    if (bracketStarted || tournament.status === 'completed') {
-      return NextResponse.json(
-        { error: 'Cannot edit players after bracket has started' },
-        { status: 400 }
-      );
-    }
-
     // New player ids must correspond to real player records — otherwise
     // they'd silently create phantom matches with no display name.
     if (add.length > 0) {
@@ -88,44 +76,45 @@ export async function PATCH(
       }
     }
 
-    const currentActive = tournament.activePlayers ?? tournament.players;
-    const currentRRMatches = (tournament.matches ?? []).filter(match => match.round === 'roundRobin');
-    const currentRound = currentRRMatches.length > 0
-      ? Math.max(...currentRRMatches.map(match => match.bracketRound ?? 1))
-      : 1;
-    const currentRoundMatches = currentRRMatches.filter(match => (match.bracketRound ?? 1) === currentRound);
-    const requestedActive = [...new Set([...currentActive, ...add])].filter(pid => !remove.includes(pid));
-    if (getRoundRobinFormat(tournament, currentRound) === 'doubles') {
-      if (currentRoundMatches.some(match => match.games.length > 0)) {
-        return NextResponse.json(
-          { error: 'Cannot change players after a doubles round has started' },
-          { status: 400 },
-        );
+    const { tournament: updated } = await mutateTournament(id, tournament => {
+      const bracketStarted = Boolean(
+        tournament.bracketStartedAt ||
+        (tournament.matches ?? []).some(m => m.round === 'bracket') ||
+        tournament.status === 'bracket'
+      );
+      if (bracketStarted || tournament.status === 'completed') {
+        reject('Cannot edit players after bracket has started');
       }
-      if (!isValidDoublesRoster(requestedActive)) {
-        return NextResponse.json(
-          { error: 'A 2v2 round requires at least four active players in groups of four' },
-          { status: 400 },
-        );
+
+      const currentActive = tournament.activePlayers ?? tournament.players;
+      const currentRRMatches = (tournament.matches ?? []).filter(match => match.round === 'roundRobin');
+      const currentRound = currentRRMatches.length > 0
+        ? Math.max(...currentRRMatches.map(match => match.bracketRound ?? 1))
+        : 1;
+      const currentRoundMatches = currentRRMatches.filter(match => (match.bracketRound ?? 1) === currentRound);
+      const requestedActive = [...new Set([...currentActive, ...add])].filter(pid => !remove.includes(pid));
+      if (getRoundRobinFormat(tournament, currentRound) === 'doubles') {
+        if (currentRoundMatches.some(match => match.games.length > 0)) {
+          reject('Cannot change players after a doubles round has started');
+        }
+        if (!isValidDoublesRoster(requestedActive)) {
+          reject('A 2v2 round requires at least four active players in groups of four');
+        }
       }
-    }
-    tournament.players = [...new Set([...tournament.players, ...add])];
-    tournament.activePlayers = [...new Set([...currentActive, ...add])].filter(
-      pid => !remove.includes(pid)
-    );
+      tournament.players = [...new Set([...tournament.players, ...add])];
+      tournament.activePlayers = requestedActive;
 
-    if (tournament.status === 'roundRobin') {
-      const { matches, addedMatches, removedMatchIds } = resyncRoundRobinMatches(tournament);
-      tournament.matches = matches;
-      await unregisterMatchesIndex(removedMatchIds);
-      await registerMatchesIndex(addedMatches);
-    }
+      if (tournament.status === 'roundRobin') {
+        tournament.matches = resyncRoundRobinMatches(tournament).matches;
+      }
+    });
 
-    await syncTournamentPlayers(tournament);
-    await setTournament(tournament);
+    await syncTournamentPlayers(updated);
 
-    return NextResponse.json(tournament);
+    return NextResponse.json(updated);
   } catch (error) {
+    const handled = tournamentErrorResponse(error);
+    if (handled) return handled;
     console.error('Error updating tournament players:', error);
     return NextResponse.json({ error: 'Failed to update tournament players' }, { status: 500 });
   }

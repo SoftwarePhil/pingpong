@@ -4,9 +4,7 @@ import { adminRequest } from './authTestUtils';
 
 jest.mock('../data/data', () => ({
   getTournament: jest.fn(),
-  setTournament: jest.fn(),
-  registerMatchesIndex: jest.fn(),
-  unregisterMatchesIndex: jest.fn(),
+  mutateTournament: jest.fn(),
 }));
 
 jest.mock('../lib/tournament', () => ({
@@ -15,16 +13,14 @@ jest.mock('../lib/tournament', () => ({
 
 import {
   getTournament,
-  setTournament,
-  registerMatchesIndex,
-  unregisterMatchesIndex,
+  mutateTournament,
 } from '../data/data';
+import { fakeMutateTournament } from './mutateTournamentMock';
 import { resyncRoundRobinMatches } from '../lib/tournament';
 
 const mockedGetTournament = getTournament as jest.MockedFunction<typeof getTournament>;
-const mockedSetTournament = setTournament as jest.MockedFunction<typeof setTournament>;
-const mockedRegisterMatchesIndex = registerMatchesIndex as jest.MockedFunction<typeof registerMatchesIndex>;
-const mockedUnregisterMatchesIndex = unregisterMatchesIndex as jest.MockedFunction<typeof unregisterMatchesIndex>;
+const mockedMutateTournament = mutateTournament as jest.MockedFunction<typeof mutateTournament>;
+let saved: Tournament[] = [];
 const mockedResync = resyncRoundRobinMatches as jest.MockedFunction<typeof resyncRoundRobinMatches>;
 
 function makeTournament(overrides: Partial<Tournament> = {}): Tournament {
@@ -52,6 +48,9 @@ function callRefresh(id = 't1') {
 describe('POST /api/tournaments/[id]/refresh-matches', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    const fake = fakeMutateTournament(id => mockedGetTournament(id));
+    saved = fake.saved;
+    mockedMutateTournament.mockImplementation(fake.mutate as typeof mutateTournament);
     mockedResync.mockReturnValue({ matches: [], addedMatches: [], removedMatchIds: [] });
   });
 
@@ -89,10 +88,8 @@ describe('POST /api/tournaments/[id]/refresh-matches', () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(mockedResync).toHaveBeenCalledWith(tournament);
-    expect(mockedUnregisterMatchesIndex).toHaveBeenCalledWith(['m-old']);
-    expect(mockedRegisterMatchesIndex).toHaveBeenCalledWith(added);
-    expect(mockedSetTournament).toHaveBeenCalledTimes(1);
+    expect(mockedResync).toHaveBeenCalledWith(expect.objectContaining({ id: 't1', players: tournament.players }));
+    expect(saved).toHaveLength(1);
     expect(body.matches).toEqual(added);
     // Roster fields are never touched by this endpoint
     expect(body.players).toEqual(tournament.players);

@@ -5,22 +5,19 @@ import { Tournament } from '../types/pingpong';
 jest.mock('../data/data', () => ({
   getPlayers: jest.fn(),
   getTournaments: jest.fn(),
-  setTournament: jest.fn(),
+  createTournament: jest.fn(async (tournament: unknown) => tournament),
+  mutateTournament: jest.fn(),
   syncTournamentPlayers: jest.fn(),
-  registerMatchesIndex: jest.fn(),
   getTournament: jest.fn(),
   deleteTournament: jest.fn(),
-  unregisterMatchesIndex: jest.fn(),
   setRoundRobinFormatAtomically: jest.fn(),
-  TournamentConflictError: class extends Error {},
-  TournamentNotFoundError: class extends Error {},
 }));
 
-import { getPlayers, getTournaments, setTournament } from '../data/data';
+import { getPlayers, getTournaments, createTournament } from '../data/data';
 
 const mockedGetPlayers = getPlayers as jest.MockedFunction<typeof getPlayers>;
 const mockedGetTournaments = getTournaments as jest.MockedFunction<typeof getTournaments>;
-const mockedSetTournament = setTournament as jest.MockedFunction<typeof setTournament>;
+const mockedCreateTournament = createTournament as jest.MockedFunction<typeof createTournament>;
 
 function activeTournament(overrides: Partial<Tournament>): Tournament {
   return {
@@ -53,7 +50,7 @@ describe('POST /api/tournaments', () => {
     const res = await create();
 
     expect(res.status).toBe(201);
-    expect(mockedSetTournament.mock.calls[0][0]).toMatchObject({ clubId: 'club-dallas', name: 'Week 30' });
+    expect(mockedCreateTournament.mock.calls[0][0]).toMatchObject({ clubId: 'club-dallas', name: 'Week 30' });
   });
 
   it('refuses while another tournament is running in the club', async () => {
@@ -63,7 +60,7 @@ describe('POST /api/tournaments', () => {
 
     expect(res.status).toBe(409);
     expect(mockedGetTournaments).toHaveBeenCalledWith('club-dallas');
-    expect(mockedSetTournament).not.toHaveBeenCalled();
+    expect(mockedCreateTournament).not.toHaveBeenCalled();
   });
 
   it("refuses players from another club", async () => {
@@ -73,6 +70,6 @@ describe('POST /api/tournaments', () => {
     const res = await create();
 
     expect(res.status).toBe(400);
-    expect(mockedSetTournament).not.toHaveBeenCalled();
+    expect(mockedCreateTournament).not.toHaveBeenCalled();
   });
 });

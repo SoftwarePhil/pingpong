@@ -3,11 +3,10 @@ import { adminRequest } from './authTestUtils';
 
 jest.mock('../data/data', () => ({
   getTournaments: jest.fn(),
-  setTournament: jest.fn(),
+  createTournament: jest.fn(),
+  mutateTournament: jest.fn(),
   getTournament: jest.fn(),
   deleteTournament: jest.fn(),
-  registerMatchesIndex: jest.fn(),
-  unregisterMatchesIndex: jest.fn(),
   syncTournamentPlayers: jest.fn(),
 }));
 
@@ -21,15 +20,15 @@ jest.mock('../lib/tournament', () => ({
 
 import {
   getTournament,
-  setTournament,
-  registerMatchesIndex,
+  mutateTournament,
 } from '../data/data';
+import { fakeMutateTournament } from './mutateTournamentMock';
 import { advanceRoundRobinRound, createBracketMatches, createThirdPlaceMatch } from '../lib/tournament';
 import { Tournament, Match } from '../types/pingpong';
 
 const mockedGetTournament = getTournament as jest.MockedFunction<typeof getTournament>;
-const mockedSetTournament = setTournament as jest.MockedFunction<typeof setTournament>;
-const mockedRegisterMatchesIndex = registerMatchesIndex as jest.MockedFunction<typeof registerMatchesIndex>;
+const mockedMutateTournament = mutateTournament as jest.MockedFunction<typeof mutateTournament>;
+let saved: Tournament[] = [];
 const mockedAdvanceRoundRobinRound = advanceRoundRobinRound as jest.MockedFunction<typeof advanceRoundRobinRound>;
 const mockedCreateBracketMatches = createBracketMatches as jest.MockedFunction<typeof createBracketMatches>;
 const mockedCreateThirdPlaceMatch = createThirdPlaceMatch as jest.MockedFunction<typeof createThirdPlaceMatch>;
@@ -68,6 +67,9 @@ function makeMatch(overrides: Partial<Match> = {}): Match {
 describe('tournaments route transitions', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    const fake = fakeMutateTournament(id => mockedGetTournament(id));
+    saved = fake.saved;
+    mockedMutateTournament.mockImplementation(fake.mutate as typeof mutateTournament);
   });
 
   it('allows adding round robin rounds before bracket starts', async () => {
@@ -86,8 +88,8 @@ describe('tournaments route transitions', () => {
 
     expect(response.status).toBe(200);
     expect(body.roundRobinRounds).toBe(3);
-    expect(mockedRegisterMatchesIndex).toHaveBeenCalledTimes(1);
-    expect(mockedSetTournament).toHaveBeenCalledTimes(1);
+    expect(saved).toHaveLength(1);
+    expect(saved[0].matches?.map(m => m.id)).toEqual(['rr1', 'rr2']);
   });
 
   it('starts bracket explicitly via action and stamps lifecycle', async () => {
@@ -110,7 +112,7 @@ describe('tournaments route transitions', () => {
     expect(body.status).toBe('bracket');
     expect(body.bracketStartedAt).toBeTruthy();
     expect(mockedCreateBracketMatches).toHaveBeenCalledTimes(1);
-    expect(mockedRegisterMatchesIndex).toHaveBeenCalledTimes(1);
+    expect(saved[0].matches?.map(m => m.id)).toEqual(['rr1', 'b1']);
   });
 
   it('adds a third-place match after both semifinals are complete', async () => {
@@ -144,9 +146,9 @@ describe('tournaments route transitions', () => {
     expect(response.status).toBe(200);
     expect(body.bracketConfig.thirdPlaceMatch).toBe(true);
     expect(body.matches).toContainEqual(thirdPlace);
-    expect(mockedCreateThirdPlaceMatch).toHaveBeenCalledWith(tournament);
-    expect(mockedRegisterMatchesIndex).toHaveBeenCalledWith([thirdPlace]);
-    expect(mockedSetTournament).toHaveBeenCalledTimes(1);
+    expect(mockedCreateThirdPlaceMatch).toHaveBeenCalledWith(expect.objectContaining({ id: tournament.id }));
+    expect(saved).toHaveLength(1);
+    expect(saved[0].matches).toContainEqual(thirdPlace);
   });
 
   it('ignores legacy players/activePlayers fields — roster edits now live on their own endpoint', async () => {
@@ -168,7 +170,7 @@ describe('tournaments route transitions', () => {
     expect(response.status).toBe(200);
     // Roster is untouched by this endpoint
     expect(body.players).toEqual(['p1', 'p2', 'p3', 'p4']);
-    expect(mockedSetTournament).toHaveBeenCalledTimes(1);
+    expect(saved).toHaveLength(1);
   });
 
   describe('advanceRound completeness check is scoped to the current round only', () => {
