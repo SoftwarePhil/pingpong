@@ -28,7 +28,8 @@ COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/public ./public
+# The repo has no public/ folder. If one is added, copy it here:
+#   COPY --from=builder /app/public ./public
 
 USER node
 EXPOSE 3000
