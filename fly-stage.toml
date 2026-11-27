@@ -1,9 +1,9 @@
 # Stage Fly.io app — deployed automatically from main via GitHub Actions:
 #   fly deploy -c fly-stage.toml
 #
-# Set primary_region to match the MongoDB Atlas cluster region before deploying.
+# iad (Ashburn, VA) matches the MongoDB Atlas cluster in AWS us-east-1.
 app = 'pingpong-stage'
-primary_region = 'dfw'
+primary_region = 'iad'
 swap_size_mb = 256
 
 [build]
