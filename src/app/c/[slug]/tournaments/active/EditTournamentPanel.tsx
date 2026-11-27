@@ -27,6 +27,8 @@ interface EditTournamentPanelProps {
   onCreatePlayer: (name: string) => Promise<string | null>;
   onSubmit: (event: FormEvent) => void;
   onCancel: () => void;
+  conflictNotice?: string | null;
+  onDismissConflictNotice?: () => void;
 }
 
 export function EditTournamentPanel({
@@ -42,6 +44,8 @@ export function EditTournamentPanel({
   onCreatePlayer,
   onSubmit,
   onCancel,
+  conflictNotice,
+  onDismissConflictNotice,
 }: EditTournamentPanelProps) {
   const [addingPlayer, setAddingPlayer] = useState(false);
   const [newPlayerName, setNewPlayerName] = useState('');
@@ -61,6 +65,15 @@ export function EditTournamentPanel({
     <section className="surface-card p-6 sm:p-8">
       <p className="label-caps text-muted">Edit tournament</p>
       <h2 className="font-display mt-1 text-xl text-ink">{tournament.name}</h2>
+
+      {conflictNotice && (
+        <div role="status" className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-gold/40 bg-gold-soft px-4 py-3 text-sm font-semibold text-ink">
+          <span>{conflictNotice}</span>
+          {onDismissConflictNotice && (
+            <button type="button" onClick={onDismissConflictNotice} className="text-muted hover:text-ink" aria-label="Dismiss notice">✕</button>
+          )}
+        </div>
+      )}
 
       {rosterLocked && (
         <p className="mt-4 rounded-lg border border-ball/30 bg-ball-soft px-4 py-3 text-sm text-ink">

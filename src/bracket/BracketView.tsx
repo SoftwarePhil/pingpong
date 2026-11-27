@@ -22,6 +22,8 @@ export interface BracketViewProps<M extends BracketMatch> extends MatchEditorCal
   previewMode?: boolean;
   /** Draw a third-place slot, including before the placement match exists. */
   showThirdPlace?: boolean;
+  /** Per-match counters bumped when another admin updates a match over live sync. */
+  remoteMatchUpdates?: Record<string, number>;
 }
 
 /**
@@ -36,6 +38,7 @@ export function BracketView<M extends BracketMatch>({
   readOnly = false,
   previewMode = false,
   showThirdPlace = false,
+  remoteMatchUpdates,
   ...callbacks
 }: BracketViewProps<M>) {
   const [activeMatchId, setActiveMatchId] = useState<string | null>(null);
@@ -79,6 +82,7 @@ export function BracketView<M extends BracketMatch>({
           previewMode={previewMode}
           canSwap={Boolean(callbacks.onSwapPlayers) && canSwapMatch(activeMatch, bracketMatches, mode)}
           eligibleSwapPlayers={getEligibleSwapPlayers(activeMatch, bracketMatches)}
+          remoteUpdateToken={remoteMatchUpdates?.[activeMatch.id] ?? 0}
           onClose={close}
           {...callbacks}
         />

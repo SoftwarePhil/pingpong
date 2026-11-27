@@ -189,3 +189,111 @@ describe('LiveHub and WebSocket server', () => {
     }
   });
 });
+
+describe('Data layer live broadcasts', () => {
+  it('broadcasts on createTournament, mutateTournament (update & completion), and deleteTournament', async () => {
+    jest.resetModules();
+
+    let storedDoc: string | null = null;
+    const mockTx = {
+      set: jest.fn((_k: string, val: string) => { storedDoc = val; return mockTx; }),
+      del: jest.fn(() => { storedDoc = null; return mockTx; }),
+      zAdd: jest.fn(() => mockTx),
+      zRem: jest.fn(() => mockTx),
+      hSet: jest.fn(() => mockTx),
+      hDel: jest.fn(() => mockTx),
+      exec: jest.fn().mockResolvedValue(['OK']),
+    };
+    const mockWatchClient = {
+      isOpen: true,
+      on: jest.fn(),
+      connect: jest.fn().mockResolvedValue(undefined),
+      watch: jest.fn().mockResolvedValue('OK'),
+      unwatch: jest.fn().mockResolvedValue('OK'),
+      get: jest.fn(async () => storedDoc),
+      multi: jest.fn(() => mockTx),
+      quit: jest.fn().mockResolvedValue(undefined),
+    };
+    const mockRedis = {
+      on: jest.fn(),
+      connect: jest.fn().mockResolvedValue(undefined),
+      get: jest.fn(async () => storedDoc),
+      set: jest.fn(async (_k: string, val: string) => { storedDoc = val; return 'OK'; }),
+      del: jest.fn(async () => { storedDoc = null; return 1; }),
+      zRange: jest.fn().mockResolvedValue([]),
+      zAdd: jest.fn().mockResolvedValue(1),
+      zRem: jest.fn().mockResolvedValue(1),
+      hGet: jest.fn().mockResolvedValue(null),
+      hSet: jest.fn().mockResolvedValue(1),
+      hDel: jest.fn().mockResolvedValue(1),
+      multi: jest.fn(() => mockTx),
+      duplicate: jest.fn(() => mockWatchClient),
+    };
+    const mockCollection = {
+      find: jest.fn().mockReturnValue({ sort: jest.fn().mockReturnThis(), toArray: jest.fn().mockResolvedValue([]) }),
+      findOne: jest.fn().mockResolvedValue(null),
+      replaceOne: jest.fn().mockResolvedValue({ matchedCount: 1, upsertedCount: 1 }),
+      deleteOne: jest.fn().mockResolvedValue({ deletedCount: 1 }),
+      deleteMany: jest.fn().mockResolvedValue({ deletedCount: 0 }),
+      bulkWrite: jest.fn().mockResolvedValue({}),
+    };
+    const mockMongo = {
+      on: jest.fn(),
+      connect: jest.fn().mockResolvedValue(undefined),
+      db: jest.fn().mockReturnValue({ collection: jest.fn().mockReturnValue(mockCollection) }),
+    };
+
+    jest.doMock('redis', () => ({
+      createClient: jest.fn(() => mockRedis),
+      WatchError: class WatchError extends Error {},
+    }));
+    jest.doMock('mongodb', () => ({
+      MongoClient: jest.fn(() => mockMongo),
+    }));
+
+    const { getLiveHub: getHub } = await import('../lib/liveHub');
+    const hub = getHub();
+    hub.clear();
+
+    const received: unknown[] = [];
+    const fakeSocket = {
+      readyState: 1,
+      send: (data: string) => received.push(JSON.parse(data)),
+    };
+    hub.register(fakeSocket, 'admin-1');
+    hub.subscribe(fakeSocket, 'club-dallas');
+    received.length = 0; // ignore initial subscribed ack
+
+    const { createTournament, mutateTournament, deleteTournament } = await import('../data/data');
+
+    const created = await createTournament(sampleTournament({ id: 't-live', version: 1 }));
+    expect(received[0]).toEqual({ type: 'tournament', version: 1, tournament: created });
+
+    const { tournament: updated } = await mutateTournament('t-live', (t) => {
+      t.name = 'Updated Open';
+    });
+    expect(received[1]).toEqual({ type: 'tournament', version: 2, tournament: updated });
+
+    const { tournament: ended } = await mutateTournament('t-live', (t) => {
+      t.status = 'completed';
+    });
+    expect(received[2]).toEqual({
+      type: 'tournament_removed',
+      tournamentId: 't-live',
+      reason: 'ended',
+      version: 3,
+      tournament: ended,
+    });
+
+    // Simulate deleting an active tournament
+    storedDoc = JSON.stringify(sampleTournament({ id: 't-del', version: 1 }));
+    await deleteTournament('t-del');
+    expect(received[3]).toEqual({
+      type: 'tournament_removed',
+      tournamentId: 't-del',
+      reason: 'deleted',
+    });
+
+    hub.clear();
+  });
+});

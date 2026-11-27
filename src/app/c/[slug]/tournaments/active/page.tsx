@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Tournament, Player, Match, Game, BracketConfig, MARKER_PLAYER_ID, PlayInMode } from '../../../../../types/pingpong';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -13,17 +13,20 @@ import { createBracketMatches, cascadeBracketPlayerSwap, getCompletedSemifinalMa
 import { useClub } from '../../../../../components/ClubProvider';
 import { useConfirm } from '../../../../../components/ConfirmDialog';
 import { getRoundRobinFormat, isMatchComplete, isValidDoublesRoster } from '../../../../../lib/matchFormat';
+import { useLiveTournaments } from '../../../../../hooks/useLiveTournaments';
+import { didTournamentSettingsChange, diffChangedMatchIds } from '../../../../../lib/liveTournamentsState';
 import { TournamentHeader, TournamentMenuAction } from './TournamentHeader';
 import { EditTournamentPanel, PairingStrategy } from './EditTournamentPanel';
 import { BracketSetupPanel } from './BracketSetupPanel';
 import { GameHistory } from './GameHistory';
 import { PastRoundsSummary } from './PastRoundsSummary';
 
+const SELF_MUTATION_GRACE_MS = 1_500;
+
 export default function ActiveTournamentsPage() {
   const router = useRouter();
-  const { isAdmin, clubApi, clubHref } = useClub();
+  const { club, isAdmin, clubApi, clubHref } = useClub();
   const confirm = useConfirm();
-  const [tournaments, setTournaments]           = useState<Tournament[]>([]);
   const [players, setPlayers]                   = useState<Player[]>([]);
   const [games, setGames]                       = useState<Game[]>([]);
 
@@ -32,6 +35,9 @@ export default function ActiveTournamentsPage() {
   const [selectedPlayers, setSelectedPlayers]     = useState<string[]>([]);
   const [pairingStrategy, setPairingStrategy]     = useState<PairingStrategy>('top-vs-top');
   const [savingPairingStrategy, setSavingPairingStrategy] = useState(false);
+  const [editConflictNotice, setEditConflictNotice] = useState<string | null>(null);
+  const [conflictBanner, setConflictBanner]       = useState<string | null>(null);
+  const [remoteMatchUpdates, setRemoteMatchUpdates] = useState<Record<string, number>>({});
 
   const [activeTabByTournament, setActiveTabByTournament] = useState<Record<string, 'roundRobin' | 'bracket'>>({});
 
@@ -42,22 +48,106 @@ export default function ActiveTournamentsPage() {
   // Third-place selection is a preview-only setting until the bracket is started.
   const [thirdPlacePreviewById, setThirdPlacePreviewById] = useState<Record<string, boolean>>({});
 
+  // Track mutations started by this browser tab so their own WebSocket echo
+  // is not mistaken for an edit by another admin.
+  const selfMatchUntilRef = useRef<Map<string, number>>(new Map());
+  const selfTournamentUntilRef = useRef<Map<string, number>>(new Map());
+  const editingTournamentRef = useRef<Tournament | null>(editingTournament);
+  editingTournamentRef.current = editingTournament;
+  const showEditFormRef = useRef(showEditForm);
+  showEditFormRef.current = showEditForm;
 
-  const fetchTournaments = async () => {
-    const res  = await fetch(clubApi('/api/tournaments'));
-    const data: Tournament[] = await res.json();
-    setTournaments(data);
-    return data;
+  const markSelfMatch = (matchId: string) => {
+    selfMatchUntilRef.current.set(matchId, Date.now() + SELF_MUTATION_GRACE_MS);
   };
+  const markSelfTournament = (tournamentId: string) => {
+    selfTournamentUntilRef.current.set(tournamentId, Date.now() + SELF_MUTATION_GRACE_MS);
+  };
+  const isSelfMatch = (matchId: string) => (selfMatchUntilRef.current.get(matchId) ?? 0) > Date.now();
+  const isSelfTournament = (tournamentId: string) => (selfTournamentUntilRef.current.get(tournamentId) ?? 0) > Date.now();
 
-  const fetchPlayers = async () => { const res = await fetch(clubApi('/api/players')); setPlayers(await res.json()); };
-  const fetchGames   = async () => { const res = await fetch(clubApi('/api/games'));   setGames(await res.json()); };
+  const fetchPlayers = useCallback(async () => {
+    const res = await fetch(clubApi('/api/players'));
+    if (res.ok) setPlayers(await res.json());
+    // clubApi only depends on club.slug.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [club.slug]);
+
+  const fetchGames = useCallback(async () => {
+    const res = await fetch(clubApi('/api/games'));
+    if (res.ok) setGames(await res.json());
+    // clubApi only depends on club.slug.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [club.slug]);
+
+  const {
+    tournaments,
+    tournamentsRef,
+    connectedRef,
+    applyTournament,
+    removeTournament,
+    refetch: refetchTournaments,
+    waitForTournamentVersion,
+  } = useLiveTournaments({
+    clubId: club.id,
+    clubApi,
+    onReconnect: () => {
+      void fetchPlayers();
+      void fetchGames();
+    },
+    onTournamentPush: ({ previous, tournament }) => {
+      const changedMatchIds = diffChangedMatchIds(previous, tournament);
+      const remoteMatchIds = changedMatchIds.filter(id => !isSelfMatch(id) && !isSelfTournament(tournament.id));
+      if (remoteMatchIds.length > 0) {
+        setRemoteMatchUpdates(prev => {
+          const next = { ...prev };
+          for (const id of remoteMatchIds) {
+            next[id] = (next[id] ?? 0) + 1;
+          }
+          return next;
+        });
+      }
+      if (
+        showEditFormRef.current &&
+        editingTournamentRef.current?.id === tournament.id &&
+        didTournamentSettingsChange(previous, tournament) &&
+        !isSelfTournament(tournament.id)
+      ) {
+        setEditingTournament(tournament);
+        setSelectedPlayers(tournament.activePlayers ?? tournament.players);
+        setPairingStrategy(tournament.rrPairingStrategy ?? 'top-vs-top');
+        setEditConflictNotice('Updated by another admin');
+      }
+    },
+    onTournamentRemoved: ({ tournamentId }) => {
+      if (
+        showEditFormRef.current &&
+        editingTournamentRef.current?.id === tournamentId &&
+        !isSelfTournament(tournamentId)
+      ) {
+        setShowEditForm(false);
+        setEditingTournament(null);
+        setSelectedPlayers([]);
+        setConflictBanner('Updated by another admin — this tournament is no longer active.');
+      }
+    },
+  });
 
   useEffect(() => {
-    fetchTournaments();
-    fetchPlayers();
-    fetchGames();
-  }, []);
+    void fetchPlayers();
+    void fetchGames();
+  }, [fetchPlayers, fetchGames]);
+
+  const handleMutationError = async (res: Response, fallbackMessage: string) => {
+    const err = await res.json().catch(() => ({} as { error?: string }));
+    const message = err.error ?? fallbackMessage;
+    if (res.status === 409) {
+      setConflictBanner(message);
+      await Promise.all([refetchTournaments(), fetchGames()]);
+      return;
+    }
+    alert(message);
+  };
 
   const getPlayerName = (id: string) => {
     if (id === 'BYE') return 'BYE';
@@ -68,19 +158,24 @@ export default function ActiveTournamentsPage() {
   };
 
   const addGameToMatch = async (match: Match, score1: number, score2: number) => {
+    const prevVersion = tournamentsRef.current.find(t => t.id === match.tournamentId)?.version ?? 0;
+    markSelfMatch(match.id);
     const res = await fetch('/api/games', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ score1, score2, matchId: match.id }),
     });
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      alert(err.error ?? 'Failed to record game');
+      await handleMutationError(res, 'Failed to record game');
       return;
     }
-    await Promise.all([fetchGames(), fetchTournaments()]);
+    markSelfMatch(match.id);
+    void fetchGames();
+    if (!connectedRef.current) {
+      await refetchTournaments();
+    }
     if (match.round === 'bracket') {
-      await maybeAdvanceBracketRound(match.tournamentId);
+      await maybeAdvanceBracketRound(match.tournamentId, prevVersion + 1);
     }
   };
 
@@ -91,9 +186,15 @@ export default function ActiveTournamentsPage() {
       confirmLabel: 'Delete match',
       tone: 'danger',
     })) return;
+    markSelfMatch(matchId);
     const res = await fetch(`/api/matches/${matchId}`, { method: 'DELETE' });
-    if (res.ok) { fetchTournaments(); fetchGames(); }
-    else alert('Failed to delete match');
+    if (res.ok) {
+      markSelfMatch(matchId);
+      void fetchGames();
+      if (!connectedRef.current) await refetchTournaments();
+    } else {
+      await handleMutationError(res, 'Failed to delete match');
+    }
   };
 
   const deleteGame = async (gameId: string) => {
@@ -103,15 +204,27 @@ export default function ActiveTournamentsPage() {
       confirmLabel: 'Delete game',
       tone: 'danger',
     })) return;
+    const matchForGame = tournamentsRef.current
+      .flatMap(t => t.matches ?? [])
+      .find(m => m.games.some(g => g.id === gameId));
+    if (matchForGame) markSelfMatch(matchForGame.id);
     const res = await fetch(`/api/games/${gameId}`, { method: 'DELETE' });
-    if (res.ok) { fetchGames(); fetchTournaments(); }
-    else alert('Failed to delete game');
+    if (res.ok) {
+      if (matchForGame) markSelfMatch(matchForGame.id);
+      void fetchGames();
+      if (!connectedRef.current) await refetchTournaments();
+    } else {
+      await handleMutationError(res, 'Failed to delete game');
+    }
   };
 
   const saveGameEdit = async (gameId: string, score1: number, score2: number) => {
-    const tournamentIdForGame = tournaments.find(t =>
+    const owningTournament = tournamentsRef.current.find(t =>
       (t.matches ?? []).some(m => m.games.some(g => g.id === gameId))
-    )?.id;
+    );
+    const matchForGame = owningTournament?.matches?.find(m => m.games.some(g => g.id === gameId));
+    const prevVersion = owningTournament?.version ?? 0;
+    if (matchForGame) markSelfMatch(matchForGame.id);
 
     const res = await fetch(`/api/games/${gameId}`, {
       method: 'PUT',
@@ -119,17 +232,21 @@ export default function ActiveTournamentsPage() {
       body: JSON.stringify({ score1, score2 }),
     });
     if (res.ok) {
-      await Promise.all([fetchGames(), fetchTournaments()]);
-      if (tournamentIdForGame) {
-        await maybeAdvanceBracketRound(tournamentIdForGame);
+      if (matchForGame) markSelfMatch(matchForGame.id);
+      void fetchGames();
+      if (!connectedRef.current) await refetchTournaments();
+      if (owningTournament && matchForGame?.round === 'bracket') {
+        await maybeAdvanceBracketRound(owningTournament.id, prevVersion + 1);
       }
+    } else {
+      await handleMutationError(res, 'Failed to update game');
     }
-    else { const err = await res.json(); alert(err.error ?? 'Failed to update game'); }
   };
 
-  const maybeAdvanceBracketRound = async (tournamentId: string) => {
-    const refreshed = await fetchTournaments();
-    const tournament = refreshed.find(t => t.id === tournamentId);
+  const maybeAdvanceBracketRound = async (tournamentId: string, minVersion = 0) => {
+    const tournament = minVersion > 0
+      ? await waitForTournamentVersion(tournamentId, minVersion)
+      : tournamentsRef.current.find(t => t.id === tournamentId);
     if (!tournament) return;
 
     const bracketMatches = (tournament.matches ?? []).filter(
@@ -141,6 +258,7 @@ export default function ActiveTournamentsPage() {
     const currentRoundMatches = bracketMatches.filter(m => (m.bracketRound ?? 1) === currentRound);
     if (!currentRoundMatches.length || !currentRoundMatches.every(isMatchComplete)) return;
 
+    markSelfTournament(tournamentId);
     const res = await fetch('/api/tournaments', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -148,63 +266,78 @@ export default function ActiveTournamentsPage() {
     });
 
     if (res.ok) {
-      await fetchGames();
-      const afterAdvance = await fetchTournaments();
-      const updated = afterAdvance.find(t => t.id === tournamentId);
-      if (updated?.status === 'completed') {
+      markSelfTournament(tournamentId);
+      const updated: Tournament = await res.json();
+      applyTournament(updated);
+      void fetchGames();
+      if (updated.status === 'completed') {
         router.push(clubHref(`/tournaments/history?id=${tournamentId}`));
       }
+    } else if (res.status === 409) {
+      await handleMutationError(res, 'Failed to advance round');
     }
   };
 
   const swapPlayers = async (matchId: string, player1Id: string, player2Id: string) => {
+    markSelfMatch(matchId);
     const res = await fetch(`/api/matches/${matchId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ player1Id, player2Id }),
     });
     if (res.ok) {
-      await fetchTournaments();
+      markSelfMatch(matchId);
+      if (!connectedRef.current) await refetchTournaments();
+    } else {
+      await handleMutationError(res, 'Failed to update players');
     }
-    else { const err = await res.json(); alert(err.error ?? 'Failed to update players'); }
   };
 
   const addMarker = async (matchId: string) => {
+    markSelfMatch(matchId);
     const res = await fetch(`/api/matches/${matchId}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ player2Id: MARKER_PLAYER_ID }),
     });
-    if (res.ok) await fetchTournaments();
-    else { const err = await res.json(); alert(err.error ?? 'Failed to add marker'); }
+    if (res.ok) {
+      markSelfMatch(matchId);
+      if (!connectedRef.current) await refetchTournaments();
+    } else {
+      await handleMutationError(res, 'Failed to add marker');
+    }
   };
 
   const changeMatchBestOf = async (matchId: string, bestOf: number) => {
+    const owningTournament = tournamentsRef.current.find(t => (t.matches ?? []).some(m => m.id === matchId));
+    const prevVersion = owningTournament?.version ?? 0;
+    markSelfMatch(matchId);
     const res = await fetch(`/api/matches/${matchId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ bestOf }),
     });
     if (res.ok) {
-      const tournamentIdForMatch = tournaments.find(t => (t.matches ?? []).some(m => m.id === matchId))?.id;
-      await fetchTournaments();
-      if (tournamentIdForMatch) await maybeAdvanceBracketRound(tournamentIdForMatch);
+      markSelfMatch(matchId);
+      if (!connectedRef.current) await refetchTournaments();
+      if (owningTournament) await maybeAdvanceBracketRound(owningTournament.id, prevVersion + 1);
     } else {
-      const err = await res.json();
-      alert(err.error ?? 'Failed to change number of games');
+      await handleMutationError(res, 'Failed to change number of games');
     }
   };
 
   const addThirdPlaceMatch = async (tournament: Tournament) => {
+    markSelfTournament(tournament.id);
     const res = await fetch('/api/tournaments', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: tournament.id, action: 'addThirdPlaceMatch' }),
     });
     if (res.ok) {
-      await fetchTournaments();
+      markSelfTournament(tournament.id);
+      const updated: Tournament = await res.json();
+      applyTournament(updated);
     } else {
-      const err = await res.json();
-      alert(err.error ?? 'Failed to add third-place game');
+      await handleMutationError(res, 'Failed to add third-place game');
     }
   };
 
@@ -215,43 +348,64 @@ export default function ActiveTournamentsPage() {
     // matches for the current round in the same request (no separate call
     // needed): the removed player's unplayed match is dropped and their
     // opponent (or the reactivated player) returns to the pairing pool.
+    markSelfTournament(tournament.id);
     const res = await fetch(`/api/tournaments/${tournament.id}/players`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(isActive ? { remove: [playerId] } : { add: [playerId] }),
     });
     if (res.ok) {
+      markSelfTournament(tournament.id);
       const updatedTournament: Tournament = await res.json();
+      applyTournament(updatedTournament);
       regenerateBracketPreview(updatedTournament);
-      await fetchTournaments();
+    } else {
+      await handleMutationError(res, 'Failed to update player');
     }
-    else { const err = await res.json(); alert(err.error ?? 'Failed to update player'); }
   };
 
   const refreshMatches = async (tournament: Tournament) => {
+    markSelfTournament(tournament.id);
     const res = await fetch(`/api/tournaments/${tournament.id}/refresh-matches`, { method: 'POST' });
-    if (res.ok) { await fetchTournaments(); }
-    else { const err = await res.json(); alert(err.error ?? 'Failed to refresh matches'); }
+    if (res.ok) {
+      markSelfTournament(tournament.id);
+      const updated: Tournament = await res.json();
+      applyTournament(updated);
+    } else {
+      await handleMutationError(res, 'Failed to refresh matches');
+    }
   };
 
   const advanceRound = async (tournament: Tournament) => {
+    markSelfTournament(tournament.id);
     const res = await fetch('/api/tournaments', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: tournament.id, action: 'advanceRound' }),
     });
-    if (res.ok) { await fetchTournaments(); }
-    else { const err = await res.json(); alert(err.error ?? 'Failed to advance round'); }
+    if (res.ok) {
+      markSelfTournament(tournament.id);
+      const updated: Tournament = await res.json();
+      applyTournament(updated);
+    } else {
+      await handleMutationError(res, 'Failed to advance round');
+    }
   };
 
   const addRoundRobinRound = async (tournament: Tournament) => {
+    markSelfTournament(tournament.id);
     const res = await fetch('/api/tournaments', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: tournament.id, action: 'addRoundRobinRound' }),
     });
-    if (res.ok) { await fetchTournaments(); }
-    else { const err = await res.json(); alert(err.error ?? 'Failed to add round'); }
+    if (res.ok) {
+      markSelfTournament(tournament.id);
+      const updated: Tournament = await res.json();
+      applyTournament(updated);
+    } else {
+      await handleMutationError(res, 'Failed to add round');
+    }
   };
 
   const changeRoundRobinFormat = async (tournament: Tournament, format: 'singles' | 'doubles') => {
@@ -268,15 +422,18 @@ export default function ActiveTournamentsPage() {
       confirmLabel: `Switch to ${label}`,
     })) return;
 
+    markSelfTournament(tournament.id);
     const res = await fetch('/api/tournaments', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: tournament.id, action: 'setRoundRobinFormat', round: currentRound, format }),
     });
-    if (res.ok) await fetchTournaments();
-    else {
-      const err = await res.json();
-      alert(err.error ?? 'Failed to change round format');
+    if (res.ok) {
+      markSelfTournament(tournament.id);
+      const updated: Tournament = await res.json();
+      applyTournament(updated);
+    } else {
+      await handleMutationError(res, 'Failed to change round format');
     }
   };
 
@@ -298,12 +455,16 @@ export default function ActiveTournamentsPage() {
       body.bracketConfig = { thirdPlaceMatch };
     }
 
+    markSelfTournament(tournament.id);
     const res = await fetch('/api/tournaments', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
     if (res.ok) {
+      markSelfTournament(tournament.id);
+      const updated: Tournament = await res.json();
+      applyTournament(updated);
       // Clear the preview override once it has been committed
       setBracketPreviewById(prev => {
         const next = { ...prev };
@@ -315,11 +476,10 @@ export default function ActiveTournamentsPage() {
         delete next[tournament.id];
         return next;
       });
-      await Promise.all([fetchTournaments(), fetchGames()]);
+      void fetchGames();
       setActiveTabByTournament(prev => ({ ...prev, [tournament.id]: 'bracket' }));
     } else {
-      const err = await res.json();
-      alert(err.error ?? 'Failed to start bracket');
+      await handleMutationError(res, 'Failed to start bracket');
     }
   };
 
@@ -423,24 +583,28 @@ export default function ActiveTournamentsPage() {
 
     if (add.length === 0 && remove.length === 0) { closeEditForm(); return; }
 
+    markSelfTournament(editingTournament.id);
     const res = await fetch(`/api/tournaments/${editingTournament.id}/players`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ add, remove }),
     });
     if (res.ok) {
+      markSelfTournament(editingTournament.id);
       const updatedTournament: Tournament = await res.json();
+      applyTournament(updatedTournament);
       regenerateBracketPreview(updatedTournament);
       closeEditForm();
-      await fetchTournaments();
+    } else {
+      await handleMutationError(res, 'Failed to update tournament');
     }
-    else { const err = await res.json(); alert(err.error ?? 'Failed to update tournament'); }
   };
 
   const openEditForm = (t: Tournament) => {
     setEditingTournament(t);
     setSelectedPlayers(t.activePlayers ?? t.players);
     setPairingStrategy(t.rrPairingStrategy ?? 'top-vs-top');
+    setEditConflictNotice(null);
     setShowEditForm(true);
   };
 
@@ -448,12 +612,14 @@ export default function ActiveTournamentsPage() {
     setShowEditForm(false);
     setEditingTournament(null);
     setSelectedPlayers([]);
+    setEditConflictNotice(null);
   };
 
   const updatePairingStrategy = async (strategy: PairingStrategy) => {
     if (!editingTournament || strategy === pairingStrategy) return;
     setPairingStrategy(strategy);
     setSavingPairingStrategy(true);
+    markSelfTournament(editingTournament.id);
     const res = await fetch('/api/tournaments', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -461,13 +627,13 @@ export default function ActiveTournamentsPage() {
     });
     setSavingPairingStrategy(false);
     if (res.ok) {
+      markSelfTournament(editingTournament.id);
       const updated: Tournament = await res.json();
       setEditingTournament(updated);
-      fetchTournaments();
+      applyTournament(updated);
     } else {
-      const err = await res.json();
-      alert(err.error ?? 'Failed to update pairing strategy');
       setPairingStrategy(editingTournament.rrPairingStrategy ?? 'top-vs-top');
+      await handleMutationError(res, 'Failed to update pairing strategy');
     }
   };
 
@@ -505,11 +671,18 @@ export default function ActiveTournamentsPage() {
       tone: 'danger',
     });
     if (!ended) return;
+    markSelfTournament(t.id);
     const res = await fetch('/api/tournaments', {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: t.id, status: 'completed' }),
     });
-    if (res.ok) fetchTournaments(); else alert('Failed to end tournament');
+    if (res.ok) {
+      markSelfTournament(t.id);
+      const updated: Tournament = await res.json();
+      applyTournament(updated);
+    } else {
+      await handleMutationError(res, 'Failed to end tournament');
+    }
   };
 
   const deleteTournament = async (t: Tournament) => {
@@ -519,8 +692,15 @@ export default function ActiveTournamentsPage() {
       confirmLabel: 'Delete tournament',
       tone: 'danger',
     })) return;
+    markSelfTournament(t.id);
     const res = await fetch(`/api/tournaments?id=${t.id}`, { method: 'DELETE' });
-    if (res.ok) { fetchTournaments(); fetchGames(); } else alert('Failed to delete tournament');
+    if (res.ok) {
+      markSelfTournament(t.id);
+      removeTournament(t.id);
+      void fetchGames();
+    } else {
+      await handleMutationError(res, 'Failed to delete tournament');
+    }
   };
 
   const activeTournaments = tournaments.filter(t => t.status !== 'completed');
@@ -552,6 +732,13 @@ export default function ActiveTournamentsPage() {
   return (
     <main className="app-shell">
       <div className="page-container space-y-8">
+        {conflictBanner && (
+          <div role="alert" className="flex items-center justify-between gap-4 rounded-xl border border-gold/40 bg-gold-soft px-5 py-3.5 text-sm font-semibold text-ink">
+            <span>{conflictBanner}</span>
+            <button type="button" onClick={() => setConflictBanner(null)} className="text-muted hover:text-ink" aria-label="Dismiss message">✕</button>
+          </div>
+        )}
+
         {showEditForm && editingTournament && (
           <EditTournamentPanel
             tournament={editingTournament}
@@ -566,6 +753,8 @@ export default function ActiveTournamentsPage() {
             onCreatePlayer={createPlayer}
             onSubmit={updateTournamentPlayers}
             onCancel={closeEditForm}
+            conflictNotice={editConflictNotice}
+            onDismissConflictNotice={() => setEditConflictNotice(null)}
           />
         )}
 
@@ -717,6 +906,7 @@ export default function ActiveTournamentsPage() {
                       onAddRound={addRoundRobinRound}
                       onRefreshMatches={refreshMatches}
                       readOnly={!isAdmin}
+                      remoteMatchUpdates={remoteMatchUpdates}
                     />
                   ) : (
                     <>
@@ -769,6 +959,7 @@ export default function ActiveTournamentsPage() {
                         readOnly={!isAdmin}
                         previewMode={isAdmin && !bracketStarted}
                         showThirdPlace={thirdPlaceEnabled || bracketMatches.some(m => m.isThirdPlace)}
+                        remoteMatchUpdates={remoteMatchUpdates}
                       />
                     </section>
                   ) : (

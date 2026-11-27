@@ -20,6 +20,7 @@ interface RoundRobinViewProps {
   onAddRound: (tournament: Tournament) => void;
   onRefreshMatches: (tournament: Tournament) => void;
   readOnly?: boolean;
+  remoteMatchUpdates?: Record<string, number>;
 }
 
 export default function RoundRobinView({
@@ -36,6 +37,7 @@ export default function RoundRobinView({
   onAddRound,
   onRefreshMatches,
   readOnly = false,
+  remoteMatchUpdates,
 }: RoundRobinViewProps) {
   const allMatches = tournament.matches ?? [];
   const rrMatches  = allMatches.filter(m => m.round === 'roundRobin');
@@ -141,6 +143,7 @@ export default function RoundRobinView({
               onSwapPlayers={onSwapPlayers}
               onAddMarker={onAddMarker}
               readOnly={readOnly}
+              remoteUpdateToken={remoteMatchUpdates?.[match.id] ?? 0}
             />
           ))}
           {selectedRoundMatches.length === 0 && (
