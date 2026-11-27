@@ -3,13 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "ts-node --project tsconfig.server.json server.ts",
+    "dev:next": "next dev",
     "dev-turbo": "next dev --turbopack",
     "dev-fast": "next dev --turbo",
     "dev-legacy": "NODE_OPTIONS='--no-deprecation' next dev",
     "dev-watch": "next dev --experimental-app-only",
-    "build": "next build",
-    "start": "next start",
+    "build:server": "tsc -p tsconfig.server.json",
+    "build": "next build && npm run build:server",
+    "start": "node dist/server.js",
     "build-run": "npm run build && npm start",
     "lint": "eslint",
     "test": "jest",
@@ -29,7 +31,8 @@
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "recharts": "^3.7.0",
-    "redis": "^5.11.0"
+    "redis": "^5.11.0",
+    "ws": "^8.23.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
@@ -38,6 +41,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/ws": "^8.18.2",
     "eslint": "^9",
     "eslint-config-next": "15.5.2",
     "jest": "^29.7.0",

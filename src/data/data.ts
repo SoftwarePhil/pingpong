@@ -10,10 +10,11 @@ export { TournamentChangeRejected, TournamentConflictError, TournamentNotFoundEr
 // ─────────────────────────────────────────────────────────────────────────────
 // Environment isolation
 // ─────────────────────────────────────────────────────────────────────────────
-if (!process.env.NODE_ENV) {
-  console.warn('NODE_ENV is not set; defaulting to "development". Set NODE_ENV explicitly to ensure correct data isolation.');
+const configuredEnv = process.env.PINGPONG_ENV?.trim() || process.env.NODE_ENV;
+if (!configuredEnv) {
+  console.warn('PINGPONG_ENV and NODE_ENV are not set; defaulting to "development". Set PINGPONG_ENV explicitly to ensure correct data isolation.');
 }
-export const ENV_PREFIX = process.env.NODE_ENV || 'development';
+export const ENV_PREFIX = configuredEnv || 'development';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Redis — tournament state (real-time: active tournaments, matches, match index)

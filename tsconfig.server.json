@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "outDir": "dist",
+    "rootDir": ".",
+    "noEmit": false,
+    "incremental": false,
+    "isolatedModules": false
+  },
+  "include": [
+    "server.ts",
+    "src/lib/wsServer.ts",
+    "src/lib/liveHub.ts",
+    "src/lib/liveProtocol.ts",
+    "src/lib/sessionToken.ts",
+    "src/types/pingpong.ts"
+  ],
+  "exclude": ["node_modules", "dist", ".next"]
+}

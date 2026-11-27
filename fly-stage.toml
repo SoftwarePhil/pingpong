@@ -1,0 +1,35 @@
+# Stage Fly.io app — deployed automatically from main via GitHub Actions:
+#   fly deploy -c fly-stage.toml
+#
+# Set primary_region to match the MongoDB Atlas cluster region before deploying.
+app = 'pingpong-stage'
+primary_region = 'dfw'
+swap_size_mb = 256
+
+[build]
+  dockerfile = 'Dockerfile'
+
+[env]
+  NODE_ENV = 'production'
+  PINGPONG_ENV = 'stage'
+  PORT = '3000'
+  HOSTNAME = '0.0.0.0'
+  NODE_OPTIONS = '--max-old-space-size=400'
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    grace_period = '15s'
+    interval = '30s'
+    method = 'GET'
+    timeout = '5s'
+    path = '/healthz'
+
+[[vm]]
+  size = 'shared-cpu-1x'
+  memory = '512mb'
