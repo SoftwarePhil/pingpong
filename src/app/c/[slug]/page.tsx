@@ -1,16 +1,17 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Game, MARKER_PLAYER_ID, Player, Tournament } from '../../../types/pingpong';
 import { useClub } from '../../../components/ClubProvider';
+import { useLiveTournaments } from '../../../hooks/useLiveTournaments';
 import { getRoundRobinStandings, rankPlayersByRoundRobinStandings } from '../../../lib/standings';
 import { getTournamentPlacements } from '../../../lib/tournamentPoints';
 import { countActivePlayers } from '../../../lib/stats';
 import { ACTIVE_PLAYER_DAYS } from '../../../lib/clubs';
 import { ClubDetails } from './ClubDetails';
 
-type HomeData = { tournaments: Tournament[]; players: Player[]; games: Game[] };
+type ClubMeta = { players: Player[]; games: Game[] };
 
 function stageLabel(tournament: Tournament): string {
   const matches = tournament.matches ?? [];
@@ -72,21 +73,36 @@ function LiveTournament({ tournament, name }: { tournament: Tournament; name: (i
 }
 
 export default function Home() {
-  const { isAdmin, clubApi, clubHref } = useClub();
-  const [data, setData] = useState<HomeData | null>(null);
+  const { club, isAdmin, clubApi, clubHref } = useClub();
+  const [meta, setMeta] = useState<ClubMeta | null>(null);
+
+  const fetchMeta = useCallback(() => {
+    Promise.all([fetch(clubApi('/api/players')), fetch(clubApi('/api/games'))])
+      .then(async ([p, g]) => setMeta({ players: await p.json(), games: await g.json() }))
+      .catch(() => setMeta({ players: [], games: [] }));
+    // clubApi only depends on club.slug, which is fixed for this page.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [club.slug]);
+
+  const { tournaments, isLoading: tournamentsLoading } = useLiveTournaments({
+    clubId: club.id,
+    clubApi,
+    onReconnect: fetchMeta,
+    onTournamentRemoved: ({ reason }) => {
+      if (reason === 'ended' || reason === 'deleted') {
+        fetchMeta();
+      }
+    },
+  });
 
   useEffect(() => {
-    Promise.all([fetch(clubApi('/api/tournaments')), fetch(clubApi('/api/players')), fetch(clubApi('/api/games'))])
-      .then(async ([t, p, g]) => setData({ tournaments: await t.json(), players: await p.json(), games: await g.json() }))
-      .catch(() => setData({ tournaments: [], players: [], games: [] }));
-    // clubApi changes each render but only depends on the club, which is fixed for this page.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    fetchMeta();
+  }, [fetchMeta]);
 
   const summary = useMemo(() => {
-    if (!data) return null;
-    const names = new Map(data.players.map(p => [p.id, p.name]));
-    const completed = data.tournaments
+    if (!meta || tournamentsLoading) return null;
+    const names = new Map(meta.players.map(p => [p.id, p.name]));
+    const completed = tournaments
       .filter(t => t.status === 'completed')
       .sort((a, b) => b.startDate.localeCompare(a.startDate));
     const titles = new Map<string, number>();
@@ -97,18 +113,18 @@ export default function Home() {
     const latest = completed[0];
     return {
       name: (id: string) => names.get(id) ?? 'Unknown',
-      active: data.tournaments.find(t => t.status !== 'completed'),
+      active: tournaments.find(t => t.status !== 'completed'),
       latest,
       latestPlacements: latest ? getTournamentPlacements(latest) : null,
       titleLeaders: [...titles.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5),
       completedCount: completed.length,
       clubStats: {
-        activePlayers: countActivePlayers(data.games, ACTIVE_PLAYER_DAYS),
-        tournaments: data.tournaments.length,
-        games: data.games.filter(game => game.player1Id !== MARKER_PLAYER_ID && game.player2Id !== MARKER_PLAYER_ID).length,
+        activePlayers: countActivePlayers(meta.games, ACTIVE_PLAYER_DAYS),
+        tournaments: tournaments.length,
+        games: meta.games.filter(game => game.player1Id !== MARKER_PLAYER_ID && game.player2Id !== MARKER_PLAYER_ID).length,
       },
     };
-  }, [data]);
+  }, [meta, tournaments, tournamentsLoading]);
 
   return (
     <main className="app-shell">

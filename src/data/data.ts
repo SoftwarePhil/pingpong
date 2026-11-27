@@ -4,6 +4,7 @@ import { Club, Player, Tournament, Match, Game, RoundRobinFormat } from '../type
 import { cascadeBracketOutcomeChange, setRoundRobinFormat } from '../lib/tournament';
 import { getMatchSides, isDoublesMatch } from '../lib/matchFormat';
 import { reject, TournamentChangeRejected, TournamentConflictError, TournamentNotFoundError } from '../lib/tournamentErrors';
+import { getLiveHub } from '../lib/liveHub';
 
 export { TournamentChangeRejected, TournamentConflictError, TournamentNotFoundError };
 
@@ -207,6 +208,7 @@ export async function createTournament(tournament: Tournament): Promise<Tourname
     .zAdd(ACTIVE_TOURNAMENTS_KEY, { score: new Date(created.startDate).getTime(), value: created.id });
   if (Object.keys(entries).length > 0) transaction.hSet(MATCH_INDEX_KEY, entries);
   await transaction.exec();
+  getLiveHub().broadcastTournament(created);
   return created;
 }
 
@@ -272,7 +274,18 @@ export async function mutateTournament<T = void>(
   tournamentId: string,
   change: TournamentChange<T>,
 ): Promise<{ tournament: Tournament; result: T }> {
-  return inTournamentQueue(tournamentId, () => runMutation(tournamentId, change));
+  const committed = await inTournamentQueue(tournamentId, () => runMutation(tournamentId, change));
+  if (committed.tournament.status === 'completed') {
+    getLiveHub().broadcastTournamentRemoved(
+      committed.tournament.clubId,
+      committed.tournament.id,
+      'ended',
+      committed.tournament,
+    );
+  } else {
+    getLiveHub().broadcastTournament(committed.tournament);
+  }
+  return committed;
 }
 
 async function runMutation<T>(
@@ -519,6 +532,9 @@ export async function deleteTournament(id: string): Promise<void> {
     await redisClient.del(tournamentKey(id));
     if (!db) await initMongo();
     await tournamentsCol().deleteOne({ _id: id });
+    if (tournament) {
+      getLiveHub().broadcastTournamentRemoved(tournament.clubId, id, 'deleted');
+    }
   } catch (error) {
     console.error('Error deleting tournament:', error);
     throw error;

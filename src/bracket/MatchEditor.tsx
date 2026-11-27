@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { BracketMatch } from './core/types';
 import { BYE_PLACEHOLDER, getSeriesScore } from './core/model';
 import { getByeHolder } from './core/interaction';
@@ -26,6 +26,8 @@ interface MatchEditorProps<M extends BracketMatch> extends MatchEditorCallbacks<
   /** Whether this match's participants may be reassigned. */
   canSwap: boolean;
   eligibleSwapPlayers: string[];
+  /** Incremented when another admin updates this match over live sync. */
+  remoteUpdateToken?: number;
   onClose: () => void;
 }
 
@@ -45,6 +47,7 @@ export function MatchEditor<M extends BracketMatch>({
   previewMode,
   canSwap,
   eligibleSwapPlayers,
+  remoteUpdateToken = 0,
   onClose,
   onAddGame,
   onSaveGameEdit,
@@ -65,6 +68,22 @@ export function MatchEditor<M extends BracketMatch>({
   // For a bye, the first select holds the real player and the bye stays on its side.
   const [swapP1, setSwapP1] = useState(byeHolder ?? match.player1Id);
   const [swapP2, setSwapP2] = useState(isBye ? BYE_PLACEHOLDER : match.player2Id);
+  const [remoteNotice, setRemoteNotice] = useState<string | null>(null);
+  const lastRemoteTokenRef = useRef(remoteUpdateToken);
+
+  useEffect(() => {
+    if (remoteUpdateToken === lastRemoteTokenRef.current) return;
+    lastRemoteTokenRef.current = remoteUpdateToken;
+    setScore1('');
+    setScore2('');
+    setEditingGameId(null);
+    setEditScore1('');
+    setEditScore2('');
+    setSwapMode(isBye);
+    setSwapP1(byeHolder ?? match.player1Id);
+    setSwapP2(isBye ? BYE_PLACEHOLDER : match.player2Id);
+    setRemoteNotice('Updated by another admin');
+  }, [remoteUpdateToken, isBye, byeHolder, match.player1Id, match.player2Id]);
 
   const checkScore = (s1: number, s2: number) =>
     Number.isNaN(s1) || Number.isNaN(s2) ? 'Enter valid scores' : validateGameScore?.(s1, s2) ?? null;
@@ -126,7 +145,7 @@ export function MatchEditor<M extends BracketMatch>({
   const scoreInput = (value: string, onChange: (value: string) => void) => (
     <input
       type="number" min="0" max="50" value={value}
-      onChange={e => onChange(e.target.value)}
+      onChange={e => { setRemoteNotice(null); onChange(e.target.value); }}
       onKeyDown={e => e.key === 'Enter' && handleRecord()}
       disabled={seriesComplete}
       className={scoreInputClass}
@@ -136,6 +155,12 @@ export function MatchEditor<M extends BracketMatch>({
 
   return (
     <div className="max-w-2xl rounded-xl border border-table/30 bg-surface p-5">
+      {remoteNotice && (
+        <div role="status" className="mb-3 flex items-center justify-between gap-2 rounded-lg border border-gold/40 bg-gold-soft px-3 py-2 text-xs font-semibold text-ink">
+          <span>{remoteNotice}</span>
+          <button type="button" onClick={() => setRemoteNotice(null)} className="text-muted hover:text-ink" aria-label="Dismiss notice">✕</button>
+        </div>
+      )}
       <div className="flex justify-between items-center mb-4">
         <div>
           <p className="text-xs font-semibold text-table uppercase tracking-widest mb-0.5">{heading}</p>

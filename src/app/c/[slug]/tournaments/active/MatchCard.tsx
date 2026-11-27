@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Match, Game, MARKER_PLAYER_ID } from '../../../../../types/pingpong';
 import { getMatchSides, getWinningSide, isByeMatch, isDoublesMatch, isMatchComplete } from '../../../../../lib/matchFormat';
 import { validateScore } from '../../../../../lib/scoring';
@@ -16,6 +16,8 @@ interface MatchCardProps {
   onSwapPlayers: (matchId: string, player1Id: string, player2Id: string) => void;
   onAddMarker: (matchId: string) => void;
   readOnly?: boolean;
+  /** Incremented when another admin updates this match over live sync. */
+  remoteUpdateToken?: number;
 }
 
 export default function MatchCard({
@@ -29,13 +31,39 @@ export default function MatchCard({
   onSwapPlayers,
   onAddMarker,
   readOnly = false,
+  remoteUpdateToken = 0,
 }: MatchCardProps) {
+  const [draftScore1, setDraftScore1] = useState('');
+  const [draftScore2, setDraftScore2] = useState('');
   const [editingGame, setEditingGame] = useState<Game | null>(null);
   const [editScore1, setEditScore1] = useState('');
   const [editScore2, setEditScore2] = useState('');
   const [swapping, setSwapping] = useState(false);
   const [swapP1, setSwapP1] = useState(match.player1Id);
   const [swapP2, setSwapP2] = useState(match.player2Id);
+  const [remoteNotice, setRemoteNotice] = useState<string | null>(null);
+  const lastRemoteTokenRef = useRef(remoteUpdateToken);
+
+  useEffect(() => {
+    if (remoteUpdateToken === lastRemoteTokenRef.current) return;
+    lastRemoteTokenRef.current = remoteUpdateToken;
+    const hadOpenEdit =
+      editingGame !== null ||
+      swapping ||
+      draftScore1 !== '' ||
+      draftScore2 !== '';
+    setSwapP1(match.player1Id);
+    setSwapP2(match.player2Id);
+    if (hadOpenEdit) {
+      setEditingGame(null);
+      setEditScore1('');
+      setEditScore2('');
+      setSwapping(false);
+      setDraftScore1('');
+      setDraftScore2('');
+      setRemoteNotice('Updated by another admin');
+    }
+  }, [remoteUpdateToken, editingGame, swapping, draftScore1, draftScore2, match.player1Id, match.player2Id]);
   const [side1, side2] = getMatchSides(match);
   const doubles = isDoublesMatch(match);
   const winningSide = getWinningSide(match);
@@ -79,14 +107,15 @@ export default function MatchCard({
   const canRecord = !readOnly && match.games.length < match.bestOf && !isMatchComplete(match) && !isBye;
   const recordInline = canRecord && match.round === 'roundRobin';
 
-  const submitScores = (form: HTMLFormElement) => {
-    const fd = new FormData(form);
-    const score1 = parseInt(fd.get('score1') as string);
-    const score2 = parseInt(fd.get('score2') as string);
+  const submitScores = () => {
+    const score1 = parseInt(draftScore1);
+    const score2 = parseInt(draftScore2);
     const scoreError = validateScore(score1, score2);
     if (scoreError) { alert(scoreError); return; }
     onAddGame(match, score1, score2);
-    form.reset();
+    setDraftScore1('');
+    setDraftScore2('');
+    setRemoteNotice(null);
   };
 
   const sideRow = (side: 1 | 2, ids: string[]) => {
@@ -109,6 +138,12 @@ export default function MatchCard({
             min={0}
             max={50}
             required
+            value={side === 1 ? draftScore1 : draftScore2}
+            onChange={e => {
+              setRemoteNotice(null);
+              if (side === 1) setDraftScore1(e.target.value);
+              else setDraftScore2(e.target.value);
+            }}
             aria-label={`${sideName(ids)} score`}
             className="score-entry font-digits"
           />
@@ -167,6 +202,13 @@ export default function MatchCard({
         </div>
       </header>
 
+      {remoteNotice && (
+        <div role="status" className="flex items-center justify-between gap-2 border-b border-gold/40 bg-gold-soft px-4 py-2 text-xs font-semibold text-ink">
+          <span>{remoteNotice}</span>
+          <button type="button" onClick={() => setRemoteNotice(null)} className="text-muted hover:text-ink" aria-label="Dismiss notice">✕</button>
+        </div>
+      )}
+
       {swapping && (
         <div className="space-y-2 border-b border-line bg-table-soft px-4 py-3">
           <p className="text-sm font-semibold text-ink">Change players</p>
@@ -187,7 +229,7 @@ export default function MatchCard({
         <form
           onSubmit={e => {
             e.preventDefault();
-            submitScores(e.currentTarget);
+            submitScores();
           }}
         >
           <div className="divide-y divide-line">
@@ -211,16 +253,20 @@ export default function MatchCard({
         <form
           onSubmit={e => {
             e.preventDefault();
-            submitScores(e.currentTarget);
+            submitScores();
           }}
           className="space-y-2 border-t border-line bg-surface-sunken px-4 py-3"
         >
           <div className="flex items-center gap-2">
             <input name="score1" type="number" min="0" max="50" required
+              value={draftScore1}
+              onChange={e => { setRemoteNotice(null); setDraftScore1(e.target.value); }}
               aria-label={`${sideName(side1)} score`} placeholder={sideName(side1)} title={sideName(side1)}
               className={scoreInputClass} />
             <span className="text-muted">–</span>
             <input name="score2" type="number" min="0" max="50" required
+              value={draftScore2}
+              onChange={e => { setRemoteNotice(null); setDraftScore2(e.target.value); }}
               aria-label={`${sideName(side2)} score`} placeholder={sideName(side2)} title={sideName(side2)}
               className={scoreInputClass} />
           </div>
