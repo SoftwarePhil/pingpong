@@ -1,9 +1,15 @@
 # Production Fly.io app — deployed by hand only:
-#   fly deploy -c fly.toml
+#   fly deploy -c fly.toml --ha=false
 #
 # iad (Ashburn, VA) matches the MongoDB Atlas cluster in AWS us-east-1.
-app = 'pingpong'
+#
+# Run exactly ONE machine. Live updates (/ws) are fanned out in memory, so a
+# second machine's clients would miss the first machine's changes. Deploy with
+# --ha=false and never `fly scale count` above 1.
+app = 'pingpong-app'
 primary_region = 'iad'
+kill_signal = 'SIGTERM'
+kill_timeout = '5m'
 swap_size_mb = 256
 
 [build]
@@ -12,6 +18,8 @@ swap_size_mb = 256
 [env]
   NODE_ENV = 'production'
   PINGPONG_ENV = 'production'
+  # Sign-in links point here; production refuses to send them without it.
+  APP_URL = 'https://pingpong.beer'
   PORT = '3000'
   HOSTNAME = '0.0.0.0'
   NODE_OPTIONS = '--max-old-space-size=400'
@@ -19,9 +27,18 @@ swap_size_mb = 256
 [http_service]
   internal_port = 3000
   force_https = true
-  auto_stop_machines = 'off'
+  # Sleeps when nobody is connected (an open page's WebSocket keeps it awake);
+  # the next visit wakes it in a few seconds. All state is in Redis/MongoDB.
+  auto_stop_machines = true
   auto_start_machines = true
-  min_machines_running = 1
+  min_machines_running = 0
+
+  # Every open page holds a WebSocket; Fly's default limit (25) would
+  # turn viewers away on our single machine.
+  [http_service.concurrency]
+    type = 'connections'
+    soft_limit = 150
+    hard_limit = 200
 
   [[http_service.checks]]
     grace_period = '15s'
