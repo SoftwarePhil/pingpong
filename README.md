@@ -42,7 +42,11 @@ AUTH_SECRET=choose-a-long-random-secret
 RESEND_API_KEY=
 EMAIL_FROM="Ping Pong <signin@pingpong.beer>"
 
-# Base URL for sign-in links (optional: Vercel's URL is used when unset)
+# Data environment prefix for MongoDB database (pingpong_<env>) and Redis keys.
+# Defaults to NODE_ENV. Set explicitly on Fly.io ("stage" or "production").
+PINGPONG_ENV=
+
+# Base URL for sign-in links (required on Fly.io; Vercel's URL is used when unset on Vercel)
 APP_URL=
 ```
 

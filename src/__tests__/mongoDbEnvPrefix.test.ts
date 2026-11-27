@@ -48,12 +48,14 @@ const mockMongoClient = {
 };
 
 // data.ts is evaluated once per Jest worker; we reset modules so the ENV_PREFIX
-// constant is derived from the NODE_ENV we set before import.
+// constant is derived from PINGPONG_ENV / NODE_ENV we set before import.
 describe('Hybrid data layer — environment isolation', () => {
   const originalEnv = process.env.NODE_ENV;
+  const originalPingpongEnv = process.env.PINGPONG_ENV;
 
   beforeEach(() => {
     jest.resetModules();
+    delete process.env.PINGPONG_ENV;
     jest.doMock('redis', () => ({ createClient: jest.fn(() => mockRedisClient) }));
     jest.doMock('mongodb', () => ({ MongoClient: jest.fn(() => mockMongoClient) }));
     mockRedisClient.get.mockClear();
@@ -69,6 +71,8 @@ describe('Hybrid data layer — environment isolation', () => {
 
   afterEach(() => {
     (process.env as Record<string, string | undefined>).NODE_ENV = originalEnv;
+    if (originalPingpongEnv === undefined) delete process.env.PINGPONG_ENV;
+    else process.env.PINGPONG_ENV = originalPingpongEnv;
   });
 
   it('prefixes Redis active tournament keys with the current NODE_ENV', async () => {
@@ -180,5 +184,29 @@ describe('Hybrid data layer — environment isolation', () => {
 
     const dbArg: string = mockMongoClient.db.mock.calls[0][0];
     expect(dbArg).toBe('pingpong_test');
+  });
+
+  it('prefers PINGPONG_ENV over NODE_ENV for both Redis keys and MongoDB database', async () => {
+    (process.env as Record<string, string>).NODE_ENV = 'production';
+    process.env.PINGPONG_ENV = 'stage';
+
+    const { ENV_PREFIX, dbName, getTournament, getPlayers } = await import('../data/data');
+    expect(ENV_PREFIX).toBe('stage');
+    expect(dbName()).toBe('pingpong_stage');
+
+    await getTournament('t1');
+    expect(mockRedisClient.get).toHaveBeenCalledWith('stage:pingpong:tournament:t1');
+
+    await getPlayers('club-1');
+    expect(mockMongoClient.db).toHaveBeenCalledWith('pingpong_stage');
+  });
+
+  it('falls back to NODE_ENV when PINGPONG_ENV is blank', async () => {
+    (process.env as Record<string, string>).NODE_ENV = 'test';
+    process.env.PINGPONG_ENV = '   ';
+
+    const { ENV_PREFIX, dbName } = await import('../data/data');
+    expect(ENV_PREFIX).toBe('test');
+    expect(dbName()).toBe('pingpong_test');
   });
 });

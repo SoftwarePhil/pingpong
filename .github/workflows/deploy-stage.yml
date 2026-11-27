@@ -1,0 +1,39 @@
+name: Deploy stage to Fly.io
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-stage
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Test and deploy pingpong-stage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Set up Fly CLI
+        uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # 1.6
+
+      # --ha=false keeps stage on one machine; live updates are fanned out in memory.
+      - name: Deploy stage app
+        run: flyctl deploy --config fly-stage.toml --remote-only --ha=false
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

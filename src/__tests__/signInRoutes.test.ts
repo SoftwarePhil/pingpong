@@ -41,6 +41,7 @@ beforeEach(() => {
   delete process.env.APP_URL;
   delete process.env.VERCEL_URL;
   delete process.env.VERCEL_ENV;
+  delete process.env.FLY_APP_NAME;
   mocked.allowAttempt.mockResolvedValue(true);
   mocked.createLoginLink.mockResolvedValue('token-123');
   mocked.getAdminById.mockImplementation(async id => (id === TEST_ADMIN.id ? TEST_ADMIN : null));
@@ -92,6 +93,43 @@ describe('POST /api/auth/link', () => {
     expect(mocked.allowAttempt).toHaveBeenCalledWith('login-ip:1.2.3.4', 10, 900);
     expect(mocked.allowAttempt).toHaveBeenCalledWith('login-email:admin@example.com', 3, 900);
     expect(mocked.getAdminByEmail).not.toHaveBeenCalled();
+  });
+
+  it('refuses to send links in production without APP_URL, the same way for admins and strangers', async () => {
+    Object.assign(process.env, { NODE_ENV: 'production' });
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    mocked.getAdminByEmail.mockResolvedValue(TEST_ADMIN);
+    const adminRes = await requestLink(post('http://attacker.example/api/auth/link', { email: TEST_ADMIN.email }));
+    mocked.getAdminByEmail.mockResolvedValue(null);
+    const strangerRes = await requestLink(post('http://attacker.example/api/auth/link', { email: 'stranger@example.com' }));
+
+    expect(adminRes.status).toBe(500);
+    expect(strangerRes.status).toBe(500);
+    expect(await adminRes.json()).toEqual(await strangerRes.json());
+    expect(mocked.createLoginLink).not.toHaveBeenCalled();
+    expect(mocked.sendLoginLinkEmail).not.toHaveBeenCalled();
+  });
+
+  it('rate limits by Fly-Client-IP on Fly, not the caller-supplied X-Forwarded-For', async () => {
+    process.env.FLY_APP_NAME = 'pingpong-app';
+    mocked.getAdminByEmail.mockResolvedValue(null);
+
+    await requestLink(post('http://localhost/api/auth/link', { email: TEST_ADMIN.email }, {
+      'x-forwarded-for': '6.6.6.6, 5.6.7.8', 'fly-client-ip': '5.6.7.8',
+    }));
+
+    expect(mocked.allowAttempt).toHaveBeenCalledWith('login-ip:5.6.7.8', 10, 900);
+  });
+
+  it('ignores Fly-Client-IP when not running on Fly', async () => {
+    mocked.getAdminByEmail.mockResolvedValue(null);
+
+    await requestLink(post('http://localhost/api/auth/link', { email: TEST_ADMIN.email }, {
+      'x-forwarded-for': '1.2.3.4', 'fly-client-ip': '9.9.9.9',
+    }));
+
+    expect(mocked.allowAttempt).toHaveBeenCalledWith('login-ip:1.2.3.4', 10, 900);
   });
 
   it('rejects a missing or malformed email', async () => {
